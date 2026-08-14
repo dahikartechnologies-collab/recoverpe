@@ -1,0 +1,41 @@
+Recoverpe - Global CTO Constraints & Rules
+
+Project: Next.js 14 (App Router), Supabase (PostgreSQL), Firebase (Auth/Storage), Tailwind CSS.
+
+1. CSV Upload Constraints (Vercel Serverless Limits)
+
+NEVER attempt to send raw CSV files larger than 4.5MB directly to a Next.js serverless API route. It will crash.
+
+For the CSV Ingestion Engine (Part 6), strictly implement frontend file size validation (Limit: 2MB).
+
+If a file exceeds 2MB, implement a frontend chunking utility (e.g., PapaParse) to parse the file on the client-side and send the JSON payload to the backend in safe batches.
+
+2. Meta WhatsApp API (Development Mode)
+
+Do NOT assume immediate production access to the Meta Cloud API.
+
+Implement a global NEXT_PUBLIC_APP_ENV variable.
+
+If NEXT_PUBLIC_APP_ENV=development, all outgoing WhatsApp message functions must BYPASS the actual HTTP POST request to Meta. Instead, they must route the payload to console.log or a custom local UI logger to simulate successful delivery.
+
+3. PDF Generation Strict Constraint
+
+NEVER use Puppeteer, Playwright, or any headless browser for PDF generation. It violates our serverless size constraints.
+
+Strictly use @react-pdf/renderer to generate the Tax Invoices directly from React components into byte streams.
+
+4. UI/UX Strict Guidelines
+
+Strictly adhere to the Bright Mode theme. No dark mode.
+
+Primary: White (#FFFFFF) and Pitch Black (#0A0A0A).
+
+Status: Success Green (#10B981) and Error Red (#EF4444).
+
+Avoid heavy drop shadows. Use 1px solid light grey borders for cards and tables.
+
+5. Security & Authentication
+
+Next.js Route Handlers (/app/api/...) MUST verify the Firebase Auth token or Supabase authenticated session before executing any logic.
+
+Do not trust client-side data for prices, subscriptions, or Vapi credit deductions.
