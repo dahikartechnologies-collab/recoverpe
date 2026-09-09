@@ -365,6 +365,7 @@ export async function processAutopilotRun(
       subscriptionPlan,
       autopilotStep: cadenceRun.step_index,
       autopilotTone: tone,
+      // WhatsApp delivery uses Meta template recoverpe_autopilot_reminder (body-only).
     },
   });
 

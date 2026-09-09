@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/gst";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import {
+  buildWhatsAppTemplatePayload,
   sanitizeMetaWhatsAppRecipient,
   sendWhatsAppMessage,
   WhatsAppMessageDraft,
@@ -71,12 +72,12 @@ export function draftUdhaarReceiptMessage(
     body,
     mode: isPersonal ? "personal" : "business",
     ledger_id: input.ledgerId,
-    meta_payload: {
-      messaging_product: "whatsapp",
-      to: recipient,
-      type: "text",
-      text: { body },
-    },
+    meta_payload: buildWhatsAppTemplatePayload(recipient, "recoverpe_udhaar_receipt", [
+      input.contactName,
+      formatCurrency(input.amount),
+      input.businessName,
+      formatCurrency(input.outstandingBalance),
+    ]),
   };
 }
 

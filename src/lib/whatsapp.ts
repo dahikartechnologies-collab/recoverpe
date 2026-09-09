@@ -1,6 +1,7 @@
 import { getPayPageUrl } from "@/lib/app-url";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
+  buildAutopilotReminderTemplateParameters,
   buildCourtesyPaymentClearBody,
   buildSmartCollectPaymentReceiptBody,
   buildWhatsAppReminderBody,
@@ -15,7 +16,37 @@ export interface WhatsAppMessageDraft {
   meta_payload: WhatsAppOutboundPayload;
 }
 
-export type WhatsAppOutboundPayload = WhatsAppMetaPayload | WhatsAppTextMetaPayload;
+export type WhatsAppOutboundPayload =
+  | WhatsAppMetaPayload
+  | WhatsAppTextMetaPayload
+  | WhatsAppTemplateMetaPayload;
+
+export type RecoverpeWhatsAppTemplateName =
+  | "recoverpe_udhaar_receipt"
+  | "recoverpe_jama_receipt"
+  | "recoverpe_autopilot_reminder";
+
+export interface WhatsAppTemplateTextParameter {
+  type: "text";
+  text: string;
+}
+
+export interface WhatsAppTemplateMetaPayload {
+  messaging_product: "whatsapp";
+  recipient_type: "individual";
+  to: string;
+  type: "template";
+  template: {
+    name: RecoverpeWhatsAppTemplateName;
+    language: { code: string };
+    components: Array<{
+      type: "body";
+      parameters: WhatsAppTemplateTextParameter[];
+    }>;
+  };
+}
+
+export const META_WHATSAPP_TEMPLATE_LANGUAGE = "en";
 
 export interface WhatsAppTextMetaPayload {
   messaging_product: "whatsapp";
@@ -124,42 +155,26 @@ function withSanitizedRecipient(draft: WhatsAppMessageDraft): WhatsAppMessageDra
   };
 }
 
-function buildInteractiveMetaPayload(
+export function buildWhatsAppTemplatePayload(
   recipient: string,
-  body: string,
-  ledger: LedgerWithContact,
-  payPageUrl: string,
-  invoiceDocumentLink?: string | null
-): WhatsAppMetaPayload {
-  const interactive: WhatsAppInteractiveMessage = {
-    type: "cta_url",
-    body: {
-      text: body,
-    },
-    action: {
-      name: "cta_url",
-      parameters: {
-        display_text: "Pay Now",
-        url: payPageUrl,
-      },
-    },
-  };
-
-  if (invoiceDocumentLink) {
-    interactive.header = {
-      type: "document",
-      document: {
-        link: invoiceDocumentLink,
-        filename: `Invoice-${ledger.invoice_number ?? ledger.id}.pdf`,
-      },
-    };
-  }
-
+  templateName: RecoverpeWhatsAppTemplateName,
+  parameters: string[]
+): WhatsAppTemplateMetaPayload {
   return {
     messaging_product: "whatsapp",
+    recipient_type: "individual",
     to: recipient,
-    type: "interactive",
-    interactive,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: META_WHATSAPP_TEMPLATE_LANGUAGE },
+      components: [
+        {
+          type: "body",
+          parameters: parameters.map((text) => ({ type: "text", text })),
+        },
+      ],
+    },
   };
 }
 
@@ -185,12 +200,13 @@ export function draftWhatsAppReminderMessage({
   });
   const isPersonal = ledger.business_id === null;
 
-  const meta_payload = buildInteractiveMetaPayload(
+  const meta_payload = buildWhatsAppTemplatePayload(
     recipient,
-    body,
-    ledger,
-    payPageUrl,
-    invoiceDocumentLink
+    "recoverpe_autopilot_reminder",
+    buildAutopilotReminderTemplateParameters({
+      ledger,
+      businessName: business?.business_name ?? null,
+    })
   );
 
   return {

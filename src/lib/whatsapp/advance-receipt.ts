@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/lib/gst";
 import {
+  buildWhatsAppTemplatePayload,
   sanitizeMetaWhatsAppRecipient,
   sendWhatsAppMessage,
   WhatsAppMessageDraft,
@@ -38,12 +39,12 @@ export function draftAdvanceReceiptMessage(
     body,
     mode: isPersonal ? "personal" : "business",
     ledger_id: input.contactId,
-    meta_payload: {
-      messaging_product: "whatsapp",
-      to: recipient,
-      type: "text",
-      text: { body },
-    },
+    meta_payload: buildWhatsAppTemplatePayload(recipient, "recoverpe_jama_receipt", [
+      input.contactName,
+      formatCurrency(input.amount),
+      input.businessName,
+      formatCurrency(input.walletBalance),
+    ]),
   };
 }
 

@@ -1,7 +1,11 @@
+import { format } from "date-fns";
 import { formatCurrency } from "@/lib/gst";
 import { getPayPageUrl, FREE_TIER_WHATSAPP_WATERMARK } from "@/lib/app-url";
+import { parseDateOnly } from "@/lib/timezone";
 import { SubscriptionPlan } from "@/types";
 import { LedgerWithContact } from "@/types";
+
+export const AUTOPILOT_REMINDER_TEMPLATE_NAME = "recoverpe_autopilot_reminder" as const;
 
 export interface WhatsAppReminderContentInput {
   ledger: Pick<
@@ -19,6 +23,26 @@ export interface WhatsAppReminderContentInput {
   payPageUrl?: string;
   invoiceViewUrl?: string | null;
   autopilotTone?: "polite" | "firm" | "critical";
+}
+
+export function formatWhatsAppDueDate(dueDate: string): string {
+  return format(parseDateOnly(dueDate), "d MMM yyyy");
+}
+
+export function buildAutopilotReminderTemplateParameters(input: {
+  ledger: Pick<
+    LedgerWithContact,
+    "id" | "invoice_number" | "balance_due" | "due_date" | "contact"
+  >;
+  businessName: string | null;
+}): string[] {
+  return [
+    input.ledger.contact.name,
+    input.businessName ?? "Our business",
+    input.ledger.invoice_number ?? input.ledger.id,
+    formatCurrency(input.ledger.balance_due),
+    formatWhatsAppDueDate(input.ledger.due_date),
+  ];
 }
 
 export function appendFreeTierWatermark(
