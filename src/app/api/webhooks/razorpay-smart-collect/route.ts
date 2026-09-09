@@ -7,6 +7,8 @@ import {
 import { verifyRazorpayWebhookSignature } from "@/lib/razorpay";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+
 /**
  * DEPRECATED (Sprint 52). Canonical endpoint: POST /api/webhooks/razorpay.
  *

@@ -13,6 +13,7 @@ import {
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { RecoverpeUser } from "@/types";
+import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { getFirebaseAuth } from "@/lib/firebase";
 import {
   clearAppRoleCookie,
@@ -196,13 +197,10 @@ export async function syncUserToSupabase(user: User): Promise<RecoverpeUser> {
     },
   });
 
-  const payload = (await response.json()) as {
-    user?: RecoverpeUser;
-    error?: string;
-  };
+  const payload = await parseApiJsonResponse<{ user?: RecoverpeUser }>(response);
 
-  if (!response.ok || !payload.user) {
-    throw new Error(payload.error || "Failed to sync your account.");
+  if (!payload.user) {
+    throw new Error("Failed to sync your account.");
   }
 
   return payload.user;

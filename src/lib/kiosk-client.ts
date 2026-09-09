@@ -1,4 +1,5 @@
 import { getAuthHeaders } from "@/lib/auth-headers";
+import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import {
   AppRole,
   KioskAssignmentsResponse,
@@ -15,13 +16,7 @@ export { setAppRoleCookie, clearAppRoleCookie, getAppRoleFromDocument };
 export async function fetchWorkspaceRole(): Promise<WorkspaceRoleContext> {
   const headers = await getAuthHeaders();
   const response = await fetch("/api/users/workspace-role", { headers });
-  const body = (await response.json()) as WorkspaceRoleContext & { error?: string };
-
-  if (!response.ok) {
-    throw new Error(body.error || "Failed to resolve workspace role.");
-  }
-
-  return body;
+  return parseApiJsonResponse<WorkspaceRoleContext>(response);
 }
 
 export async function fetchKioskAssignments(): Promise<KioskAssignmentsResponse> {

@@ -44,8 +44,14 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ["jwks-rsa", "jose", "firebase-admin"],
   experimental: {
-    serverComponentsExternalPackages: ["@react-pdf/renderer"],
+    serverComponentsExternalPackages: [
+      "@react-pdf/renderer",
+      "jwks-rsa",
+      "jose",
+      "firebase-admin",
+    ],
   },
   eslint: {
     // Do not block Vercel production builds on lint debt in WIP routes.

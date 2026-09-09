@@ -8,6 +8,8 @@ import { fetchDpdpPurgeCandidates } from "@/lib/dpdp-erasure";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+
 export const maxDuration = 60;
 
 interface CronRunLogEntry {

@@ -8,6 +8,8 @@ import { VAPI_CALL_CREDIT_COST } from "@/lib/vapi";
 import { reserveVapiCredits } from "@/lib/vapi-wallet";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   try {
     if (!verifyVapiWebhookSecret(request)) {

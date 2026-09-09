@@ -1,4 +1,5 @@
 import { getAuthHeaders } from "@/lib/auth-headers";
+import { readApiJsonBody } from "@/lib/parse-api-response";
 import { CurrentUserResponse, RecoverpeUser } from "@/types";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
@@ -19,10 +20,12 @@ export class AccountPendingPurgeError extends Error {
 export async function fetchCurrentUser(): Promise<RecoverpeUser> {
   const headers = await getAuthHeaders();
   const response = await fetch("/api/users/me", { headers });
-  const body = (await response.json()) as CurrentUserResponse & {
-    error?: string;
-    code?: string;
-  };
+  const body = await readApiJsonBody<
+    CurrentUserResponse & {
+      error?: string;
+      code?: string;
+    }
+  >(response);
 
   if (
     response.status === 403 &&

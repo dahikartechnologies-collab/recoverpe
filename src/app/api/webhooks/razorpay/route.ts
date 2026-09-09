@@ -13,6 +13,8 @@ import {
 } from "@/lib/reconciliation/razorpay-smart-collect";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
