@@ -1,27 +1,35 @@
 import { NextResponse } from "next/server";
-import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
+import { isDevelopmentAppEnv } from "@/lib/app-env";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { canInitiateAiCallForLedger } from "@/lib/ledger-status";
+import { enforceVapiCallRateLimit } from "@/lib/rate-limit";
+import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
   draftVapiCall,
   initiateVapiOutboundCall,
+  TraiCurfewError,
   VAPI_CALL_CREDIT_COST,
 } from "@/lib/vapi";
+import { refundVapiCredits, reserveVapiCredits } from "@/lib/vapi-wallet";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { Business, CommunicationLog, InitiateVapiCallPayload } from "@/types";
 
-export async function POST(request: Request) {
-  try {
-    const contextResult = await resolveEffectiveUserContext(request);
+export const POST = withWorkspaceMutation(async (request, auth) => {
+  let reservedCredits = false;
+  const effectiveUserId = auth.effectiveUserId;
+  let supabase: ReturnType<typeof createAdminSupabaseClient> | null = null;
+  const isDevelopment = isDevelopmentAppEnv();
 
-    if ("error" in contextResult) {
-      return contextResult.error;
+  try {
+    if (isTraiCurfewActive()) {
+      return NextResponse.json({ error: getTraiCurfewMessage() }, { status: 403 });
     }
 
-    const ghostBlocked = ghostModeWriteBlockedResponse(contextResult);
+    const rateLimitResponse = await enforceVapiCallRateLimit(auth.effectiveUserId);
 
-    if (ghostBlocked) {
-      return ghostBlocked;
+    if (rateLimitResponse) {
+      return rateLimitResponse;
     }
 
     const body = (await request.json()) as InitiateVapiCallPayload;
@@ -30,35 +38,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ledger_id is required." }, { status: 400 });
     }
 
-    const supabase = createAdminSupabaseClient();
-    const isDevelopment = process.env.NEXT_PUBLIC_APP_ENV === "development";
+    supabase = createAdminSupabaseClient();
 
     const { data: userRow, error: userError } = await supabase
       .from("users")
-      .select("id, vapi_wallet_balance")
-      .eq("id", contextResult.effectiveUserId)
+      .select("id, phone_number")
+      .eq("id", effectiveUserId)
       .single();
 
     if (userError || !userRow) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
     }
 
-    const walletBalance = Number(userRow.vapi_wallet_balance);
-
-    if (!isDevelopment && walletBalance < VAPI_CALL_CREDIT_COST) {
-      return NextResponse.json(
-        {
-          error: `Insufficient AI credits. You need at least ${VAPI_CALL_CREDIT_COST} credits to initiate a call.`,
-          vapi_wallet_balance: walletBalance,
-          required_credits: VAPI_CALL_CREDIT_COST,
-        },
-        { status: 402 }
-      );
-    }
-
     const ledger = await fetchLedgerById(
       supabase,
-      contextResult.effectiveUserId,
+      effectiveUserId,
       body.ledger_id.trim()
     );
 
@@ -68,7 +62,11 @@ export async function POST(request: Request) {
 
     if (!canInitiateAiCallForLedger(ledger)) {
       return NextResponse.json(
-        { error: "AI calls can only be initiated for overdue ledgers with an outstanding balance." },
+        {
+          error: ledger.business_id
+            ? "AI calls can only be initiated for overdue business ledgers with an outstanding balance."
+            : "AI voice calls are not available for personal ledgers.",
+        },
         { status: 400 }
       );
     }
@@ -80,7 +78,7 @@ export async function POST(request: Request) {
         .from("businesses")
         .select("business_name")
         .eq("id", ledger.business_id)
-        .eq("user_id", contextResult.effectiveUserId)
+        .eq("user_id", effectiveUserId)
         .maybeSingle();
 
       if (businessError) {
@@ -93,50 +91,48 @@ export async function POST(request: Request) {
       business = businessData as Pick<Business, "business_name"> | null;
     }
 
-    const draft = draftVapiCall({
-      ledger,
-      business,
-      userId: contextResult.effectiveUserId,
-    });
-
-    let updatedWalletBalance = walletBalance;
-    const costDeducted = isDevelopment ? 0 : VAPI_CALL_CREDIT_COST;
+    let walletBalance: number | null = null;
 
     if (!isDevelopment) {
-      const { data: deductedUser, error: deductError } = await supabase
-        .from("users")
-        .update({
-          vapi_wallet_balance: walletBalance - VAPI_CALL_CREDIT_COST,
-        })
-        .eq("id", contextResult.effectiveUserId)
-        .gte("vapi_wallet_balance", VAPI_CALL_CREDIT_COST)
-        .select("vapi_wallet_balance")
-        .single();
+      const reservedBalance = await reserveVapiCredits(
+        supabase,
+        effectiveUserId,
+        VAPI_CALL_CREDIT_COST
+      );
 
-      if (deductError || !deductedUser) {
+      if (reservedBalance === null) {
         return NextResponse.json(
           {
             error: `Insufficient AI credits. You need at least ${VAPI_CALL_CREDIT_COST} credits to initiate a call.`,
-            vapi_wallet_balance: walletBalance,
             required_credits: VAPI_CALL_CREDIT_COST,
           },
           { status: 402 }
         );
       }
 
-      updatedWalletBalance = Number(deductedUser.vapi_wallet_balance);
+      reservedCredits = true;
+      walletBalance = reservedBalance;
     }
+
+    const draft = draftVapiCall({
+      ledger,
+      business,
+      userId: effectiveUserId,
+      ownerPhoneNumber: userRow.phone_number ?? null,
+    });
 
     let callResult;
 
     try {
       callResult = await initiateVapiOutboundCall(draft);
     } catch (callError) {
-      if (!isDevelopment) {
-        await supabase
-          .from("users")
-          .update({ vapi_wallet_balance: walletBalance })
-          .eq("id", contextResult.effectiveUserId);
+      if (reservedCredits && supabase && effectiveUserId) {
+        await refundVapiCredits(
+          supabase,
+          effectiveUserId,
+          VAPI_CALL_CREDIT_COST
+        );
+        reservedCredits = false;
       }
 
       throw callError;
@@ -148,13 +144,25 @@ export async function POST(request: Request) {
         ledger_id: ledger.id,
         type: "vapi_call",
         status: "sent",
-        cost_deducted: costDeducted,
+        cost_deducted: isDevelopment ? 0 : VAPI_CALL_CREDIT_COST,
+        vapi_call_id: callResult.vapi_call_id ?? null,
         executed_at: new Date().toISOString(),
       })
-      .select("id, ledger_id, type, status, cost_deducted, executed_at")
+      .select(
+        "id, ledger_id, type, status, cost_deducted, executed_at, vapi_call_id, recording_url, sentiment, executive_summary, duration_seconds"
+      )
       .single();
 
     if (logError || !communicationLog) {
+      if (reservedCredits && effectiveUserId) {
+        await refundVapiCredits(
+          supabase,
+          effectiveUserId,
+          VAPI_CALL_CREDIT_COST
+        );
+        reservedCredits = false;
+      }
+
       return NextResponse.json(
         { error: logError?.message || "Failed to log AI voice call." },
         { status: 500 }
@@ -167,7 +175,7 @@ export async function POST(request: Request) {
       message: callResult.message,
       vapi_call_id: callResult.vapi_call_id ?? null,
       communication_log: communicationLog as CommunicationLog,
-      vapi_wallet_balance: updatedWalletBalance,
+      vapi_wallet_balance: walletBalance,
       draft: {
         customer_number: draft.customer_number,
         context: draft.context,
@@ -176,9 +184,30 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (
+      reservedCredits &&
+      supabase &&
+      effectiveUserId &&
+      !isDevelopment
+    ) {
+      try {
+        await refundVapiCredits(
+          supabase,
+          effectiveUserId,
+          VAPI_CALL_CREDIT_COST
+        );
+      } catch (refundError) {
+        console.error("[Recoverpe VAPI] Failed to refund reserved credits:", refundError);
+      }
+    }
+
+    if (error instanceof TraiCurfewError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
     const message =
       error instanceof Error ? error.message : "Failed to initiate AI voice call.";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+}, { permission: "spend_funds" });

@@ -5,6 +5,7 @@ import {
   createUserWithEmailAndPassword,
   linkWithPhoneNumber,
   RecaptchaVerifier,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   User,
@@ -13,6 +14,13 @@ import {
 import { FirebaseError } from "firebase/app";
 import { RecoverpeUser } from "@/types";
 import { getFirebaseAuth } from "@/lib/firebase";
+import {
+  clearAppRoleCookie,
+  clearAuthSessionCookie,
+  clearActorUserCookie,
+} from "@/lib/auth-cookies";
+import { resetFirebaseAuthReadyState } from "@/lib/auth-session";
+import { clearWorkspaceCookies } from "@/lib/workspace-context";
 
 export { getFirebaseAuth };
 
@@ -81,12 +89,80 @@ export async function loginWithEmail(
 
 export async function logout(): Promise<void> {
   await signOut(getFirebaseAuth());
+  clearAuthSessionCookie();
+  clearAppRoleCookie();
+  clearActorUserCookie();
+  clearWorkspaceCookies();
+  resetFirebaseAuthReadyState();
 }
 
+export async function sendPasswordReset(email: string): Promise<void> {
+  if (!email.trim()) {
+    throw new Error("Please enter your email address.");
+  }
+
+  await sendPasswordResetEmail(getFirebaseAuth(), email.trim());
+}
+
+export const RECAPTCHA_CONTAINER_ID = "recaptcha-container";
+
+declare global {
+  interface Window {
+    recaptchaVerifier?: RecaptchaVerifier;
+  }
+}
+
+function assertRecaptchaContainerMounted(containerId: string): void {
+  if (typeof document === "undefined") {
+    throw new Error("reCAPTCHA is only available in the browser.");
+  }
+
+  const container = document.getElementById(containerId);
+
+  if (!container) {
+    throw new Error(
+      `reCAPTCHA container #${containerId} is not mounted in the DOM.`
+    );
+  }
+}
+
+export function clearInvisibleRecaptcha(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.recaptchaVerifier?.clear();
+  } catch {
+    // The container may already be gone during route transitions.
+  }
+
+  window.recaptchaVerifier = undefined;
+}
+
+export function getOrCreateInvisibleRecaptcha(
+  containerId: string = RECAPTCHA_CONTAINER_ID
+): RecaptchaVerifier {
+  assertRecaptchaContainerMounted(containerId);
+
+  if (window.recaptchaVerifier) {
+    return window.recaptchaVerifier;
+  }
+
+  window.recaptchaVerifier = new RecaptchaVerifier(
+    getFirebaseAuth(),
+    containerId,
+    {
+      size: "invisible",
+    }
+  );
+
+  return window.recaptchaVerifier;
+}
+
+/** @deprecated Use getOrCreateInvisibleRecaptcha() for singleton-safe initialization. */
 export function createInvisibleRecaptcha(containerId: string): RecaptchaVerifier {
-  return new RecaptchaVerifier(getFirebaseAuth(), containerId, {
-    size: "invisible",
-  });
+  return getOrCreateInvisibleRecaptcha(containerId);
 }
 
 export async function sendPhoneOtp(

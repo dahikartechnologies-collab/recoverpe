@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AdminDiagnosticsPanel } from "@/components/admin/AdminDiagnosticsPanel";
 import { AdminMetricCard } from "@/components/admin/AdminMetricCard";
 import { Card, CardContent } from "@/components/ui/Card";
 import { AdminMetricsResponse } from "@/types";
@@ -119,6 +120,8 @@ export function AdminDashboardView({ data }: AdminDashboardViewProps) {
           </div>
         </CardContent>
       </Card>
+
+      <AdminDiagnosticsPanel />
 
       <div>
         <Link

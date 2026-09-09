@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BillingView } from "@/components/billing/BillingView";
-import { fetchCurrentUser } from "@/lib/users";
+import { AccountPendingPurgeError, AccountSuspendedError, fetchCurrentUser } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
 
 export default function BillingPage() {
+  const router = useRouter();
   const userRefreshKey = useWorkspaceStore((state) => state.userRefreshKey);
   const walletRefreshKey = useWorkspaceStore((state) => state.walletRefreshKey);
   const setUserBillingState = useWorkspaceStore((state) => state.setUserBillingState);
@@ -23,6 +25,16 @@ export default function BillingPage() {
       setUser(profile);
       setUserBillingState(profile.subscription_plan, profile.ledger_count);
     } catch (loadError) {
+      if (loadError instanceof AccountSuspendedError) {
+        router.replace("/account-suspended");
+        return;
+      }
+
+      if (loadError instanceof AccountPendingPurgeError) {
+        router.replace("/account-pending-purge");
+        return;
+      }
+
       setError(
         loadError instanceof Error
           ? loadError.message
@@ -32,7 +44,7 @@ export default function BillingPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [setUserBillingState]);
+  }, [router, setUserBillingState]);
 
   useEffect(() => {
     void loadUser();

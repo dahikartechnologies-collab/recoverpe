@@ -1,10 +1,10 @@
+import { ReminderCadence, resolveReminderCadence } from "@/lib/cadence";
 import { fetchSuspendedUserIds } from "@/lib/admin-users";
+import { daysBetweenDateOnly, getTodayDateStringInIst } from "@/lib/timezone";
+import { SubscriptionPlan } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-export type ReminderCadence =
-  | "3_days_before"
-  | "due_today"
-  | "15_days_overdue";
+export type { ReminderCadence };
 
 export interface CronLedgerTarget {
   ledger_id: string;
@@ -19,6 +19,7 @@ export interface CronLedgerTarget {
   days_from_due: number;
   contact_name: string;
   contact_phone: string;
+  subscription_plan: SubscriptionPlan;
 }
 
 type RawCronLedgerRow = {
@@ -30,46 +31,19 @@ type RawCronLedgerRow = {
   balance_due: number;
   status: string;
   communication_paused: boolean;
-  contacts: { name: string; phone_number: string } | { name: string; phone_number: string }[] | null;
+  contacts:
+    | { name: string; phone_number: string }
+    | { name: string; phone_number: string }[]
+    | null;
+  users:
+    | { subscription_plan: SubscriptionPlan }
+    | { subscription_plan: SubscriptionPlan }[]
+    | null;
 };
-
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function daysFromDueDate(dueDate: string, referenceDate: string): number {
-  const due = parseDateOnly(dueDate);
-  const today = parseDateOnly(referenceDate);
-  const millisecondsPerDay = 1000 * 60 * 60 * 24;
-
-  return Math.round((today.getTime() - due.getTime()) / millisecondsPerDay);
-}
-
-export function resolveReminderCadence(
-  dueDate: string,
-  referenceDate: string
-): ReminderCadence | null {
-  const delta = daysFromDueDate(dueDate, referenceDate);
-
-  if (delta === -3) {
-    return "3_days_before";
-  }
-
-  if (delta === 0) {
-    return "due_today";
-  }
-
-  if (delta === 15) {
-    return "15_days_overdue";
-  }
-
-  return null;
-}
 
 export async function fetchCronReminderTargets(
   supabase: SupabaseClient,
-  referenceDate: string = new Date().toISOString().slice(0, 10)
+  referenceDate: string = getTodayDateStringInIst()
 ): Promise<CronLedgerTarget[]> {
   const { data, error } = await supabase
     .from("ledgers")
@@ -86,6 +60,9 @@ export async function fetchCronReminderTargets(
       contacts (
         name,
         phone_number
+      ),
+      users (
+        subscription_plan
       )
     `
     )
@@ -105,7 +82,15 @@ export async function fetchCronReminderTargets(
       continue;
     }
 
-    const cadence = resolveReminderCadence(row.due_date, referenceDate);
+    const userData = Array.isArray(row.users) ? row.users[0] : row.users;
+    const subscriptionPlan =
+      (userData?.subscription_plan as SubscriptionPlan | undefined) ?? "free";
+
+    const cadence = resolveReminderCadence(
+      row.due_date,
+      referenceDate,
+      subscriptionPlan
+    );
 
     if (!cadence) {
       continue;
@@ -125,9 +110,10 @@ export async function fetchCronReminderTargets(
       status: row.status,
       communication_paused: row.communication_paused,
       cadence,
-      days_from_due: daysFromDueDate(row.due_date, referenceDate),
+      days_from_due: daysBetweenDateOnly(row.due_date, referenceDate),
       contact_name: contactData?.name ?? "Unknown",
       contact_phone: contactData?.phone_number ?? "",
+      subscription_plan: subscriptionPlan,
     });
   }
 

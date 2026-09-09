@@ -3,6 +3,7 @@
 import {
   IMPORT_FIELD_LABELS,
   ImportFieldKey,
+  OPTIONAL_IMPORT_FIELDS,
   REQUIRED_IMPORT_FIELDS,
 } from "@/lib/csv-import";
 
@@ -49,6 +50,34 @@ export function ColumnMappingForm({
                 </option>
               ))}
             </select>
+          </div>
+        ))}
+
+        {OPTIONAL_IMPORT_FIELDS.map((field) => (
+          <div key={field}>
+            <label
+              htmlFor={`map-${field}`}
+              className="mb-1.5 block text-sm font-medium text-recoverpe-black"
+            >
+              {IMPORT_FIELD_LABELS[field]} (optional)
+            </label>
+            <select
+              id={`map-${field}`}
+              value={mapping[field] ?? ""}
+              onChange={(event) => onChange(field, event.target.value)}
+              className="w-full min-h-11 rounded-md border border-recoverpe-grey-light bg-recoverpe-white px-3 py-2 text-sm text-recoverpe-black outline-none focus:border-recoverpe-black"
+            >
+              <option value="">Skip this field</option>
+              {headers.map((header) => (
+                <option key={header} value={header}>
+                  {header}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-recoverpe-grey-medium">
+              Map invoice numbers to update existing rows instead of creating
+              duplicates during import.
+            </p>
           </div>
         ))}
       </div>

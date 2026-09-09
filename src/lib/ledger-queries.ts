@@ -2,8 +2,10 @@ import {
   DashboardMetrics,
   LedgerStatus,
   LedgerWithContact,
+  PaymentReliabilityTier,
   WorkspaceMode,
 } from "@/types";
+import { fetchDashboardMetricsViaRpc } from "@/lib/dashboard-intelligence";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const LEDGER_SELECT = `
@@ -21,17 +23,66 @@ const LEDGER_SELECT = `
   pdf_url,
   current_version,
   communication_paused,
+  legal_notice_pdf_url,
+  samadhaan_docket_pdf_url,
+  assigned_to_user_id,
   created_at,
   updated_at,
   contacts (
     name,
-    phone_number
+    phone_number,
+    risk_score,
+    payment_reliability_tier,
+    predicted_pay_date
   )
 `;
 
 type RawLedgerRow = Omit<LedgerWithContact, "contact"> & {
-  contacts: { name: string; phone_number: string } | { name: string; phone_number: string }[] | null;
+  contacts:
+    | {
+        name: string;
+        phone_number: string;
+        risk_score?: number | null;
+        payment_reliability_tier?: PaymentReliabilityTier | null;
+        predicted_pay_date?: string | null;
+      }
+    | {
+        name: string;
+        phone_number: string;
+        risk_score?: number | null;
+        payment_reliability_tier?: PaymentReliabilityTier | null;
+        predicted_pay_date?: string | null;
+      }[]
+    | null;
 };
+
+export const LEDGER_PAGE_SIZE = 50;
+export const LEDGER_PAGE_SIZE_MAX = 100;
+
+export interface LedgerPaginationParams {
+  limit?: number;
+  offset?: number;
+  assignedToUserId?: string | null;
+}
+
+export interface PaginatedLedgersResult {
+  ledgers: LedgerWithContact[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+function normalizeLedgerPagination(
+  pagination?: LedgerPaginationParams
+): { limit: number; offset: number } {
+  const limit = Math.min(
+    Math.max(pagination?.limit ?? LEDGER_PAGE_SIZE, 1),
+    LEDGER_PAGE_SIZE_MAX
+  );
+  const offset = Math.max(pagination?.offset ?? 0, 0);
+
+  return { limit, offset };
+}
 
 function mapLedgerRow(row: RawLedgerRow): LedgerWithContact {
   const contactData = Array.isArray(row.contacts)
@@ -54,9 +105,23 @@ function mapLedgerRow(row: RawLedgerRow): LedgerWithContact {
     pdf_url: row.pdf_url,
     current_version: row.current_version,
     communication_paused: Boolean(row.communication_paused),
+    legal_notice_pdf_url: (row.legal_notice_pdf_url as string | null) ?? null,
+    samadhaan_docket_pdf_url:
+      (row.samadhaan_docket_pdf_url as string | null) ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    contact,
+    contact: {
+      name: contact.name,
+      phone_number: contact.phone_number,
+      risk_score:
+        contact.risk_score !== null && contact.risk_score !== undefined
+          ? Number(contact.risk_score)
+          : 50,
+      payment_reliability_tier:
+        (contact.payment_reliability_tier as PaymentReliabilityTier | null) ??
+        "good",
+      predicted_pay_date: contact.predicted_pay_date ?? null,
+    },
   };
 }
 
@@ -64,17 +129,26 @@ export async function fetchLedgersForWorkspace(
   supabase: SupabaseClient,
   userId: string,
   workspaceMode: WorkspaceMode,
-  businessId: string | null
-): Promise<LedgerWithContact[]> {
+  businessId: string | null,
+  pagination?: LedgerPaginationParams
+): Promise<PaginatedLedgersResult> {
   if (workspaceMode === "business" && !businessId) {
-    return [];
+    return {
+      ledgers: [],
+      total: 0,
+      limit: pagination?.limit ?? LEDGER_PAGE_SIZE,
+      offset: pagination?.offset ?? 0,
+    };
   }
+
+  const { limit, offset } = normalizeLedgerPagination(pagination);
 
   let query = supabase
     .from("ledgers")
-    .select(LEDGER_SELECT)
+    .select(LEDGER_SELECT, { count: "exact" })
     .eq("user_id", userId)
-    .order("due_date", { ascending: true });
+    .order("due_date", { ascending: true })
+    .range(offset, offset + limit - 1);
 
   if (workspaceMode === "personal") {
     query = query.is("business_id", null);
@@ -82,19 +156,51 @@ export async function fetchLedgersForWorkspace(
     query = query.eq("business_id", businessId as string);
   }
 
-  const { data, error } = await query;
+  if (pagination?.assignedToUserId) {
+    query = query.eq("assigned_to_user_id", pagination.assignedToUserId);
+  }
+
+  const { data, error, count } = await query;
 
   if (error) {
     throw new Error(error.message || "Failed to load ledgers.");
   }
 
-  return ((data ?? []) as unknown as RawLedgerRow[]).map(mapLedgerRow);
+  return {
+    ledgers: ((data ?? []) as unknown as RawLedgerRow[]).map(mapLedgerRow),
+    total: count ?? 0,
+    limit,
+    offset,
+  };
 }
 
 export async function computeDashboardMetrics(
   supabase: SupabaseClient,
-  ledgers: LedgerWithContact[]
+  userId: string,
+  workspaceMode: WorkspaceMode,
+  businessId: string | null,
+  ledgers: LedgerWithContact[],
+  options?: { forceFallback?: boolean }
 ): Promise<DashboardMetrics> {
+  if (options?.forceFallback) {
+    return computeDashboardMetricsFallback(ledgers);
+  }
+
+  try {
+    return await fetchDashboardMetricsViaRpc(
+      supabase,
+      userId,
+      workspaceMode,
+      businessId
+    );
+  } catch {
+    return computeDashboardMetricsFallback(ledgers);
+  }
+}
+
+function computeDashboardMetricsFallback(
+  ledgers: LedgerWithContact[]
+): DashboardMetrics {
   const today = new Date().toISOString().slice(0, 10);
   const excludedStatuses: LedgerStatus[] = ["paid", "cancelled", "refunded"];
 
@@ -109,35 +215,10 @@ export async function computeDashboardMetrics(
     .filter((ledger) => ledger.due_date < today && ledger.balance_due > 0)
     .reduce((sum, ledger) => sum + ledger.balance_due, 0);
 
-  const ledgerIds = ledgers.map((ledger) => ledger.id);
-
-  if (ledgerIds.length === 0) {
-    return {
-      totalOutstanding,
-      severelyOverdue,
-      recoveredViaRecoverpe: 0,
-    };
-  }
-
-  const { data: transactions, error } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("transaction_type", "payment_received")
-    .in("ledger_id", ledgerIds);
-
-  if (error) {
-    throw new Error(error.message || "Failed to load recovery metrics.");
-  }
-
-  const recoveredViaRecoverpe = (transactions ?? []).reduce(
-    (sum, transaction) => sum + Number(transaction.amount),
-    0
-  );
-
   return {
     totalOutstanding,
     severelyOverdue,
-    recoveredViaRecoverpe,
+    recoveredViaRecoverpe: 0,
   };
 }
 

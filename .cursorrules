@@ -14,9 +14,9 @@ If a file exceeds 2MB, implement a frontend chunking utility (e.g., PapaParse) t
 
 Do NOT assume immediate production access to the Meta Cloud API.
 
-Implement a global NEXT_PUBLIC_APP_ENV variable.
+Implement a server-only APP_ENV variable.
 
-If NEXT_PUBLIC_APP_ENV=development, all outgoing WhatsApp message functions must BYPASS the actual HTTP POST request to Meta. Instead, they must route the payload to console.log or a custom local UI logger to simulate successful delivery.
+If APP_ENV=development, all outgoing WhatsApp message functions must BYPASS the actual HTTP POST request to Meta. Instead, they must route the payload to console.log or a custom local UI logger to simulate successful delivery.
 
 3. PDF Generation Strict Constraint
 

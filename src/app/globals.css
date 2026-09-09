@@ -23,4 +23,84 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  .focus-ring {
+    @apply outline-none transition-all duration-200 ease-out focus-visible:ring-2 focus-visible:ring-recoverpe-black focus-visible:ring-offset-2 focus-visible:ring-offset-recoverpe-white;
+  }
+
+  .type-eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-recoverpe-grey-medium;
+  }
+
+  .type-page-title {
+    @apply text-3xl font-semibold tracking-tight text-recoverpe-black;
+  }
+
+  .type-table-header {
+    @apply text-[11px] font-medium uppercase tracking-[0.12em] text-recoverpe-grey-medium;
+  }
+
+  .type-data-primary {
+    @apply font-semibold tabular-nums tracking-tight text-recoverpe-black;
+  }
+
+  .type-data-secondary {
+    @apply text-xs text-recoverpe-grey-medium;
+  }
+
+  @keyframes confetti-fall {
+    0% {
+      transform: translate3d(0, -10vh, 0) rotate(0deg);
+      opacity: 1;
+    }
+
+    100% {
+      transform: translate3d(0, 110vh, 0) rotate(720deg);
+      opacity: 0;
+    }
+  }
+
+  .confetti-piece {
+    animation: confetti-fall 2.8s ease-in forwards;
+  }
+
+  @keyframes trust-marquee-scroll {
+    0% {
+      transform: translateX(0);
+    }
+
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .trust-marquee {
+    animation: trust-marquee-scroll 28s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trust-marquee {
+      animation: none;
+    }
+  }
+
+  .prose-legal h2 {
+    @apply mt-10 text-lg font-semibold text-recoverpe-black first:mt-0;
+  }
+
+  .prose-legal h3 {
+    @apply mt-6 text-base font-semibold text-recoverpe-black;
+  }
+
+  .prose-legal p {
+    @apply text-recoverpe-black;
+  }
+
+  .prose-legal ul {
+    @apply list-disc space-y-2 pl-5;
+  }
+
+  .prose-legal a {
+    @apply text-recoverpe-black underline underline-offset-2;
+  }
 }

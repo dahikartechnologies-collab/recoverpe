@@ -9,13 +9,13 @@ interface HeroMetricCardProps {
 
 export function HeroMetricCard({ label, description, value }: HeroMetricCardProps) {
   return (
-    <Card>
-      <CardContent>
-        <p className="text-sm font-medium text-recoverpe-grey-medium">{label}</p>
-        <p className="mt-3 text-3xl font-semibold tabular-nums text-recoverpe-black">
+    <Card className="min-w-0 overflow-hidden">
+      <CardContent className="min-w-0">
+        <p className="type-eyebrow truncate">{label}</p>
+        <p className="type-data-primary mt-4 truncate text-2xl md:text-3xl">
           {formatCurrency(value)}
         </p>
-        <p className="mt-2 text-xs text-recoverpe-grey-medium">{description}</p>
+        <p className="type-data-secondary mt-3 leading-relaxed">{description}</p>
       </CardContent>
     </Card>
   );

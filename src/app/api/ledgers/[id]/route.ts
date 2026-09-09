@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  ghostModeWriteBlockedResponse,
-  resolveEffectiveUserContext,
-} from "@/lib/api-auth";
+import { resolveEffectiveUserContext } from "@/lib/api-auth";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { UpdateLedgerPayload } from "@/types";
@@ -39,19 +37,8 @@ export async function GET(request: Request, context: RouteContext) {
   }
 }
 
-export async function PATCH(request: Request, context: RouteContext) {
-  try {
-    const contextResult = await resolveEffectiveUserContext(request);
-
-    if ("error" in contextResult) {
-      return contextResult.error;
-    }
-
-    const ghostBlocked = ghostModeWriteBlockedResponse(contextResult);
-    if (ghostBlocked) {
-      return ghostBlocked;
-    }
-
+export const PATCH = withWorkspaceMutation<RouteContext>(
+  async (request, auth, context) => {
     const body = (await request.json()) as UpdateLedgerPayload;
 
     if (typeof body.communication_paused !== "boolean") {
@@ -64,7 +51,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const supabase = createAdminSupabaseClient();
     const existingLedger = await fetchLedgerById(
       supabase,
-      contextResult.effectiveUserId,
+      auth.effectiveUserId,
       context.params.id
     );
 
@@ -76,7 +63,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       .from("ledgers")
       .update({ communication_paused: body.communication_paused })
       .eq("id", context.params.id)
-      .eq("user_id", contextResult.effectiveUserId)
+      .eq("user_id", auth.effectiveUserId)
       .select(
         "id, user_id, contact_id, business_id, invoice_number, source_type, total_amount, balance_due, due_date, status, is_custom_pdf, pdf_url, current_version, communication_paused, created_at, updated_at"
       )
@@ -90,10 +77,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     return NextResponse.json({ ledger: data });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to update ledger.";
-
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
+  },
+  { permission: "edit_ledgers" }
+);

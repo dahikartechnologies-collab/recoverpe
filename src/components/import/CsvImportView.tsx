@@ -14,7 +14,7 @@ import {
   isMappingComplete,
   transformCsvRows,
 } from "@/lib/csv-import";
-import { BatchUpgradeRequiredError, importLedgerBatch } from "@/lib/ledger-batch-client";
+import { BatchUpgradeRequiredError, importLedgerBatchChunked } from "@/lib/ledger-batch-client";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { MappedImportRow } from "@/types";
 
@@ -126,7 +126,7 @@ export function CsvImportView() {
     setToast(null);
 
     try {
-      const result = await importLedgerBatch({
+      const result = await importLedgerBatchChunked({
         rows: validRows,
         workspace_mode: mode,
         business_id: mode === "business" ? activeBusinessId : null,

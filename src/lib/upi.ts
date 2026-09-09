@@ -27,3 +27,36 @@ export async function generateUPIQRCodeBase64(upiUri: string): Promise<string> {
     },
   });
 }
+
+export function generateKhataUpiIntent(
+  upiId: string,
+  merchantName: string,
+  amount: number
+): string {
+  const params = new URLSearchParams({
+    pa: upiId.trim(),
+    pn: merchantName.trim(),
+    am: amount.toFixed(2),
+    cu: "INR",
+  });
+
+  return `upi://pay?${params.toString()}`;
+}
+
+export function generateVirtualAccountUpiUri(
+  vpa: string,
+  payeeName: string,
+  amount?: number
+): string {
+  const params = new URLSearchParams({
+    pa: vpa.trim(),
+    pn: payeeName.trim(),
+    tn: "Recoverpe_Smart_Collect",
+  });
+
+  if (amount !== undefined && amount > 0) {
+    params.set("am", amount.toFixed(2));
+  }
+
+  return `upi://pay?${params.toString()}`;
+}

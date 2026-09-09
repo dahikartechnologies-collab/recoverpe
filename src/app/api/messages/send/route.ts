@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
 import { fetchLedgerById } from "@/lib/ledger-queries";
+import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
 import {
-  draftWhatsAppReminderMessage,
-  sendWhatsAppMessage,
-} from "@/lib/whatsapp";
+  assertWorkspacePermission,
+  resolveWorkspaceAccess,
+} from "@/lib/workspace-rbac";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { Business, CommunicationLog, SendWhatsAppReminderPayload } from "@/types";
+import { SendWhatsAppReminderPayload, SubscriptionPlan } from "@/types";
 
 export async function POST(request: Request) {
   try {
@@ -20,6 +21,29 @@ export async function POST(request: Request) {
 
     if (ghostBlocked) {
       return ghostBlocked;
+    }
+
+    const access = await resolveWorkspaceAccess(
+      contextResult.actorUserId,
+      contextResult.effectiveUserId
+    );
+
+    try {
+      assertWorkspacePermission(
+        access,
+        "send_reminders",
+        "You do not have permission to send reminders."
+      );
+    } catch (permissionError) {
+      return NextResponse.json(
+        {
+          error:
+            permissionError instanceof Error
+              ? permissionError.message
+              : "Forbidden.",
+        },
+        { status: 403 }
+      );
     }
 
     const body = (await request.json()) as SendWhatsAppReminderPayload;
@@ -39,79 +63,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ledger not found." }, { status: 404 });
     }
 
-    if (ledger.balance_due <= 0 || ["paid", "cancelled", "refunded"].includes(ledger.status)) {
+    if (
+      ledger.balance_due <= 0 ||
+      ["paid", "cancelled", "refunded"].includes(ledger.status)
+    ) {
       return NextResponse.json(
         { error: "This ledger is already settled and cannot receive reminders." },
         { status: 400 }
       );
     }
 
-    let business: Pick<Business, "business_name"> | null = null;
-
-    if (ledger.business_id) {
-      const { data: businessData, error: businessError } = await supabase
-        .from("businesses")
-        .select("business_name")
-        .eq("id", ledger.business_id)
-        .eq("user_id", contextResult.effectiveUserId)
-        .maybeSingle();
-
-      if (businessError) {
-        return NextResponse.json(
-          { error: businessError.message || "Failed to load business profile." },
-          { status: 500 }
-        );
-      }
-
-      business = businessData as Pick<Business, "business_name"> | null;
-    }
-
-    const upiVpa =
-      body.upi_vpa?.trim() ||
-      process.env.DEFAULT_MERCHANT_UPI_VPA?.trim() ||
-      null;
-
-    const draft = draftWhatsAppReminderMessage({
-      ledger,
-      business,
-      upiVpa,
-    });
-
-    const sendResult = await sendWhatsAppMessage(draft);
-
-    const { data: communicationLog, error: logError } = await supabase
-      .from("communication_logs")
-      .insert({
-        ledger_id: ledger.id,
-        type: "whatsapp_reminder",
-        status: "sent",
-        cost_deducted: 0,
-        executed_at: new Date().toISOString(),
-      })
-      .select("id, ledger_id, type, status, cost_deducted, executed_at")
+    const { data: userRow, error: userError } = await supabase
+      .from("users")
+      .select("subscription_plan")
+      .eq("id", contextResult.effectiveUserId)
       .single();
 
-    if (logError || !communicationLog) {
+    if (userError || !userRow) {
+      return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    const dispatchResult = await dispatchOmnichannelMessage({
+      supabase,
+      userId: contextResult.effectiveUserId,
+      businessId: ledger.business_id,
+      contactId: ledger.contact_id,
+      ledgerId: ledger.id,
+      messagePayload: {
+        subscriptionPlan: userRow.subscription_plan as SubscriptionPlan,
+      },
+    });
+
+    if (!dispatchResult.success) {
       return NextResponse.json(
-        { error: logError?.message || "Failed to log WhatsApp reminder." },
-        { status: 500 }
+        { error: dispatchResult.message },
+        { status: 422 }
       );
     }
 
+    const { data: communicationLog } = await supabase
+      .from("communication_logs")
+      .select("id, ledger_id, type, status, cost_deducted, executed_at")
+      .eq("ledger_id", ledger.id)
+      .order("executed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     return NextResponse.json({
       success: true,
-      simulated: sendResult.simulated,
-      message: sendResult.message,
-      communication_log: communicationLog as CommunicationLog,
-      draft: {
-        to: draft.to,
-        mode: draft.mode,
-        body: draft.body,
-      },
+      simulated: dispatchResult.simulated ?? false,
+      message: dispatchResult.message,
+      channel: dispatchResult.channel,
+      fallbackTriggered: dispatchResult.fallbackTriggered ?? false,
+      communication_type: dispatchResult.communicationType,
+      communication_log: communicationLog ?? undefined,
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to send WhatsApp reminder.";
+      error instanceof Error ? error.message : "Failed to send reminder.";
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

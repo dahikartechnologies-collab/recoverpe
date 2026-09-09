@@ -6,12 +6,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 import {
   getFirebaseAuthErrorMessage,
   loginWithEmail,
   syncUserToSupabase,
   userNeedsMobileVerification,
 } from "@/lib/auth";
+import { setActorUserCookie } from "@/lib/auth-cookies";
+import {
+  fetchWorkspaceRole,
+  getPostLoginRoute,
+  setAppRoleCookie,
+} from "@/lib/kiosk-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,8 +40,11 @@ export default function LoginPage() {
         return;
       }
 
-      await syncUserToSupabase(credential.user);
-      router.push("/dashboard");
+      const syncedUser = await syncUserToSupabase(credential.user);
+      setActorUserCookie(syncedUser.id);
+      const roleContext = await fetchWorkspaceRole();
+      setAppRoleCookie(roleContext.role);
+      router.push(getPostLoginRoute(roleContext.role));
     } catch (submitError) {
       setError(getFirebaseAuthErrorMessage(submitError));
     } finally {
@@ -70,15 +80,22 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="mb-1.5 block text-sm font-medium text-recoverpe-black"
-            >
-              Password
-            </label>
-            <Input
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-recoverpe-black"
+              >
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-sm font-medium text-recoverpe-black underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="current-password"
               placeholder="Your password"
               value={password}

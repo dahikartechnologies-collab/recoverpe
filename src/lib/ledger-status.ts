@@ -1,7 +1,8 @@
 import { LedgerStatus, LedgerWithContact } from "@/types";
+import { getTodayDateStringInIst } from "@/lib/timezone";
 
 export function getTodayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayDateStringInIst();
 }
 
 export function isLedgerPastDue(
@@ -19,10 +20,11 @@ export function isLedgerDynamicallyOverdue(
 export function canInitiateAiCallForLedger(
   ledger: Pick<
     LedgerWithContact,
-    "due_date" | "balance_due" | "communication_paused"
+    "due_date" | "balance_due" | "communication_paused" | "business_id"
   >
 ): boolean {
   return (
+    ledger.business_id !== null &&
     isLedgerPastDue(ledger) &&
     ledger.balance_due > 0 &&
     !ledger.communication_paused
@@ -56,4 +58,14 @@ export function displayStatusClassName(status: LedgerStatus): string {
     default:
       return "text-recoverpe-grey-medium";
   }
+}
+
+export function canRectifyLedger(
+  ledger: Pick<LedgerWithContact, "balance_due" | "status">
+): boolean {
+  if (ledger.status === "cancelled" || ledger.status === "refunded") {
+    return false;
+  }
+
+  return ledger.balance_due > 0;
 }

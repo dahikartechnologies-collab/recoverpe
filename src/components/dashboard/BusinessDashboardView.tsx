@@ -1,9 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { DashboardAnalyticsSection } from "@/components/dashboard/analytics/DashboardAnalyticsSection";
 import { DashboardLedgersSection } from "@/components/dashboard/DashboardLedgersSection";
+import { KhataOnboardQueue } from "@/components/dashboard/KhataOnboardQueue";
+import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { useReconciliationActivity } from "@/hooks/use-reconciliation-activity";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 export function BusinessDashboardView() {
@@ -12,6 +17,10 @@ export function BusinessDashboardView() {
   const openBusinessModal = useWorkspaceStore((state) => state.openBusinessModal);
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
+  const { items, isLoading } = useReconciliationActivity(
+    "business",
+    activeBusiness?.id ?? null
+  );
 
   if (!activeBusiness) {
     return (
@@ -21,8 +30,8 @@ export function BusinessDashboardView() {
             Business Workspace
           </h1>
           <p className="mt-2 text-sm text-recoverpe-grey-medium">
-            Select an existing business profile or create one to manage formal
-            invoices, GST compliance, and B2B collections.
+            Add your business name to start collecting. GSTIN and address can wait
+            until you need formal invoices.
           </p>
           <div className="mt-6">
             <Button onClick={openBusinessModal}>Add Business Profile</Button>
@@ -33,33 +42,47 @@ export function BusinessDashboardView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-recoverpe-grey-medium">
-            Active business profile
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-recoverpe-black">
-            {activeBusiness.business_name}
-          </h1>
-          <p className="mt-2 text-sm text-recoverpe-grey-medium">
+          <p className="type-eyebrow">Active business profile</p>
+          <h1 className="type-page-title mt-2">{activeBusiness.business_name}</h1>
+          <p className="type-data-secondary mt-3 max-w-2xl text-sm leading-relaxed">
             {activeBusiness.gstin
               ? `GSTIN: ${activeBusiness.gstin} — Tax Invoice mode enabled.`
-              : "No GSTIN on file — Bill of Supply mode."}
+              : "Add GSTIN and address in Settings when you need tax invoices or legal docs."}
           </p>
         </div>
 
-        {activeBusiness.logo_url ? (
-          <Image
-            src={activeBusiness.logo_url}
-            alt={`${activeBusiness.business_name} logo`}
-            width={64}
-            height={64}
-            unoptimized
-            className="h-16 w-16 rounded-md border border-recoverpe-grey-light object-contain"
+        <div className="flex flex-col items-start gap-3 sm:items-end">
+          {activeBusiness.logo_url ? (
+            <Image
+              src={activeBusiness.logo_url}
+              alt={`${activeBusiness.business_name} logo`}
+              width={64}
+              height={64}
+              unoptimized
+              className="h-16 w-16 rounded-md border border-recoverpe-grey-light object-contain"
+            />
+          ) : null}
+          <ShopQrDownloadButton
+            businessId={activeBusiness.id}
+            businessName={activeBusiness.business_name}
           />
-        ) : null}
+        </div>
       </div>
+
+      <ActivityFeed items={items} isLoading={isLoading} />
+
+      <DashboardAnalyticsSection
+        workspaceMode="business"
+        businessId={activeBusiness.id}
+      />
+
+      <KhataOnboardQueue
+        businessId={activeBusiness.id}
+        businessName={activeBusiness.business_name}
+      />
 
       <DashboardLedgersSection
         workspaceMode="business"

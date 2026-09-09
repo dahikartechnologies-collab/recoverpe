@@ -1,23 +1,12 @@
 import { NextResponse } from "next/server";
-import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { revalidateDashboardData } from "@/lib/dashboard-cache";
 import { MAX_CSV_FILE_SIZE_BYTES, MAX_CSV_FILE_SIZE_LABEL } from "@/lib/csv-import";
 import { BatchLimitError, importLedgerBatch } from "@/lib/ledger-batch";
 import { BatchImportPayload } from "@/types";
 
-export async function POST(request: Request) {
+export const POST = withWorkspaceMutation(async (request, auth) => {
   try {
-    const contextResult = await resolveEffectiveUserContext(request);
-
-    if ("error" in contextResult) {
-      return contextResult.error;
-    }
-
-    const ghostBlocked = ghostModeWriteBlockedResponse(contextResult);
-
-    if (ghostBlocked) {
-      return ghostBlocked;
-    }
-
     const rawBody = await request.text();
 
     if (Buffer.byteLength(rawBody, "utf8") > MAX_CSV_FILE_SIZE_BYTES) {
@@ -92,19 +81,25 @@ export async function POST(request: Request) {
     }
 
     const result = await importLedgerBatch({
-      userId: contextResult.effectiveUserId,
+      userId: auth.effectiveUserId,
       rows: body.rows,
       workspaceMode: body.workspace_mode,
       businessId:
         body.workspace_mode === "business" ? body.business_id?.trim() ?? null : null,
     });
 
+    revalidateDashboardData(auth.effectiveUserId);
+
     return NextResponse.json({
       success: true,
       imported_count: result.imported_count,
+      updated_count: result.updated_count,
       skipped_count: result.skipped_count,
       contact_count: result.contact_count,
-      message: `${result.imported_count} invoice(s) imported successfully.`,
+      message:
+        result.updated_count > 0
+          ? `${result.imported_count} invoice(s) imported, ${result.updated_count} updated.`
+          : `${result.imported_count} invoice(s) imported successfully.`,
     });
   } catch (error) {
     if (error instanceof BatchLimitError) {
@@ -117,9 +112,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to import ledger batch.";
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    throw error;
   }
-}
+}, { permission: "edit_ledgers" });

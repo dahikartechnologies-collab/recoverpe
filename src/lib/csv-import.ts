@@ -4,13 +4,15 @@ export type ImportFieldKey =
   | "contact_name"
   | "phone_number"
   | "amount"
-  | "due_date";
+  | "due_date"
+  | "invoice_number";
 
 export const IMPORT_FIELD_LABELS: Record<ImportFieldKey, string> = {
   contact_name: "Contact Name",
   phone_number: "Phone Number",
   amount: "Amount",
   due_date: "Due Date",
+  invoice_number: "Invoice Number",
 };
 
 export const REQUIRED_IMPORT_FIELDS: ImportFieldKey[] = [
@@ -19,6 +21,8 @@ export const REQUIRED_IMPORT_FIELDS: ImportFieldKey[] = [
   "amount",
   "due_date",
 ];
+
+export const OPTIONAL_IMPORT_FIELDS: ImportFieldKey[] = ["invoice_number"];
 
 const FIELD_HEURISTICS: Record<ImportFieldKey, string[]> = {
   contact_name: [
@@ -65,6 +69,18 @@ const FIELD_HEURISTICS: Record<ImportFieldKey, string[]> = {
     "bill date",
     "invoice date",
   ],
+  invoice_number: [
+    "invoice number",
+    "invoice no",
+    "invoice #",
+    "bill number",
+    "bill no",
+    "voucher number",
+    "voucher no",
+    "inv no",
+    "inv number",
+    "reference number",
+  ],
 };
 
 function normalizeHeader(value: string): string {
@@ -78,6 +94,37 @@ export function guessColumnMapping(
   const usedHeaders = new Set<string>();
 
   for (const field of REQUIRED_IMPORT_FIELDS) {
+    const candidates = FIELD_HEURISTICS[field];
+
+    const exactMatch = headers.find((header) => {
+      const normalized = normalizeHeader(header);
+      return candidates.includes(normalized) && !usedHeaders.has(header);
+    });
+
+    if (exactMatch) {
+      mapping[field] = exactMatch;
+      usedHeaders.add(exactMatch);
+      continue;
+    }
+
+    const partialMatch = headers.find((header) => {
+      const normalized = normalizeHeader(header);
+      return (
+        !usedHeaders.has(header) &&
+        candidates.some(
+          (candidate) =>
+            normalized.includes(candidate) || candidate.includes(normalized)
+        )
+      );
+    });
+
+    if (partialMatch) {
+      mapping[field] = partialMatch;
+      usedHeaders.add(partialMatch);
+    }
+  }
+
+  for (const field of OPTIONAL_IMPORT_FIELDS) {
     const candidates = FIELD_HEURISTICS[field];
 
     const exactMatch = headers.find((header) => {
@@ -181,13 +228,16 @@ export interface RowTransformResult {
 
 export function transformCsvRow(
   rawRow: Record<string, string>,
-  mapping: Record<ImportFieldKey, string>,
+  mapping: Partial<Record<ImportFieldKey, string>>,
   rowNumber: number
 ): RowTransformResult {
-  const contactName = rawRow[mapping.contact_name]?.trim() ?? "";
-  const phoneRaw = rawRow[mapping.phone_number]?.trim() ?? "";
-  const amountRaw = rawRow[mapping.amount]?.trim() ?? "";
-  const dueDateRaw = rawRow[mapping.due_date]?.trim() ?? "";
+  const contactName = rawRow[mapping.contact_name ?? ""]?.trim() ?? "";
+  const phoneRaw = rawRow[mapping.phone_number ?? ""]?.trim() ?? "";
+  const amountRaw = rawRow[mapping.amount ?? ""]?.trim() ?? "";
+  const dueDateRaw = rawRow[mapping.due_date ?? ""]?.trim() ?? "";
+  const invoiceNumberRaw = mapping.invoice_number
+    ? rawRow[mapping.invoice_number]?.trim() ?? ""
+    : "";
 
   if (!contactName) {
     return { row: null, error: `Row ${rowNumber}: Contact name is missing.` };
@@ -217,6 +267,7 @@ export function transformCsvRow(
       phone_number: phoneDigits,
       amount,
       due_date: dueDate,
+      invoice_number: invoiceNumberRaw || null,
     },
     error: null,
   };
@@ -224,8 +275,12 @@ export function transformCsvRow(
 
 export function transformCsvRows(
   rows: Record<string, string>[],
-  mapping: Record<ImportFieldKey, string>
+  mapping: Partial<Record<ImportFieldKey, string>>
 ): { validRows: MappedImportRow[]; errors: string[] } {
+  if (!isMappingComplete(mapping)) {
+    return { validRows: [], errors: ["Column mapping is incomplete."] };
+  }
+
   const validRows: MappedImportRow[] = [];
   const errors: string[] = [];
 
@@ -242,5 +297,6 @@ export function transformCsvRows(
   return { validRows, errors };
 }
 
-export const MAX_CSV_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-export const MAX_CSV_FILE_SIZE_LABEL = "5 MB max";
+export const MAX_CSV_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+export const MAX_CSV_FILE_SIZE_LABEL = "2 MB max";
+export const CSV_IMPORT_BATCH_ROW_LIMIT = 500;

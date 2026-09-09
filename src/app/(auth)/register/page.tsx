@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 import {
   getFirebaseAuthErrorMessage,
   registerWithEmail,
@@ -82,9 +83,8 @@ export default function RegisterPage() {
             >
               Password
             </label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="new-password"
               placeholder="Minimum 6 characters"
               value={password}
@@ -100,9 +100,8 @@ export default function RegisterPage() {
             >
               Confirm password
             </label>
-            <Input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               autoComplete="new-password"
               placeholder="Re-enter password"
               value={confirmPassword}

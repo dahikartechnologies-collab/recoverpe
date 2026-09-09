@@ -28,6 +28,11 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# service account keys (never commit)
+aikey.json
+*-credentials.json
+*service-account*.json
+
 # vercel
 .vercel
 

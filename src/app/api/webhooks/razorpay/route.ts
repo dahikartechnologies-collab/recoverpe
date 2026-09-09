@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import {
   extractRazorpayOrderIdFromWebhook,
   fulfillRazorpayOrder,
+  fulfillRazorpaySubscriptionWebhook,
+  isSubscriptionWebhookEvent,
   verifyRazorpayWebhookSignature,
 } from "@/lib/razorpay";
+import { processRazorpayVirtualAccountCredit } from "@/lib/payments/razorpay-webhook-handler";
+import {
+  isRazorpaySmartCollectCreditEvent,
+  RazorpaySmartCollectWebhookPayload,
+} from "@/lib/reconciliation/razorpay-smart-collect";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
 export async function POST(request: Request) {
@@ -17,11 +24,47 @@ export async function POST(request: Request) {
 
     const payload = JSON.parse(rawBody) as {
       event?: string;
-    };
+    } & RazorpaySmartCollectWebhookPayload;
+    const supabase = createAdminSupabaseClient();
 
-    const supportedEvents = new Set(["payment.captured", "order.paid"]);
+    if (isRazorpaySmartCollectCreditEvent(payload.event)) {
+      try {
+        const result = await processRazorpayVirtualAccountCredit(
+          supabase,
+          payload,
+          { entrypoint: "razorpay" }
+        );
 
-    if (!payload.event || !supportedEvents.has(payload.event)) {
+        return NextResponse.json(result.body, { status: result.httpStatus });
+      } catch (walletError) {
+        const message =
+          walletError instanceof Error
+            ? walletError.message
+            : "Wallet auto-reconciliation failed.";
+
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    }
+
+    if (isSubscriptionWebhookEvent(payload.event)) {
+      const result = await fulfillRazorpaySubscriptionWebhook(
+        supabase,
+        payload.event ?? "",
+        payload
+      );
+
+      return NextResponse.json({
+        received: true,
+        subscription_handled: result.handled,
+        user_id: result.userId ?? null,
+        purchase_type: result.purchaseType ?? null,
+        event: payload.event,
+      });
+    }
+
+    const supportedOrderEvents = new Set(["payment.captured", "order.paid"]);
+
+    if (!payload.event || !supportedOrderEvents.has(payload.event)) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
@@ -34,7 +77,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = createAdminSupabaseClient();
     const result = await fulfillRazorpayOrder(supabase, razorpayOrderId);
 
     return NextResponse.json({

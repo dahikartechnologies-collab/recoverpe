@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
+import { FREE_PLAN_LEDGER_LIMIT, PURCHASE_PRODUCTS } from "@/lib/razorpay-products";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 export function UpgradeToPremiumModal() {
@@ -27,9 +27,12 @@ export function UpgradeToPremiumModal() {
         </p>
 
         <div className="rounded-md border border-recoverpe-grey-light bg-recoverpe-grey-light px-4 py-3">
-          <p className="text-sm font-medium text-recoverpe-black">Premium — ₹1,999</p>
+          <p className="text-sm font-medium text-recoverpe-black">
+            Premium — {PURCHASE_PRODUCTS.subscription_premium.amountLabel}
+          </p>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            One-time upgrade. Unlimited invoices across Personal and Business modes.
+            Recurring subscription via UPI Autopay or card. Annual plan available at{" "}
+            {PURCHASE_PRODUCTS.subscription_premium_annual.amountLabel}.
           </p>
         </div>
 

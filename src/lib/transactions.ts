@@ -33,6 +33,10 @@ export function paymentMethodLabel(method: PaymentMethod): string {
       return "Cash";
     case "bank_transfer":
       return "Bank Transfer";
+    case "cheque":
+      return "Cheque";
+    case "upi_link":
+      return "UPI";
     default:
       return method.replace(/_/g, " ");
   }

@@ -7,7 +7,9 @@ import { Toast } from "@/components/ui/Toast";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
   FREE_PLAN_LEDGER_LIMIT,
+  getPremiumAmountLabel,
   PURCHASE_PRODUCTS,
+  SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser, SubscriptionPlan } from "@/types";
@@ -25,6 +27,18 @@ function planLabel(plan: SubscriptionPlan): string {
   return plan === "premium" ? "Premium" : "Free";
 }
 
+function formatExpiry(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 export function BillingView({ user }: BillingViewProps) {
   const bumpWalletRefresh = useWorkspaceStore((state) => state.bumpWalletRefresh);
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
@@ -32,8 +46,8 @@ export function BillingView({ user }: BillingViewProps) {
   const [processingPurchase, setProcessingPurchase] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  async function handlePurchase(
-    purchaseType: "subscription_premium" | "vapi_recharge_100"
+  async function handleSubscriptionPurchase(
+    purchaseType: SubscriptionPurchaseType
   ) {
     setProcessingPurchase(purchaseType);
 
@@ -50,16 +64,44 @@ export function BillingView({ user }: BillingViewProps) {
         onSuccess: () => {
           bumpWalletRefresh();
           bumpUserRefresh();
+          setUserBillingState("premium", user.ledger_count);
+          setToast({
+            message: "Premium subscription activated successfully.",
+            variant: "success",
+          });
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Payment cancelled.") {
+        return;
+      }
 
-          if (purchaseType === "subscription_premium") {
-            setUserBillingState("premium", user.ledger_count);
-            setToast({
-              message: "Premium activated successfully.",
-              variant: "success",
-            });
-            return;
-          }
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Payment could not be completed.",
+        variant: "error",
+      });
+    } finally {
+      setProcessingPurchase(null);
+    }
+  }
 
+  async function handleWalletRecharge() {
+    setProcessingPurchase("vapi_recharge_100");
+
+    try {
+      const product = PURCHASE_PRODUCTS.vapi_recharge_100;
+
+      await startRazorpayCheckout({
+        purchaseType: "vapi_recharge_100",
+        description: product.label,
+        prefill: {
+          email: user.email,
+          contact: user.phone_number,
+        },
+        onSuccess: () => {
+          bumpWalletRefresh();
+          bumpUserRefresh();
           const creditsAdded = PURCHASE_PRODUCTS.vapi_recharge_100.credits ?? 0;
           setToast({
             message: `${creditsAdded} AI credits added to your wallet.`,
@@ -68,10 +110,7 @@ export function BillingView({ user }: BillingViewProps) {
         },
       });
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === "Payment cancelled."
-      ) {
+      if (error instanceof Error && error.message === "Payment cancelled.") {
         return;
       }
 
@@ -86,13 +125,15 @@ export function BillingView({ user }: BillingViewProps) {
   }
 
   const isPremium = user.subscription_plan === "premium";
+  const premiumPriceLabel = getPremiumAmountLabel(user.eligible_for_discount);
+  const premiumExpiry = formatExpiry(user.premium_expires_at);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-recoverpe-black">Billing</h1>
         <p className="mt-2 text-sm text-recoverpe-grey-medium">
-          Manage your subscription and recharge AI voice credits for Sneha.
+          Manage recurring Premium subscriptions and recharge AI voice credits.
         </p>
       </div>
 
@@ -133,29 +174,58 @@ export function BillingView({ user }: BillingViewProps) {
             <h2 className="mt-1 text-lg font-semibold text-recoverpe-black">Premium</h2>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-3xl font-semibold text-recoverpe-black">
-              {PURCHASE_PRODUCTS.subscription_premium.amountLabel}
-            </p>
+            <div className="space-y-1">
+              <p className="text-3xl font-semibold text-recoverpe-black">
+                {premiumPriceLabel}
+                <span className="ml-2 text-base font-normal text-recoverpe-grey-medium">
+                  / month
+                </span>
+              </p>
+              <p className="text-sm text-recoverpe-grey-medium">
+                or {PURCHASE_PRODUCTS.subscription_premium_annual.amountLabel} billed
+                annually
+              </p>
+            </div>
+            {user.eligible_for_discount && !isPremium ? (
+              <p className="text-sm font-medium text-recoverpe-success">
+                50% recovery discount applied to your first monthly cycle.
+              </p>
+            ) : null}
             <ul className="space-y-2 text-sm text-recoverpe-grey-medium">
               <li>Unlimited invoices</li>
               <li>Automated recovery cadences</li>
               <li>AI voice escalation with Sneha</li>
-              <li>Priority business tooling</li>
+              <li>No Recoverpe branding on PDFs & WhatsApp</li>
             </ul>
             {isPremium ? (
               <div className="rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm text-recoverpe-success">
-                Your account is on Premium.
+                Your account is on Premium
+                {premiumExpiry ? ` until ${premiumExpiry}.` : "."}
               </div>
             ) : (
-              <Button
-                type="button"
-                onClick={() => void handlePurchase("subscription_premium")}
-                disabled={processingPurchase === "subscription_premium"}
-              >
-                {processingPurchase === "subscription_premium"
-                  ? "Processing..."
-                  : "Upgrade"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  onClick={() => void handleSubscriptionPurchase("subscription_premium")}
+                  disabled={processingPurchase === "subscription_premium"}
+                >
+                  {processingPurchase === "subscription_premium"
+                    ? "Processing..."
+                    : "Subscribe Monthly"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    void handleSubscriptionPurchase("subscription_premium_annual")
+                  }
+                  disabled={processingPurchase === "subscription_premium_annual"}
+                >
+                  {processingPurchase === "subscription_premium_annual"
+                    ? "Processing..."
+                    : "Subscribe Annually — ₹17,999"}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -189,7 +259,7 @@ export function BillingView({ user }: BillingViewProps) {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => void handlePurchase("vapi_recharge_100")}
+                onClick={() => void handleWalletRecharge()}
                 disabled={processingPurchase === "vapi_recharge_100"}
               >
                 {processingPurchase === "vapi_recharge_100"
@@ -203,8 +273,8 @@ export function BillingView({ user }: BillingViewProps) {
             <CardContent className="space-y-3 pt-6">
               <p className="text-sm font-medium text-recoverpe-black">How credits work</p>
               <ul className="space-y-2 text-sm text-recoverpe-grey-medium">
-                <li>Each AI call costs 3 credits.</li>
-                <li>Credits are deducted only when a call is initiated.</li>
+                <li>Each AI call bills 3 credits per minute (rounded up).</li>
+                <li>Credits are deducted when a call completes.</li>
                 <li>Recharges apply instantly after successful payment.</li>
               </ul>
             </CardContent>

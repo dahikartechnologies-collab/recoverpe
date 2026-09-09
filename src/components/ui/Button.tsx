@@ -10,7 +10,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    "inline-flex min-h-11 items-center justify-center rounded-md px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+    "focus-ring inline-flex min-h-11 items-center justify-center rounded-md px-5 py-2.5 text-sm font-medium transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50";
   const variants = {
     primary:
       "border border-recoverpe-black bg-recoverpe-black text-recoverpe-white hover:bg-recoverpe-grey-medium hover:border-recoverpe-grey-medium",

@@ -1,7 +1,17 @@
+import { isDevelopmentAppEnv } from "@/lib/app-env";
 import { formatCurrency } from "@/lib/gst";
+import { getTodayDateStringInIst, daysBetweenDateOnly } from "@/lib/timezone";
+import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import { Business, LedgerWithContact } from "@/types";
 
 export const VAPI_CALL_CREDIT_COST = 3;
+
+export class TraiCurfewError extends Error {
+  constructor() {
+    super(getTraiCurfewMessage());
+    this.name = "TraiCurfewError";
+  }
+}
 
 export interface VapiCallContext {
   business_name: string;
@@ -12,6 +22,7 @@ export interface VapiCallContext {
   due_date: string;
   invoice_number: string | null;
   ledger_id: string;
+  owner_phone_number: string | null;
 }
 
 export interface VapiCallDraft {
@@ -21,6 +32,15 @@ export interface VapiCallDraft {
   system_prompt: string;
   first_message: string;
   vapi_payload: VapiOutboundCallPayload;
+}
+
+export interface VapiTransferCallTool {
+  type: "transferCall";
+  destinations: Array<{
+    type: "number";
+    number: string;
+    message: string;
+  }>;
 }
 
 export interface VapiOutboundCallPayload {
@@ -38,6 +58,7 @@ export interface VapiOutboundCallPayload {
         role: "system";
         content: string;
       }>;
+      tools?: VapiTransferCallTool[];
     };
   };
   metadata: {
@@ -58,25 +79,14 @@ interface DraftVapiCallInput {
   ledger: LedgerWithContact;
   business: Pick<Business, "business_name"> | null;
   userId: string;
-}
-
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
+  ownerPhoneNumber: string | null;
 }
 
 export function calculateDaysOverdue(
   dueDate: string,
-  referenceDate: string = new Date().toISOString().slice(0, 10)
+  referenceDate: string = getTodayDateStringInIst()
 ): number {
-  const due = parseDateOnly(dueDate);
-  const today = parseDateOnly(referenceDate);
-  const millisecondsPerDay = 1000 * 60 * 60 * 24;
-
-  return Math.max(
-    0,
-    Math.round((today.getTime() - due.getTime()) / millisecondsPerDay)
-  );
+  return Math.max(0, daysBetweenDateOnly(dueDate, referenceDate));
 }
 
 function normalizePhoneNumber(phoneNumber: string): string {
@@ -109,6 +119,15 @@ export function buildSnehaSystemPrompt(context: VapiCallContext): string {
     ? ` regarding invoice ${context.invoice_number}`
     : "";
 
+  const transferInstructions = context.owner_phone_number
+    ? [
+        "If the debtor disputes the amount, denies owing the debt, becomes hostile, or requests escalation, immediately invoke the transfer_to_owner function to connect them with the business owner.",
+        "Use transfer_to_owner only when a genuine dispute or escalation is detected — not for routine payment scheduling.",
+      ]
+    : [
+        "If a dispute arises and no owner line is available, remain calm, note the objection, and end the call professionally.",
+      ];
+
   return [
     "You are Sneha, Recoverpe's professional AI recovery agent.",
     `You are calling on behalf of ${context.business_name}.`,
@@ -117,6 +136,7 @@ export function buildSnehaSystemPrompt(context: VapiCallContext): string {
     `The payment was due on ${context.due_date} and is now ${context.days_overdue} day(s) overdue.`,
     "Be polite, empathetic, and firm. Confirm whether they can pay today or propose a realistic payment date.",
     "Do not threaten legal action. Keep the conversation concise and professional.",
+    ...transferInstructions,
   ].join(" ");
 }
 
@@ -124,16 +144,33 @@ export function buildSnehaFirstMessage(context: VapiCallContext): string {
   return `Hello ${context.debtor_name}, this is Sneha calling from ${context.business_name}. I'm reaching out about your pending balance of ${context.balance_due_label}. Do you have a moment to discuss payment?`;
 }
 
+function buildTransferCallTool(ownerPhoneNumber: string): VapiTransferCallTool {
+  return {
+    type: "transferCall",
+    destinations: [
+      {
+        type: "number",
+        number: normalizePhoneNumber(ownerPhoneNumber),
+        message: "Please hold while I connect you with the business owner.",
+      },
+    ],
+  };
+}
+
 export function draftVapiCall({
   ledger,
   business,
   userId,
+  ownerPhoneNumber,
 }: DraftVapiCallInput): VapiCallDraft {
   const assistantId = process.env.VAPI_ASSISTANT_ID ?? "";
   const phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID ?? "";
   const businessName = resolveBusinessName(ledger, business);
   const daysOverdue = calculateDaysOverdue(ledger.due_date);
   const balanceDueLabel = formatCurrency(ledger.balance_due);
+  const normalizedOwnerPhone = ownerPhoneNumber?.trim()
+    ? normalizePhoneNumber(ownerPhoneNumber)
+    : null;
 
   const context: VapiCallContext = {
     business_name: businessName,
@@ -144,11 +181,16 @@ export function draftVapiCall({
     due_date: ledger.due_date,
     invoice_number: ledger.invoice_number,
     ledger_id: ledger.id,
+    owner_phone_number: normalizedOwnerPhone,
   };
 
   const system_prompt = buildSnehaSystemPrompt(context);
   const first_message = buildSnehaFirstMessage(context);
   const customer_number = normalizePhoneNumber(ledger.contact.phone_number);
+
+  const modelTools = normalizedOwnerPhone
+    ? [buildTransferCallTool(normalizedOwnerPhone)]
+    : undefined;
 
   const vapi_payload: VapiOutboundCallPayload = {
     assistantId,
@@ -167,6 +209,7 @@ export function draftVapiCall({
             content: system_prompt,
           },
         ],
+        ...(modelTools ? { tools: modelTools } : {}),
       },
     },
     metadata: {
@@ -188,11 +231,15 @@ export function draftVapiCall({
 export async function initiateVapiOutboundCall(
   draft: VapiCallDraft
 ): Promise<VapiSendResult> {
-  const isDevelopment = process.env.NEXT_PUBLIC_APP_ENV === "development";
+  if (isTraiCurfewActive()) {
+    throw new TraiCurfewError();
+  }
+
+  const isDevelopment = isDevelopmentAppEnv();
 
   if (isDevelopment) {
     console.log("[Recoverpe VAPI Dev Bypass]", {
-      environment: process.env.NEXT_PUBLIC_APP_ENV,
+      environment: process.env.APP_ENV,
       ledger_id: draft.ledger_id,
       customer_number: draft.customer_number,
       context: draft.context,

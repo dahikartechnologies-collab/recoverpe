@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 
 export default function DashboardLayout({
@@ -7,13 +8,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <Suspense
-      fallback={
-        <p className="px-4 py-6 text-sm text-recoverpe-grey-medium">
-          Loading dashboard...
-        </p>
-      }
-    >
+    <Suspense fallback={<AuthLoadingScreen />}>
       <DashboardShell>{children}</DashboardShell>
     </Suspense>
   );

@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { verifyFirebaseIdToken } from "@/lib/firebase-admin";
 import { IMPERSONATE_USER_HEADER } from "@/lib/impersonate";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
+import {
+  WORKSPACE_BUSINESS_COOKIE,
+  WORKSPACE_USER_COOKIE,
+  getCookieValue,
+} from "@/lib/workspace-context";
 
 export { IMPERSONATE_USER_HEADER } from "@/lib/impersonate";
 
@@ -29,12 +34,20 @@ export async function getAuthenticatedUserId(idToken: string): Promise<string> {
 
   const { data, error } = await supabase
     .from("users")
-    .select("id")
+    .select("id, account_status")
     .eq("firebase_uid", decodedToken.uid)
     .single();
 
   if (error || !data) {
     throw new Error("User profile not found. Complete mobile verification first.");
+  }
+
+  if (data.account_status === "suspended") {
+    throw new Error("ACCOUNT_SUSPENDED");
+  }
+
+  if (data.account_status === "pending_purge") {
+    throw new Error("ACCOUNT_PENDING_PURGE");
   }
 
   return data.id as string;
@@ -55,6 +68,30 @@ export async function requireAuthenticatedUser(request: Request) {
 
     return { userId, idToken };
   } catch (error) {
+    if (error instanceof Error && error.message === "ACCOUNT_SUSPENDED") {
+      return {
+        error: NextResponse.json(
+          {
+            error: "Account suspended by administrator",
+            code: "ACCOUNT_SUSPENDED",
+          },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (error instanceof Error && error.message === "ACCOUNT_PENDING_PURGE") {
+      return {
+        error: NextResponse.json(
+          {
+            error: "Account scheduled for deletion per DPDP compliance.",
+            code: "ACCOUNT_PENDING_PURGE",
+          },
+          { status: 403 }
+        ),
+      };
+    }
+
     const message =
       error instanceof Error ? error.message : "Authentication failed.";
 
@@ -93,6 +130,30 @@ export async function requireSuperAdminUser(request: Request) {
   return { userId: authResult.userId, idToken: authResult.idToken };
 }
 
+async function resolveWorkspaceEffectiveUserId(
+  actorUserId: string,
+  requestedWorkspaceUserId: string | null
+): Promise<string> {
+  if (!requestedWorkspaceUserId || requestedWorkspaceUserId === actorUserId) {
+    return actorUserId;
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { data: membership } = await supabase
+    .from("workspace_members")
+    .select("id")
+    .eq("member_user_id", actorUserId)
+    .eq("workspace_user_id", requestedWorkspaceUserId)
+    .eq("status", "accepted")
+    .maybeSingle();
+
+  if (membership) {
+    return requestedWorkspaceUserId;
+  }
+
+  return actorUserId;
+}
+
 export async function resolveEffectiveUserContext(
   request: Request
 ): Promise<EffectiveUserContext | { error: NextResponse }> {
@@ -107,56 +168,93 @@ export async function resolveEffectiveUserContext(
     new URL(request.url).searchParams.get("impersonate")?.trim() ||
     null;
 
-  if (!impersonateUserId) {
+  if (impersonateUserId) {
+    const supabase = createAdminSupabaseClient();
+    const { data: actor, error: actorError } = await supabase
+      .from("users")
+      .select("id, is_super_admin")
+      .eq("id", authResult.userId)
+      .single();
+
+    if (actorError || !actor?.is_super_admin) {
+      return {
+        actorUserId: authResult.userId,
+        effectiveUserId: authResult.userId,
+        isGhostMode: false,
+        impersonatedUserEmail: null,
+        idToken: authResult.idToken,
+      };
+    }
+
+    const { data: targetUser, error: targetError } = await supabase
+      .from("users")
+      .select("id, email")
+      .eq("id", impersonateUserId)
+      .single();
+
+    if (targetError || !targetUser) {
+      return {
+        actorUserId: authResult.userId,
+        effectiveUserId: authResult.userId,
+        isGhostMode: false,
+        impersonatedUserEmail: null,
+        idToken: authResult.idToken,
+      };
+    }
+
     return {
       actorUserId: authResult.userId,
-      effectiveUserId: authResult.userId,
-      isGhostMode: false,
-      impersonatedUserEmail: null,
+      effectiveUserId: targetUser.id as string,
+      isGhostMode: true,
+      impersonatedUserEmail: targetUser.email as string,
       idToken: authResult.idToken,
     };
   }
 
-  const supabase = createAdminSupabaseClient();
-  const { data: actor, error: actorError } = await supabase
-    .from("users")
-    .select("id, is_super_admin")
-    .eq("id", authResult.userId)
-    .single();
+  const cookieHeader = request.headers.get("cookie");
+  const requestedWorkspaceUserId = getCookieValue(
+    cookieHeader,
+    WORKSPACE_USER_COOKIE
+  );
 
-  if (actorError || !actor?.is_super_admin) {
-    return {
-      actorUserId: authResult.userId,
-      effectiveUserId: authResult.userId,
-      isGhostMode: false,
-      impersonatedUserEmail: null,
-      idToken: authResult.idToken,
-    };
-  }
-
-  const { data: targetUser, error: targetError } = await supabase
-    .from("users")
-    .select("id, email")
-    .eq("id", impersonateUserId)
-    .single();
-
-  if (targetError || !targetUser) {
-    return {
-      actorUserId: authResult.userId,
-      effectiveUserId: authResult.userId,
-      isGhostMode: false,
-      impersonatedUserEmail: null,
-      idToken: authResult.idToken,
-    };
-  }
+  const effectiveUserId = await resolveWorkspaceEffectiveUserId(
+    authResult.userId,
+    requestedWorkspaceUserId
+  );
 
   return {
     actorUserId: authResult.userId,
-    effectiveUserId: targetUser.id as string,
-    isGhostMode: true,
-    impersonatedUserEmail: targetUser.email as string,
+    effectiveUserId,
+    isGhostMode: false,
+    impersonatedUserEmail: null,
     idToken: authResult.idToken,
   };
+}
+
+export function getRequestedBusinessIdFromRequest(request: Request): string | null {
+  return getCookieValue(request.headers.get("cookie"), WORKSPACE_BUSINESS_COOKIE);
+}
+
+export function assertActorOwnWorkspace(
+  request: Request,
+  actorUserId: string
+): NextResponse | null {
+  const workspaceUserId = getCookieValue(
+    request.headers.get("cookie"),
+    WORKSPACE_USER_COOKIE
+  );
+
+  if (workspaceUserId && workspaceUserId !== actorUserId) {
+    return NextResponse.json(
+      {
+        error:
+          "Forbidden. This action is only available in your own workspace context.",
+      },
+      { status: 403 }
+    );
+  }
+
+  return null;
 }
 
 export function ghostModeWriteBlockedResponse(

@@ -6,7 +6,14 @@ import {
   Text,
   View,
 } from "@react-pdf/renderer";
-import { GstBreakdown, formatCurrency } from "@/lib/gst";
+import { GstBreakdown } from "@/lib/gst";
+import {
+  PDF_COLORS,
+  formatPdfRupee,
+  registerPdfDefaults,
+} from "@/components/pdf/pdf-shared";
+
+registerPdfDefaults();
 
 export interface InvoicePDFProps {
   invoiceNumber: string;
@@ -21,100 +28,144 @@ export interface InvoicePDFProps {
   gstBreakdown: GstBreakdown;
   qrCodeBase64: string;
   upiUri: string;
+  showRecoverpeBranding?: boolean;
 }
+
+const BORDER = PDF_COLORS.gray200;
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
-    fontSize: 10,
-    color: "#0A0A0A",
-    backgroundColor: "#FFFFFF",
+    paddingTop: 44,
+    paddingBottom: 56,
+    paddingHorizontal: 48,
+    fontSize: 9.5,
+    color: PDF_COLORS.black,
+    backgroundColor: PDF_COLORS.white,
     fontFamily: "Helvetica",
+    lineHeight: 1.45,
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 24,
+    marginBottom: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1.5,
+    borderBottomColor: PDF_COLORS.black,
   },
-  title: {
+  wordmarkPrimary: {
+    fontSize: 20,
+    fontWeight: 700,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  wordmarkSecondary: {
+    marginTop: 3,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    color: PDF_COLORS.gray700,
+    textTransform: "uppercase",
+  },
+  businessWordmark: {
     fontSize: 18,
     fontWeight: 700,
-    marginBottom: 4,
+    letterSpacing: 0.8,
   },
-  subtitle: {
-    fontSize: 10,
-    color: "#4B5563",
+  documentTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    textAlign: "right",
   },
-  logo: {
-    width: 56,
-    height: 56,
-    objectFit: "contain",
-  },
-  section: {
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
-    paddingTop: 12,
-    marginBottom: 16,
-  },
-  row: {
+  twoColumnGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  gridColumn: {
+    flex: 1,
+    padding: 12,
+  },
+  gridColumnLeft: {
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+  },
+  gridHeading: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    color: PDF_COLORS.gray700,
+  },
+  gridLine: {
     marginBottom: 4,
+    fontSize: 9.5,
+  },
+  table: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 14,
   },
   tableHeader: {
     flexDirection: "row",
-    backgroundColor: "#F3F4F6",
-    paddingVertical: 8,
+    backgroundColor: PDF_COLORS.gray50,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    paddingVertical: 7,
     paddingHorizontal: 8,
-    marginTop: 8,
   },
   tableRow: {
     flexDirection: "row",
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: BORDER,
   },
-  colDescription: { width: "55%" },
-  colAmount: { width: "45%", textAlign: "right" },
+  colDescription: { width: "70%" },
+  colAmount: { width: "30%", textAlign: "right" },
+  th: {
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: PDF_COLORS.gray700,
+  },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#0A0A0A",
+    borderTopColor: PDF_COLORS.black,
   },
   totalLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
   },
-  totalValue: {
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  footer: {
-    position: "absolute",
-    bottom: 40,
-    left: 40,
-    right: 40,
+  paymentSection: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
+    justifyContent: "flex-end",
+    marginTop: 20,
   },
-  qrBlock: {
-    alignItems: "flex-end",
+  qrBox: {
+    borderWidth: 1,
+    borderColor: PDF_COLORS.black,
+    padding: 10,
+    alignItems: "center",
+    width: 148,
   },
   qrImage: {
     width: 96,
     height: 96,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   qrCaption: {
-    fontSize: 8,
-    color: "#4B5563",
-    textAlign: "right",
+    fontSize: 8.5,
+    textAlign: "center",
+    lineHeight: 1.4,
   },
 });
 
@@ -123,118 +174,74 @@ export function InvoicePDF({
   invoiceDate,
   dueDate,
   businessName,
-  businessGstin,
-  businessLogoUrl,
   contactName,
   contactPhone,
   clientGstin,
   gstBreakdown,
   qrCodeBase64,
+  showRecoverpeBranding = true,
 }: InvoicePDFProps) {
-  const documentTitle =
-    gstBreakdown.documentType === "tax_invoice"
-      ? "Tax Invoice"
-      : "Bill of Supply";
-
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.title}>{documentTitle}</Text>
-            <Text style={styles.subtitle}>{businessName}</Text>
-            {businessGstin ? (
-              <Text style={styles.subtitle}>GSTIN: {businessGstin}</Text>
+            {showRecoverpeBranding ? (
+              <>
+                <Text style={styles.wordmarkPrimary}>RecoverPe</Text>
+                <Text style={styles.wordmarkSecondary}>Dahikar Technologies Pvt. Ltd.</Text>
+              </>
+            ) : (
+              <Text style={styles.businessWordmark}>{businessName}</Text>
+            )}
+          </View>
+          <Text style={styles.documentTitle}>Bill of Supply</Text>
+        </View>
+
+        <View style={styles.twoColumnGrid}>
+          <View style={[styles.gridColumn, styles.gridColumnLeft]}>
+            <Text style={styles.gridHeading}>Bill To</Text>
+            <Text style={styles.gridLine}>{contactName}</Text>
+            <Text style={styles.gridLine}>{contactPhone}</Text>
+            {clientGstin ? (
+              <Text style={styles.gridLine}>GSTIN: {clientGstin}</Text>
             ) : null}
           </View>
-          {businessLogoUrl ? (
-            // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop
-            <Image src={businessLogoUrl} style={styles.logo} />
-          ) : null}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.row}>
-            <Text>Invoice No.</Text>
-            <Text>{invoiceNumber}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text>Invoice Date</Text>
-            <Text>{invoiceDate}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text>Due Date</Text>
-            <Text>{dueDate}</Text>
+          <View style={styles.gridColumn}>
+            <Text style={styles.gridHeading}>Invoice Details</Text>
+            <Text style={styles.gridLine}>Invoice No. {invoiceNumber}</Text>
+            <Text style={styles.gridLine}>Invoice Date {invoiceDate}</Text>
+            <Text style={styles.gridLine}>Due Date {dueDate}</Text>
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={{ fontWeight: 700, marginBottom: 6 }}>Bill To</Text>
-          <Text>{contactName}</Text>
-          <Text style={styles.subtitle}>{contactPhone}</Text>
-          {clientGstin ? (
-            <Text style={styles.subtitle}>GSTIN: {clientGstin}</Text>
-          ) : null}
-        </View>
-
-        <View style={styles.section}>
+        <View style={styles.table}>
           <View style={styles.tableHeader}>
-            <Text style={styles.colDescription}>Description</Text>
-            <Text style={styles.colAmount}>Amount</Text>
+            <Text style={[styles.th, styles.colDescription]}>Description</Text>
+            <Text style={[styles.th, styles.colAmount]}>Amount</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.colDescription}>Amount due</Text>
             <Text style={styles.colAmount}>
-              {formatCurrency(gstBreakdown.taxableAmount)}
-            </Text>
-          </View>
-
-          {gstBreakdown.documentType === "tax_invoice" ? (
-            <>
-              {gstBreakdown.cgst > 0 ? (
-                <View style={styles.tableRow}>
-                  <Text style={styles.colDescription}>CGST (9%)</Text>
-                  <Text style={styles.colAmount}>
-                    {formatCurrency(gstBreakdown.cgst)}
-                  </Text>
-                </View>
-              ) : null}
-              {gstBreakdown.sgst > 0 ? (
-                <View style={styles.tableRow}>
-                  <Text style={styles.colDescription}>SGST (9%)</Text>
-                  <Text style={styles.colAmount}>
-                    {formatCurrency(gstBreakdown.sgst)}
-                  </Text>
-                </View>
-              ) : null}
-              {gstBreakdown.igst > 0 ? (
-                <View style={styles.tableRow}>
-                  <Text style={styles.colDescription}>IGST (18%)</Text>
-                  <Text style={styles.colAmount}>
-                    {formatCurrency(gstBreakdown.igst)}
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          ) : null}
-
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>
-              {formatCurrency(gstBreakdown.totalAmount)}
+              {formatPdfRupee(gstBreakdown.taxableAmount)}
             </Text>
           </View>
         </View>
 
-        <View style={styles.footer}>
-          <View>
-            <Text style={styles.subtitle}>Generated by Recoverpe</Text>
-            <Text style={styles.subtitle}>Scan QR to pay via UPI</Text>
-          </View>
-          <View style={styles.qrBlock}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>
+            {formatPdfRupee(gstBreakdown.totalAmount)}
+          </Text>
+        </View>
+
+        <View style={styles.paymentSection}>
+          <View style={styles.qrBox}>
             {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop */}
             <Image src={qrCodeBase64} style={styles.qrImage} />
-            <Text style={styles.qrCaption}>UPI QR Code</Text>
+            <Text style={styles.qrCaption}>
+              Scan QR to pay exactly {formatPdfRupee(gstBreakdown.totalAmount)}
+            </Text>
           </View>
         </View>
       </Page>

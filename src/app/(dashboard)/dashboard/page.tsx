@@ -1,15 +1,8 @@
-"use client";
+import { DashboardHomeClient } from "@/components/dashboard/DashboardHomeClient";
+import { enforceDashboardHomeRoute } from "@/lib/server/partner-route-guard";
 
-import { BusinessDashboardView } from "@/components/dashboard/BusinessDashboardView";
-import { PersonalDashboardView } from "@/components/dashboard/PersonalDashboardView";
-import { useWorkspaceStore } from "@/store/workspace-store";
+export default async function DashboardPage() {
+  await enforceDashboardHomeRoute();
 
-export default function DashboardPage() {
-  const mode = useWorkspaceStore((state) => state.mode);
-
-  if (mode === "business") {
-    return <BusinessDashboardView />;
-  }
-
-  return <PersonalDashboardView />;
+  return <DashboardHomeClient />;
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDevelopmentAppEnv } from "@/lib/app-env";
 import { requireAuthenticatedUser } from "@/lib/api-auth";
 import { isPurchaseType } from "@/lib/razorpay-products";
 import { fulfillRazorpayOrder } from "@/lib/razorpay";
@@ -7,7 +8,7 @@ import { DevFulfillRazorpayPayload } from "@/types";
 
 export async function POST(request: Request) {
   try {
-    if (process.env.NEXT_PUBLIC_APP_ENV !== "development") {
+    if (!isDevelopmentAppEnv()) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
 
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
       purchase_type: result.purchaseType,
       subscription_plan: userRow?.subscription_plan ?? "free",
       vapi_wallet_balance: Number(userRow?.vapi_wallet_balance ?? 0),
+      micro_fulfillment: result.microFulfillment,
       message: "Development payment simulated and fulfilled successfully.",
     });
   } catch (error) {

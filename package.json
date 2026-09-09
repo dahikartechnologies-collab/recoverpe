@@ -2,26 +2,45 @@
   "name": "recoverpe",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@next/third-parties": "^16.3.1",
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/supabase-js": "^2.108.2",
+    "@types/d3-sankey": "^0.12.5",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
+    "d3-sankey": "^0.12.3",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
     "firebase": "^12.15.0",
     "firebase-admin": "^14.0.0",
+    "framer-motion": "^13.1.0",
+    "lucide-react": "^1.31.0",
     "next": "14.2.35",
+    "nodemailer": "^9.0.6",
     "papaparse": "^5.6.0",
     "qrcode": "^1.5.4",
+    "qrcode.react": "^4.2.0",
+    "razorpay": "^2.9.8",
     "react": "^18",
     "react-dom": "^18",
+    "recharts": "^3.10.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/papaparse": "^5.5.2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18",
@@ -30,6 +49,7 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

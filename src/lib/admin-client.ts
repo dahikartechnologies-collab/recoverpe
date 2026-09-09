@@ -3,6 +3,7 @@ import {
   AdminManageUserPayload,
   AdminManageUserResponse,
   AdminMetricsResponse,
+  AdminOrdersListResponse,
   AdminUsersListResponse,
 } from "@/types";
 
@@ -65,6 +66,40 @@ export async function manageAdminUser(
   }
 
   return body;
+}
+
+export async function fetchAdminOrders(
+  filters: { razorpayOrderId?: string; userId?: string }
+): Promise<AdminOrdersListResponse> {
+  const headers = await getAuthHeaders();
+  const params = new URLSearchParams();
+
+  if (filters.razorpayOrderId?.trim()) {
+    params.set("razorpay_order_id", filters.razorpayOrderId.trim());
+  }
+
+  if (filters.userId?.trim()) {
+    params.set("user_id", filters.userId.trim());
+  }
+
+  const response = await fetch(`/api/admin/orders?${params.toString()}`, {
+    headers,
+  });
+  const body = (await response.json()) as AdminOrdersListResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok) {
+    throw new Error(body.error || "Failed to search orders.");
+  }
+
+  return {
+    orders: body.orders ?? [],
+  };
 }
 
 export class AdminAccessDeniedError extends Error {
