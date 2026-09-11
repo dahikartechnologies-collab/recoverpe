@@ -6,12 +6,14 @@ import {
   DEFAULT_CUSTOM_PERMISSIONS,
   SubscriptionPlan,
   WorkspaceMode,
+  AccessibleBusinessOption,
 } from "@/types";
 
 interface WorkspaceState {
   mode: WorkspaceMode;
   activeBusinessId: string | null;
   businesses: Business[];
+  accessibleWorkspaces: AccessibleBusinessOption[];
   workspaceRole: AppRole | null;
   customPermissions: CustomPermissions;
   isWorkspacePermissionsReady: boolean;
@@ -33,6 +35,7 @@ interface WorkspaceState {
   setMode: (mode: WorkspaceMode) => void;
   setActiveBusinessId: (businessId: string | null) => void;
   setBusinesses: (businesses: Business[]) => void;
+  setAccessibleWorkspaces: (options: AccessibleBusinessOption[]) => void;
   setWorkspaceRole: (workspaceRole: AppRole | null) => void;
   setCustomPermissions: (customPermissions: CustomPermissions) => void;
   setWorkspacePermissionsReady: (isWorkspacePermissionsReady: boolean) => void;
@@ -70,6 +73,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   mode: "personal",
   activeBusinessId: null,
   businesses: [],
+  accessibleWorkspaces: [],
   workspaceRole: null,
   customPermissions: DEFAULT_CUSTOM_PERMISSIONS,
   isWorkspacePermissionsReady: false,
@@ -98,6 +102,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ? get().activeBusinessId
           : businesses[0]?.id ?? null,
     }),
+  setAccessibleWorkspaces: (accessibleWorkspaces) =>
+    set({ accessibleWorkspaces }),
   setWorkspaceRole: (workspaceRole) => set({ workspaceRole }),
   setCustomPermissions: (customPermissions) => set({ customPermissions }),
   setWorkspacePermissionsReady: (isWorkspacePermissionsReady) =>

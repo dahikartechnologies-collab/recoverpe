@@ -63,7 +63,6 @@ export async function requireAuthenticatedUser(request: Request) {
   }
 
   try {
-    await verifyFirebaseIdToken(idToken);
     const userId = await getAuthenticatedUserId(idToken);
 
     return { userId, idToken };

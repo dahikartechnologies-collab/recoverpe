@@ -11,7 +11,7 @@ import { formatCurrency } from "@/lib/gst";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { PendingOnboard } from "@/types";
 
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 30_000;
 
 interface KhataOnboardQueueProps {
   businessId: string;

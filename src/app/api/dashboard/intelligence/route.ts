@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
+import {
+  DASHBOARD_INTELLIGENCE_TAG,
+  dashboardIntelligenceUserTag,
+} from "@/lib/dashboard-cache";
 import { fetchDashboardIntelligence } from "@/lib/dashboard-intelligence";
 import { resolveDataAccessScope } from "@/lib/workspace-data-scope";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
@@ -33,14 +38,36 @@ export async function GET(request: Request) {
       });
     }
 
-    const supabase = createAdminSupabaseClient();
-    const intelligence = await fetchDashboardIntelligence(
-      supabase,
+    const assignedScope = dataScope.restrictToAssignedUserId ?? "all";
+    const cacheKey = [
       authResult.effectiveUserId,
       workspaceMode,
-      businessId,
-      dataScope.restrictToAssignedUserId
+      businessId ?? "none",
+      assignedScope,
+    ].join(":");
+
+    const getCachedIntelligence = unstable_cache(
+      async () => {
+        const supabase = createAdminSupabaseClient();
+        return fetchDashboardIntelligence(
+          supabase,
+          authResult.effectiveUserId,
+          workspaceMode,
+          businessId,
+          dataScope.restrictToAssignedUserId
+        );
+      },
+      ["dashboard-intelligence", cacheKey],
+      {
+        tags: [
+          DASHBOARD_INTELLIGENCE_TAG,
+          dashboardIntelligenceUserTag(authResult.effectiveUserId),
+        ],
+        revalidate: 30,
+      }
     );
+
+    const intelligence = await getCachedIntelligence();
 
     return NextResponse.json(intelligence);
   } catch (error) {

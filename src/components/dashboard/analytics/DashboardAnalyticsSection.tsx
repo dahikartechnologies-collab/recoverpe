@@ -7,6 +7,7 @@ import {
   LazyCashFlowChart,
   LazyDsoCohortHeatmap,
 } from "@/components/dashboard/analytics/lazy-analytics-charts";
+import { BusinessInsightsCard } from "@/components/dashboard/BusinessInsightsCard";
 import { MetricsGrid } from "@/components/dashboard/analytics/MetricsGrid";
 import { NetCashflowCard } from "@/components/dashboard/analytics/NetCashflowCard";
 import { useDashboardAnalytics } from "@/hooks/use-dashboard-analytics";
@@ -47,10 +48,14 @@ export function DashboardAnalyticsSection({
 
       <MetricsGrid summary={analytics.summary} isLoading={isLoading} />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 lg:grid-cols-2">
         <NetCashflowCard
           collectedThisMonth={analytics.summary.collectedThisMonth}
           isLoading={isLoading}
+        />
+        <BusinessInsightsCard
+          workspaceMode={workspaceMode}
+          businessId={businessId}
         />
       </div>
 

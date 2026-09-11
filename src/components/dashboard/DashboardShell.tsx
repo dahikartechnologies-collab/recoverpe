@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -10,13 +11,10 @@ import { AutopilotAlerts } from "@/components/dashboard/AutopilotAlerts";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { AssignedPartnerBanner } from "@/components/dashboard/AssignedPartnerBanner";
 import { GhostModeBanner } from "@/components/dashboard/GhostModeBanner";
-import { GlobalLedgerViewHost } from "@/components/dashboard/GlobalLedgerViewHost";
 import { GlobalSearch } from "@/components/dashboard/GlobalSearch";
 import { MobileDashboardNav } from "@/components/dashboard/MobileDashboardNav";
-import { GlobalTransactionModal } from "@/components/dashboard/GlobalTransactionModal";
 import { WorkspaceInvitationsInbox } from "@/components/dashboard/WorkspaceInvitationsInbox";
 import { WorkspaceToggle } from "@/components/dashboard/WorkspaceToggle";
-import { UpgradeToPremiumModal } from "@/components/billing/UpgradeToPremiumModal";
 import { Toast } from "@/components/ui/Toast";
 import { fetchBusinesses } from "@/lib/businesses";
 import {
@@ -45,6 +43,30 @@ import { AccountPendingPurgeError, AccountSuspendedError, fetchCurrentUser } fro
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/Button";
 
+const GlobalTransactionModal = dynamic(
+  () =>
+    import("@/components/dashboard/GlobalTransactionModal").then(
+      (mod) => mod.GlobalTransactionModal
+    ),
+  { ssr: false }
+);
+
+const UpgradeToPremiumModal = dynamic(
+  () =>
+    import("@/components/billing/UpgradeToPremiumModal").then(
+      (mod) => mod.UpgradeToPremiumModal
+    ),
+  { ssr: false }
+);
+
+const GlobalLedgerViewHost = dynamic(
+  () =>
+    import("@/components/dashboard/GlobalLedgerViewHost").then(
+      (mod) => mod.GlobalLedgerViewHost
+    ),
+  { ssr: false }
+);
+
 interface DashboardShellProps {
   children: ReactNode;
 }
@@ -61,6 +83,9 @@ export function DashboardShell({ children }: DashboardShellProps) {
   const searchParams = useSearchParams();
   const { user, isAuthReady } = useAuth();
   const setBusinesses = useWorkspaceStore((state) => state.setBusinesses);
+  const setAccessibleWorkspaces = useWorkspaceStore(
+    (state) => state.setAccessibleWorkspaces
+  );
   const setMode = useWorkspaceStore((state) => state.setMode);
   const setActiveBusinessId = useWorkspaceStore((state) => state.setActiveBusinessId);
   const openLedgerModal = useWorkspaceStore((state) => state.openLedgerModal);
@@ -93,6 +118,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   const [multiWorkspaceToast, setMultiWorkspaceToast] = useState(false);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [isDashboardReady, setIsDashboardReady] = useState(false);
+  const hasBootstrapped = useRef(false);
 
   useEffect(() => {
     const impersonateUserId = searchParams.get("impersonate")?.trim() || null;
@@ -182,23 +208,24 @@ export function DashboardShell({ children }: DashboardShellProps) {
     }
 
     try {
-      setWorkspacePermissionsReady(false);
-      const roleContext = await fetchWorkspaceRole();
+      const [roleContext, currentUser, accessible, businesses] =
+        await Promise.all([
+          fetchWorkspaceRole(),
+          fetchCurrentUser(),
+          fetchAccessibleWorkspaces(),
+          fetchBusinesses(),
+        ]);
+
       setAppRoleCookie(roleContext.role);
       setWorkspaceRole(roleContext.role);
       setCustomPermissions(roleContext.custom_permissions);
       setWorkspacePermissionsReady(true);
+      setAccessibleWorkspaces(accessible.options);
 
       if (roleContext.role === "field_staff") {
         router.replace(getPostLoginRoute(roleContext.role));
         return;
       }
-
-      const [currentUser, accessible, businesses] = await Promise.all([
-        fetchCurrentUser(),
-        fetchAccessibleWorkspaces(),
-        fetchBusinesses(),
-      ]);
       setActorUserCookie(currentUser.id);
 
       if (currentUser.account_status === "suspended") {
@@ -303,6 +330,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
     setCustomPermissions,
     setWorkspacePermissionsReady,
     setIsOwnWorkspaceContext,
+    setAccessibleWorkspaces,
     user,
   ]);
 
@@ -316,9 +344,16 @@ export function DashboardShell({ children }: DashboardShellProps) {
       return;
     }
 
-    setIsDashboardReady(false);
-    setWorkspacePermissionsReady(false);
-    void loadDashboardData();
+    const shouldGate = !hasBootstrapped.current;
+
+    if (shouldGate) {
+      setIsDashboardReady(false);
+      setWorkspacePermissionsReady(false);
+    }
+
+    void loadDashboardData().then(() => {
+      hasBootstrapped.current = true;
+    });
   }, [
     isAuthReady,
     user,

@@ -13,6 +13,7 @@ import { MicroTransactionConfirmModal } from "@/components/dashboard/MicroTransa
 import { RectifyLedgerModal } from "@/components/dashboard/RectifyLedgerModal";
 import { SamadhaanGuideModal } from "@/components/dashboard/SamadhaanGuideModal";
 import { PredictiveTriageList } from "@/components/dashboard/PredictiveTriageList";
+import { TriageZone } from "@/components/dashboard/TriageZone";
 import { WallOfShameWidget } from "@/components/dashboard/WallOfShameWidget";
 import { RecoveryUpsellModal } from "@/components/billing/RecoveryUpsellModal";
 import { Toast } from "@/components/ui/Toast";
@@ -584,6 +585,11 @@ export function DashboardLedgersSection({
           entries={intelligence.wall_of_shame}
           isLoading={isIntelligenceLoading}
           onEscalate={handleEscalate}
+        />
+        <TriageZone
+          hostileCalls={intelligence.hostile_calls}
+          pendingVerifications={intelligence.pending_verifications}
+          isLoading={isIntelligenceLoading}
         />
       </div>
 

@@ -8,6 +8,7 @@ import {
   getWorkspaceCookiesFromDocument,
   setWorkspaceCookies,
 } from "@/lib/workspace-context";
+import { useWorkspaceStore } from "@/store/workspace-store";
 import { AccessibleBusinessOption } from "@/types";
 
 interface WorkspaceSwitcherProps {
@@ -47,12 +48,16 @@ export function WorkspaceSwitcher({
   compact = false,
   kiosk = false,
 }: WorkspaceSwitcherProps) {
-  const [options, setOptions] = useState<AccessibleBusinessOption[]>([]);
+  const storedOptions = useWorkspaceStore((state) => state.accessibleWorkspaces);
+  const setAccessibleWorkspaces = useWorkspaceStore(
+    (state) => state.setAccessibleWorkspaces
+  );
+  const [options, setOptions] = useState<AccessibleBusinessOption[]>(storedOptions);
   const [activeOption, setActiveOption] = useState<AccessibleBusinessOption | null>(
     null
   );
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(storedOptions.length === 0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const ownOptions = useMemo(
@@ -69,34 +74,43 @@ export function WorkspaceSwitcher({
   );
 
   useEffect(() => {
+    function applyOptions(next: AccessibleBusinessOption[]) {
+      setOptions(next);
+      const cookies = getWorkspaceCookiesFromDocument();
+      const matched = resolveActiveOption(next, cookies);
+
+      if (matched && !cookies.workspaceUserId) {
+        setWorkspaceCookies(
+          matched.workspace_user_id,
+          matched.business_id || null
+        );
+      }
+
+      setActiveOption(matched);
+      setIsLoading(false);
+    }
+
+    if (storedOptions.length > 0) {
+      applyOptions(storedOptions);
+      return;
+    }
+
     async function loadOptions() {
       setIsLoading(true);
 
       try {
         const response = await fetchAccessibleWorkspaces();
-        setOptions(response.options);
-
-        const cookies = getWorkspaceCookiesFromDocument();
-        const matched = resolveActiveOption(response.options, cookies);
-
-        if (matched && !cookies.workspaceUserId) {
-          setWorkspaceCookies(
-            matched.workspace_user_id,
-            matched.business_id || null
-          );
-        }
-
-        setActiveOption(matched);
+        setAccessibleWorkspaces(response.options);
+        applyOptions(response.options);
       } catch {
         setOptions([]);
         setActiveOption(null);
-      } finally {
         setIsLoading(false);
       }
     }
 
     void loadOptions();
-  }, []);
+  }, [storedOptions, setAccessibleWorkspaces]);
 
   useEffect(() => {
     if (!isOpen) {
