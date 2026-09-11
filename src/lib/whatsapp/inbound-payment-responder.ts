@@ -1,12 +1,15 @@
 import { getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
-import { formatCurrency } from "@/lib/gst";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { getVertexAI } from "@/lib/firebase-admin-vertexai";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
+const GEMINI_MODEL = "gemini-3.5-flash";
+const AI_FALLBACK_MESSAGE =
+  "Hello! Please visit https://www.recoverpe.com to view your pending dues. - RecoverPe";
 
 interface ContactRow {
   id: string;
@@ -32,7 +35,23 @@ export interface BusinessDebtScope {
   unpaidLedgers: UnpaidLedgerRow[];
 }
 
-export type InboundMessageIntent = "payment_link" | "payment_done";
+export interface LedgerSummaryEntry {
+  contact_name: string;
+  business_name: string;
+  business_id: string | null;
+  total_outstanding_balance: number;
+  invoice_count: number;
+  primary_ledger_id: string;
+  pay_url: string;
+  portal_url: string;
+  invoices: Array<{
+    invoice_ref: string;
+    ledger_id: string;
+    amount_due: number;
+    due_date: string;
+    pay_url: string;
+  }>;
+}
 
 export function getInboundAppUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -64,19 +83,6 @@ export function buildPhoneLookupCandidates(rawFrom: string): string[] {
       ].filter(Boolean)
     )
   );
-}
-
-export function classifyInboundMessageIntent(text: string): InboundMessageIntent {
-  const normalized = text.toLowerCase().trim();
-
-  const paidPattern =
-    /\b(paid|done|already paid|payment done|transferred|transfer done|payment sent|sent payment|utr|paid already)\b/;
-
-  if (paidPattern.test(normalized)) {
-    return "payment_done";
-  }
-
-  return "payment_link";
 }
 
 export function groupLedgersByBusinessId(
@@ -289,57 +295,92 @@ export async function findBusinessDebtScopes(
   return scopes;
 }
 
-function buildAccountSummaryReply(input: {
-  contactName: string;
-  businessName: string;
-  totalBalance: number;
-  invoiceCount: number;
-  portalUrl: string;
-  recentInvoiceRef: string;
-  recentAmount: number;
-  recentPayUrl: string;
-}): string {
-  return [
-    `Hello ${input.contactName},`,
-    "",
-    `Here is your updated account summary with ${input.businessName}:`,
-    "",
-    `Total Outstanding Balance: *${formatCurrency(input.totalBalance)}* across ${input.invoiceCount} unpaid invoice(s).`,
-    "",
-    "> Pay Full Outstanding Balance:",
-    input.portalUrl,
-    "",
-    `> Or Pay Most Recent Bill (${input.recentInvoiceRef} - ${formatCurrency(input.recentAmount)}):`,
-    input.recentPayUrl,
-    "",
-    "Supported modes: UPI, Netbanking & Cards.",
-    "- RecoverPe",
-  ].join("\n");
+export async function buildLedgerSummaryData(
+  supabase: SupabaseClient,
+  scopes: BusinessDebtScope[],
+  appUrl: string
+): Promise<LedgerSummaryEntry[]> {
+  const summaries: LedgerSummaryEntry[] = [];
+
+  for (const scope of scopes) {
+    const portalSessionId = await ensureDebtorPortalSession(
+      supabase,
+      scope.contact.user_id,
+      scope.contact.id
+    );
+    const portalUrl = getDebtorPortalUrl(portalSessionId);
+    const recentLedger = scope.unpaidLedgers[0];
+    const totalOutstandingBalance = scope.unpaidLedgers.reduce(
+      (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
+      0
+    );
+
+    summaries.push({
+      contact_name: scope.contact.name,
+      business_name: scope.businessName,
+      business_id: scope.businessId,
+      total_outstanding_balance: totalOutstandingBalance,
+      invoice_count: scope.unpaidLedgers.length,
+      primary_ledger_id: recentLedger.id,
+      pay_url: getPayPageUrl(recentLedger.id),
+      portal_url: portalUrl,
+      invoices: scope.unpaidLedgers.map((ledger) => ({
+        invoice_ref: formatDisplayInvoice(ledger),
+        ledger_id: ledger.id,
+        amount_due: Number(ledger.balance_due),
+        due_date: ledger.due_date,
+        pay_url: getPayPageUrl(ledger.id),
+      })),
+    });
+  }
+
+  return summaries;
 }
 
-function buildPaymentDoneReply(contactName: string): string {
-  return [
-    `Thank you, ${contactName}!`,
-    "",
-    "If you have already transferred the amount, please share the transaction screenshot/UTR here. Our accounts team will verify and reconcile your khata shortly.",
-  ].join("\n");
+function buildGeminiPrompt(
+  incomingTextMessage: string,
+  ledgerSummaryData: LedgerSummaryEntry[],
+  appUrl: string
+): string {
+  return `You are the professional WhatsApp payment assistant for RecoverPe.
+The customer sent this message: "${incomingTextMessage}"
+
+Here is their pending ledger data across all businesses they interact with on our platform:
+${JSON.stringify(ledgerSummaryData, null, 2)}
+
+Rules for your response:
+1. Be conversational and polite. If they say "hello", greet them back, state you are the RecoverPe assistant, and ask how you can help with their accounts.
+2. Do NOT overwhelm them with financial numbers unless they specifically ask for their balance, a link, or to pay.
+3. If they ask to pay or ask for a link, provide the exact payment link: ${appUrl}/pay/{ledger_id}
+4. CRITICAL: NEVER use Markdown formatting for links (e.g. [Link](url) is forbidden). Just output the raw URL text.
+5. Keep the message concise.
+6. If they say they already paid, politely ask them to upload a screenshot or UTR number here for reconciliation.`;
 }
 
-function buildNoPendingDuesReply(input: {
-  contactName: string;
-  businessName: string;
-  portalUrl: string;
-}): string {
-  return [
-    `Hello ${input.contactName},`,
-    "",
-    `You currently have no pending dues with ${input.businessName}. All prior bills are clear!`,
-    "",
-    "View your account summary:",
-    input.portalUrl,
-    "",
-    "- RecoverPe",
-  ].join("\n");
+async function generateInboundAiReply(
+  incomingTextMessage: string,
+  ledgerSummaryData: LedgerSummaryEntry[],
+  appUrl: string
+): Promise<string> {
+  try {
+    const vertexAI = getVertexAI();
+    const model = vertexAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const prompt = buildGeminiPrompt(incomingTextMessage, ledgerSummaryData, appUrl);
+    const result = await model.generateContent(prompt);
+    const aiResponse = result.response.text().trim();
+
+    if (!aiResponse) {
+      throw new Error("Gemini returned an empty response.");
+    }
+
+    return aiResponse;
+  } catch (error) {
+    console.error(
+      "[WHATSAPP AI] Gemini generation failed:",
+      error instanceof Error ? error.message : error
+    );
+    return AI_FALLBACK_MESSAGE;
+  }
 }
 
 function buildUnrecognizedNumberReply(appUrl: string): string {
@@ -359,7 +400,6 @@ export async function processInboundWhatsAppMessage(
 ): Promise<void> {
   const supabase = createAdminSupabaseClient();
   const appUrl = getInboundAppUrl();
-  const intent = classifyInboundMessageIntent(messageText);
   const contacts = await fetchContactsByPhone(supabase, rawFrom);
 
   if (contacts.length === 0) {
@@ -367,61 +407,13 @@ export async function processInboundWhatsAppMessage(
     return;
   }
 
-  if (intent === "payment_done") {
-    await sendWhatsAppTextMessage(
-      rawFrom,
-      buildPaymentDoneReply(contacts[0]?.name ?? "there")
-    );
-    return;
-  }
-
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
+  const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes, appUrl);
+  const aiResponse = await generateInboundAiReply(
+    messageText,
+    ledgerSummaryData,
+    appUrl
+  );
 
-  if (scopes.length === 0) {
-    const contact = contacts[0];
-    const businessName = await resolveBusinessName(supabase, contact.user_id, null);
-    const portalSessionId = await ensureDebtorPortalSession(
-      supabase,
-      contact.user_id,
-      contact.id
-    );
-
-    await sendWhatsAppTextMessage(
-      rawFrom,
-      buildNoPendingDuesReply({
-        contactName: contact.name,
-        businessName,
-        portalUrl: getDebtorPortalUrl(portalSessionId),
-      })
-    );
-    return;
-  }
-
-  for (const scope of scopes) {
-    const portalSessionId = await ensureDebtorPortalSession(
-      supabase,
-      scope.contact.user_id,
-      scope.contact.id
-    );
-    const portalUrl = getDebtorPortalUrl(portalSessionId);
-    const recentLedger = scope.unpaidLedgers[0];
-    const totalBalance = scope.unpaidLedgers.reduce(
-      (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
-      0
-    );
-
-    await sendWhatsAppTextMessage(
-      rawFrom,
-      buildAccountSummaryReply({
-        contactName: scope.contact.name,
-        businessName: scope.businessName,
-        totalBalance,
-        invoiceCount: scope.unpaidLedgers.length,
-        portalUrl,
-        recentInvoiceRef: formatDisplayInvoice(recentLedger),
-        recentAmount: Number(recentLedger.balance_due),
-        recentPayUrl: getPayPageUrl(recentLedger.id),
-      })
-    );
-  }
+  await sendWhatsAppTextMessage(rawFrom, aiResponse);
 }
