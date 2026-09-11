@@ -5,6 +5,7 @@ import {
   AUTH_SESSION_COOKIE,
 } from "@/lib/auth-cookies";
 import { isPartnerContextFromCookies } from "@/lib/partner-context";
+import { shouldSkipGlobalApiRateLimit } from "@/lib/api-rate-limit-policy";
 import {
   enforceGlobalApiRateLimit,
   enforcePublicPageRateLimit,
@@ -137,6 +138,10 @@ export async function middleware(request: NextRequest) {
     const isPublicPath = isPublicRateLimitedPath(pathname);
 
     if (!isApiPath && !isPublicPath) {
+      return NextResponse.next();
+    }
+
+    if (isApiPath && shouldSkipGlobalApiRateLimit(pathname, request)) {
       return NextResponse.next();
     }
 

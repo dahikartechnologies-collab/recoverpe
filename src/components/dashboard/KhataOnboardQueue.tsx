@@ -9,6 +9,7 @@ import {
 import { updateBusinessSettings } from "@/lib/businesses";
 import { formatCurrency } from "@/lib/gst";
 import { useWorkspaceStore } from "@/store/workspace-store";
+import { runWhenIdle } from "@/lib/idle";
 import { PendingOnboard } from "@/types";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -50,12 +51,17 @@ export function KhataOnboardQueue({
   }, [businessId]);
 
   useEffect(() => {
-    void loadQueue();
+    const stopIdle = runWhenIdle(() => {
+      void loadQueue();
+    }, 2000);
     const intervalId = window.setInterval(() => {
       void loadQueue();
     }, POLL_INTERVAL_MS);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      stopIdle();
+      window.clearInterval(intervalId);
+    };
   }, [loadQueue]);
 
   async function handleToggleAutoApprove() {

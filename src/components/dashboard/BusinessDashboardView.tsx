@@ -8,6 +8,7 @@ import { KhataOnboardQueue } from "@/components/dashboard/KhataOnboardQueue";
 import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import DashboardLoading from "@/app/(dashboard)/loading";
 import { useReconciliationActivity } from "@/hooks/use-reconciliation-activity";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
@@ -17,12 +18,19 @@ export function BusinessDashboardView() {
   const openBusinessModal = useWorkspaceStore((state) => state.openBusinessModal);
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
+  const isWorkspacePermissionsReady = useWorkspaceStore(
+    (state) => state.isWorkspacePermissionsReady
+  );
   const { items, isLoading } = useReconciliationActivity(
     "business",
     activeBusiness?.id ?? null
   );
 
   if (!activeBusiness) {
+    if (!isWorkspacePermissionsReady) {
+      return <DashboardLoading />;
+    }
+
     return (
       <Card>
         <CardContent className="py-8 text-center">

@@ -1,37 +1,17 @@
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
-import { buildDsoCohortHeatmap } from "@/lib/analytics-dso";
-import { buildSankeyFlowFromLedgers } from "@/lib/analytics-sankey";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
 import {
   DASHBOARD_ANALYTICS_TAG,
   dashboardAnalyticsUserTag,
 } from "@/lib/dashboard-cache";
-import { fetchDashboardAnalytics } from "@/lib/dashboard-analytics";
+import {
+  EMPTY_DASHBOARD_ANALYTICS,
+  fetchDashboardAnalytics,
+} from "@/lib/dashboard-analytics";
 import { resolveDataAccessScope } from "@/lib/workspace-data-scope";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { WorkspaceMode } from "@/types";
-
-const EMPTY_ANALYTICS_RESPONSE = {
-  summary: {
-    totalOutstanding: 0,
-    collectedThisMonth: 0,
-    activeDefaulters: 0,
-    collectionRate: 0,
-    collectedThisMonthChangePercent: null,
-    collectionRateChangePercent: null,
-    totalOutstandingChangePercent: null,
-    activeDefaultersChangePercent: null,
-  },
-  cashFlow: [],
-  aging: [
-    { key: "0-30", label: "0–30 days", amount: 0 },
-    { key: "31-60", label: "31–60 days", amount: 0 },
-    { key: "61+", label: "61+ days", amount: 0 },
-  ],
-  sankey: buildSankeyFlowFromLedgers([]),
-  dsoCohort: buildDsoCohortHeatmap([], []),
-};
 
 export async function GET(request: Request) {
   try {
@@ -54,7 +34,7 @@ export async function GET(request: Request) {
     }
 
     if (workspaceMode === "business" && !businessId) {
-      return NextResponse.json(EMPTY_ANALYTICS_RESPONSE);
+      return NextResponse.json(EMPTY_DASHBOARD_ANALYTICS);
     }
 
     const assignedScope = dataScope.restrictToAssignedUserId ?? "all";

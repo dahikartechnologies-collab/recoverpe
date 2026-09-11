@@ -61,6 +61,27 @@ export interface DashboardAnalytics {
   dsoCohort: DsoCohortHeatmapData;
 }
 
+export const EMPTY_DASHBOARD_ANALYTICS: DashboardAnalytics = {
+  summary: {
+    totalOutstanding: 0,
+    collectedThisMonth: 0,
+    activeDefaulters: 0,
+    collectionRate: 0,
+    collectedThisMonthChangePercent: null,
+    collectionRateChangePercent: null,
+    totalOutstandingChangePercent: null,
+    activeDefaultersChangePercent: null,
+  },
+  cashFlow: [],
+  aging: [
+    { key: "0-30", label: "0–30 days", amount: 0 },
+    { key: "31-60", label: "31–60 days", amount: 0 },
+    { key: "61+", label: "61+ days", amount: 0 },
+  ],
+  sankey: buildSankeyFlowFromLedgers([]),
+  dsoCohort: buildDsoCohortHeatmap([], []),
+};
+
 function getLastTwelveMonthKeys(reference = new Date()): string[] {
   const keys: string[] = [];
 
@@ -104,6 +125,34 @@ function collectionRateForMonth(
   return collected > 0 ? 100 : 0;
 }
 
+const ANALYTICS_PAGE_SIZE = 1000;
+
+async function fetchAllQueryRows<T>(
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message?: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+
+  for (;;) {
+    const { data, error } = await fetchPage(from, from + ANALYTICS_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(error.message || "Failed to load analytics rows.");
+    }
+
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < ANALYTICS_PAGE_SIZE) {
+      break;
+    }
+
+    from += ANALYTICS_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 async function fetchAnalyticsLedgers(
   supabase: SupabaseClient,
   userId: string,
@@ -111,53 +160,76 @@ async function fetchAnalyticsLedgers(
   businessId: string | null,
   assignedToUserId?: string | null
 ): Promise<AnalyticsLedgerRow[]> {
-  let query = supabase
-    .from("ledgers")
-    .select(
-      "id, contact_id, total_amount, balance_due, due_date, status, created_at, legal_notice_pdf_url, samadhaan_docket_pdf_url"
-    )
-    .eq("user_id", userId);
-
-  if (workspaceMode === "personal") {
-    query = query.is("business_id", null);
-  } else if (businessId) {
-    query = query.eq("business_id", businessId);
-  } else {
+  if (workspaceMode === "business" && !businessId) {
     return [];
   }
 
-  if (assignedToUserId) {
-    query = query.eq("assigned_to_user_id", assignedToUserId);
-  }
+  return fetchAllQueryRows<AnalyticsLedgerRow>(async (from, to) => {
+    let query = supabase
+      .from("ledgers")
+      .select(
+        "id, contact_id, total_amount, balance_due, due_date, status, created_at, legal_notice_pdf_url, samadhaan_docket_pdf_url"
+      )
+      .eq("user_id", userId)
+      .range(from, to);
 
-  const { data, error } = await query;
+    if (workspaceMode === "personal") {
+      query = query.is("business_id", null);
+    } else {
+      query = query.eq("business_id", businessId as string);
+    }
 
-  if (error) {
-    throw new Error(error.message || "Failed to load analytics ledgers.");
-  }
+    if (assignedToUserId) {
+      query = query.eq("assigned_to_user_id", assignedToUserId);
+    }
 
-  return (data ?? []) as AnalyticsLedgerRow[];
+    const { data, error } = await query;
+    return { data: data as AnalyticsLedgerRow[] | null, error };
+  });
 }
 
 async function fetchAnalyticsTransactions(
   supabase: SupabaseClient,
-  ledgerIds: string[]
+  userId: string,
+  workspaceMode: WorkspaceMode,
+  businessId: string | null,
+  assignedToUserId?: string | null
 ): Promise<AnalyticsTransactionRow[]> {
-  if (ledgerIds.length === 0) {
+  if (workspaceMode === "business" && !businessId) {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("ledger_id, amount, logged_at")
-    .eq("transaction_type", "payment_received")
-    .in("ledger_id", ledgerIds);
+  return fetchAllQueryRows<AnalyticsTransactionRow>(async (from, to) => {
+    let query = supabase
+      .from("transactions")
+      .select(
+        "ledger_id, amount, logged_at, ledgers!inner(user_id, business_id, assigned_to_user_id)"
+      )
+      .eq("transaction_type", "payment_received")
+      .eq("ledgers.user_id", userId)
+      .range(from, to);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load analytics transactions.");
-  }
+    if (workspaceMode === "personal") {
+      query = query.is("ledgers.business_id", null);
+    } else {
+      query = query.eq("ledgers.business_id", businessId as string);
+    }
 
-  return (data ?? []) as AnalyticsTransactionRow[];
+    if (assignedToUserId) {
+      query = query.eq("ledgers.assigned_to_user_id", assignedToUserId);
+    }
+
+    const { data, error } = await query;
+
+    return {
+      data: (data ?? []).map((row) => ({
+        ledger_id: row.ledger_id as string,
+        amount: row.amount as number | string,
+        logged_at: row.logged_at as string,
+      })),
+      error,
+    };
+  });
 }
 
 export function buildDashboardAnalytics(
@@ -288,6 +360,40 @@ export function buildDashboardAnalytics(
   };
 }
 
+async function fetchAnalyticsTransactionsByLedgerIds(
+  supabase: SupabaseClient,
+  ledgerIds: string[]
+): Promise<AnalyticsTransactionRow[]> {
+  if (ledgerIds.length === 0) {
+    return [];
+  }
+
+  const chunkSize = 150;
+  const chunks: string[][] = [];
+
+  for (let index = 0; index < ledgerIds.length; index += chunkSize) {
+    chunks.push(ledgerIds.slice(index, index + chunkSize));
+  }
+
+  const pages = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("ledger_id, amount, logged_at")
+        .eq("transaction_type", "payment_received")
+        .in("ledger_id", chunk);
+
+      if (error) {
+        throw new Error(error.message || "Failed to load analytics transactions.");
+      }
+
+      return (data ?? []) as AnalyticsTransactionRow[];
+    })
+  );
+
+  return pages.flat();
+}
+
 export async function fetchDashboardAnalytics(
   supabase: SupabaseClient,
   userId: string,
@@ -295,15 +401,38 @@ export async function fetchDashboardAnalytics(
   businessId: string | null,
   assignedToUserId?: string | null
 ): Promise<DashboardAnalytics> {
-  const ledgers = await fetchAnalyticsLedgers(
-    supabase,
-    userId,
-    workspaceMode,
-    businessId,
-    assignedToUserId
-  );
-  const ledgerIds = ledgers.map((ledger) => ledger.id);
-  const transactions = await fetchAnalyticsTransactions(supabase, ledgerIds);
+  try {
+    const [ledgers, transactions] = await Promise.all([
+      fetchAnalyticsLedgers(
+        supabase,
+        userId,
+        workspaceMode,
+        businessId,
+        assignedToUserId
+      ),
+      fetchAnalyticsTransactions(
+        supabase,
+        userId,
+        workspaceMode,
+        businessId,
+        assignedToUserId
+      ),
+    ]);
 
-  return buildDashboardAnalytics(ledgers, transactions);
+    return buildDashboardAnalytics(ledgers, transactions);
+  } catch {
+    const ledgers = await fetchAnalyticsLedgers(
+      supabase,
+      userId,
+      workspaceMode,
+      businessId,
+      assignedToUserId
+    );
+    const transactions = await fetchAnalyticsTransactionsByLedgerIds(
+      supabase,
+      ledgers.map((ledger) => ledger.id)
+    );
+
+    return buildDashboardAnalytics(ledgers, transactions);
+  }
 }

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   DashboardIntelligence,
-  fetchDashboardIntelligence as fetchDashboardIntelligenceApi,
 } from "@/lib/dashboard-intelligence-client";
+import { fetchDashboardHome } from "@/lib/dashboard-home-client";
 import { WorkspaceMode } from "@/types";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
@@ -34,8 +34,8 @@ export function useDashboardIntelligence(
         return;
       }
 
-      const data = await fetchDashboardIntelligenceApi(workspaceMode, businessId);
-      setIntelligence(data);
+      const data = await fetchDashboardHome(workspaceMode, businessId);
+      setIntelligence(data.intelligence);
     } catch (loadError) {
       setError(
         loadError instanceof Error

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { LEDGER_PAGE_SIZE } from "@/lib/ledger-queries";
+import { fetchDashboardHome } from "@/lib/dashboard-home-client";
 import { fetchLedgers } from "@/lib/ledgers";
 import { DashboardMetrics, LedgerPagination, LedgerWithContact, WorkspaceMode } from "@/types";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -41,6 +42,14 @@ export function useDashboardData(
           setLedgers([]);
           setMetrics(EMPTY_METRICS);
           setPagination(EMPTY_PAGINATION);
+          return;
+        }
+
+        if (page === 1) {
+          const home = await fetchDashboardHome(workspaceMode, businessId);
+          setLedgers(home.ledgers);
+          setMetrics(home.metrics);
+          setPagination(home.pagination);
           return;
         }
 

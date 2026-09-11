@@ -28,8 +28,32 @@ export function getBearerToken(request: Request): string | null {
   return authorization.slice(7);
 }
 
+const USER_LOOKUP_TTL_MS = 45_000;
+
+type CachedAuthUser = {
+  userId: string;
+  accountStatus: string;
+  expiresAt: number;
+};
+
+const authenticatedUserCache = new Map<string, CachedAuthUser>();
+
 export async function getAuthenticatedUserId(idToken: string): Promise<string> {
   const decodedToken = await verifyFirebaseIdToken(idToken);
+  const cached = authenticatedUserCache.get(decodedToken.uid);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.accountStatus === "suspended") {
+      throw new Error("ACCOUNT_SUSPENDED");
+    }
+
+    if (cached.accountStatus === "pending_purge") {
+      throw new Error("ACCOUNT_PENDING_PURGE");
+    }
+
+    return cached.userId;
+  }
+
   const supabase = createAdminSupabaseClient();
 
   const { data, error } = await supabase
@@ -42,11 +66,18 @@ export async function getAuthenticatedUserId(idToken: string): Promise<string> {
     throw new Error("User profile not found. Complete mobile verification first.");
   }
 
-  if (data.account_status === "suspended") {
+  const accountStatus = (data.account_status as string) ?? "active";
+  authenticatedUserCache.set(decodedToken.uid, {
+    userId: data.id as string,
+    accountStatus,
+    expiresAt: Date.now() + USER_LOOKUP_TTL_MS,
+  });
+
+  if (accountStatus === "suspended") {
     throw new Error("ACCOUNT_SUSPENDED");
   }
 
-  if (data.account_status === "pending_purge") {
+  if (accountStatus === "pending_purge") {
     throw new Error("ACCOUNT_PENDING_PURGE");
   }
 

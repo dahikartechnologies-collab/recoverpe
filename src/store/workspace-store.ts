@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { invalidateDashboardCache } from "@/lib/dashboard-request-cache";
 import {
   AppRole,
   Business,
@@ -140,12 +141,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setLedgerModalTab: (ledgerModalTab) => set({ ledgerModalTab }),
   openUpgradeModal: () => set({ isUpgradeModalOpen: true }),
   closeUpgradeModal: () => set({ isUpgradeModalOpen: false }),
-  bumpLedgerRefresh: () =>
-    set((state) => ({ ledgerRefreshKey: state.ledgerRefreshKey + 1 })),
-  bumpWalletRefresh: () =>
-    set((state) => ({ walletRefreshKey: state.walletRefreshKey + 1 })),
-  bumpUserRefresh: () =>
-    set((state) => ({ userRefreshKey: state.userRefreshKey + 1 })),
+  bumpLedgerRefresh: () => {
+    invalidateDashboardCache("dashboard-home:");
+    set((state) => ({ ledgerRefreshKey: state.ledgerRefreshKey + 1 }));
+  },
+  bumpWalletRefresh: () => {
+    invalidateDashboardCache("dashboard-session");
+    set((state) => ({ walletRefreshKey: state.walletRefreshKey + 1 }));
+  },
+  bumpUserRefresh: () => {
+    invalidateDashboardCache("dashboard-session");
+    set((state) => ({ userRefreshKey: state.userRefreshKey + 1 }));
+  },
   viewLedgerId: null,
   setViewLedgerId: (viewLedgerId) => set({ viewLedgerId }),
   setGhostMode: (ghostModeUserId, ghostModeUserEmail = null) =>

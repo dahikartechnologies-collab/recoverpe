@@ -8,6 +8,7 @@ import {
   type BusinessInsightsResponse,
 } from "@/lib/insights-client";
 import { useWorkspaceStore } from "@/store/workspace-store";
+import { runWhenIdle } from "@/lib/idle";
 import { WorkspaceMode } from "@/types";
 
 interface BusinessInsightsCardProps {
@@ -49,7 +50,9 @@ export function BusinessInsightsCard({
   }, [workspaceMode, businessId]);
 
   useEffect(() => {
-    void loadInsights();
+    return runWhenIdle(() => {
+      void loadInsights();
+    }, 1600);
   }, [loadInsights, ledgerRefreshKey]);
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchReconciliationActivityFeed } from "@/lib/dashboard-activity-feed-client";
+import { fetchDashboardHome } from "@/lib/dashboard-home-client";
 import { ReconciliationActivityItem } from "@/lib/dashboard-activity-feed";
 import { WorkspaceMode } from "@/types";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -26,8 +26,8 @@ export function useReconciliationActivity(
         return;
       }
 
-      const data = await fetchReconciliationActivityFeed(workspaceMode, businessId);
-      setItems(data);
+      const data = await fetchDashboardHome(workspaceMode, businessId);
+      setItems(data.activity);
     } catch (loadError) {
       setError(
         loadError instanceof Error

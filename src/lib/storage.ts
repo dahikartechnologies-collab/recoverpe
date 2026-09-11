@@ -1,5 +1,5 @@
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { getFirebaseStorage } from "@/lib/firebase-storage";
 
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -18,7 +18,7 @@ export async function uploadBusinessLogo(
 
   const extension = file.name.split(".").pop()?.toLowerCase() || "png";
   const objectPath = `public/logos/${firebaseUid}/${Date.now()}.${extension}`;
-  const storageRef = ref(storage, objectPath);
+  const storageRef = ref(getFirebaseStorage(), objectPath);
 
   await uploadBytes(storageRef, file, {
     contentType: file.type,

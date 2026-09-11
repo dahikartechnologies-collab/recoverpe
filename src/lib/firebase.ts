@@ -1,6 +1,10 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
-import { Auth, getAuth } from "firebase/auth";
-import { FirebaseStorage, getStorage } from "firebase/storage";
+import {
+  Auth,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,12 +23,18 @@ function createFirebaseApp(): FirebaseApp {
   return initializeApp(firebaseConfig);
 }
 
-const app = createFirebaseApp();
-
 export function getFirebaseAuth(): Auth {
-  return getAuth(app);
+  const app = createFirebaseApp();
+
+  try {
+    return initializeAuth(app, {
+      persistence: indexedDBLocalPersistence,
+    });
+  } catch {
+    return getAuth(app);
+  }
 }
 
-export const auth = getFirebaseAuth();
-export const storage: FirebaseStorage = getStorage(app);
-export default app;
+export function getFirebaseApp(): FirebaseApp {
+  return createFirebaseApp();
+}

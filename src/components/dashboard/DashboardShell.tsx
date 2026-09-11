@@ -16,12 +16,9 @@ import { MobileDashboardNav } from "@/components/dashboard/MobileDashboardNav";
 import { WorkspaceInvitationsInbox } from "@/components/dashboard/WorkspaceInvitationsInbox";
 import { WorkspaceToggle } from "@/components/dashboard/WorkspaceToggle";
 import { Toast } from "@/components/ui/Toast";
-import { fetchBusinesses } from "@/lib/businesses";
-import {
-  fetchWorkspaceRole,
-  getPostLoginRoute,
-  setAppRoleCookie,
-} from "@/lib/kiosk-client";
+import { invalidateDashboardCache } from "@/lib/dashboard-request-cache";
+import { fetchDashboardSession } from "@/lib/dashboard-session-client";
+import { getPostLoginRoute, setAppRoleCookie } from "@/lib/kiosk-client";
 import { setActorUserCookie, getActorUserIdFromDocument } from "@/lib/auth-cookies";
 import {
   canAccessBillingNav,
@@ -30,7 +27,6 @@ import {
   canAccessSettingsArea,
 } from "@/lib/workspace-nav-policy";
 import { canMutateLedgers } from "@/lib/workspace-permissions";
-import { fetchAccessibleWorkspaces } from "@/lib/workspace-client";
 import {
   getWorkspaceCookiesFromDocument,
   hasShownMultiWorkspaceToast,
@@ -39,7 +35,7 @@ import {
   setWorkspaceCookies,
 } from "@/lib/workspace-context";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
-import { AccountPendingPurgeError, AccountSuspendedError, fetchCurrentUser } from "@/lib/users";
+import { AccountPendingPurgeError, AccountSuspendedError } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/Button";
 
@@ -69,6 +65,7 @@ const GlobalLedgerViewHost = dynamic(
 
 interface DashboardShellProps {
   children: ReactNode;
+  hasSessionHint?: boolean;
 }
 
 function formatWalletCredits(balance: number): string {
@@ -77,7 +74,10 @@ function formatWalletCredits(balance: number): string {
   }).format(balance);
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({
+  children,
+  hasSessionHint = false,
+}: DashboardShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -208,13 +208,18 @@ export function DashboardShell({ children }: DashboardShellProps) {
     }
 
     try {
-      const [roleContext, currentUser, accessible, businesses] =
-        await Promise.all([
-          fetchWorkspaceRole(),
-          fetchCurrentUser(),
-          fetchAccessibleWorkspaces(),
-          fetchBusinesses(),
-        ]);
+      if (hasBootstrapped.current) {
+        invalidateDashboardCache("dashboard-session");
+      }
+
+      const session = await fetchDashboardSession();
+      const roleContext = session.role;
+      const currentUser = session.user;
+      const accessible = {
+        options: session.accessible_workspaces,
+        unique_workspace_count: session.unique_workspace_count,
+      };
+      const businesses = session.businesses;
 
       setAppRoleCookie(roleContext.role);
       setWorkspaceRole(roleContext.role);
@@ -382,7 +387,18 @@ export function DashboardShell({ children }: DashboardShellProps) {
     openLedgerModal();
   }
 
-  if (!isAuthReady || !isDashboardReady || !isWorkspacePermissionsReady) {
+  if (!isAuthReady && !hasSessionHint) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (isAuthReady && !user) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (
+    !hasSessionHint &&
+    (!isDashboardReady || !isWorkspacePermissionsReady)
+  ) {
     return <AuthLoadingScreen />;
   }
 

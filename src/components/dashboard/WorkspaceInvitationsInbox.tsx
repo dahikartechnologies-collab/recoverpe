@@ -12,6 +12,7 @@ import {
   rejectWorkspaceInvitation,
 } from "@/lib/workspace-client";
 import { setWorkspaceCookies } from "@/lib/workspace-context";
+import { runWhenIdle } from "@/lib/idle";
 import { WorkspaceInvitation } from "@/types";
 
 interface WorkspaceInvitationsInboxProps {
@@ -48,7 +49,9 @@ export function WorkspaceInvitationsInbox({
   }, []);
 
   useEffect(() => {
-    void loadInvitations();
+    return runWhenIdle(() => {
+      void loadInvitations();
+    }, 1800);
   }, [loadInvitations]);
 
   useEffect(() => {

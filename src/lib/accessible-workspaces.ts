@@ -87,36 +87,42 @@ export async function listAccessibleBusinesses(
     throw new Error(error.message || "Failed to load workspace memberships.");
   }
 
-  for (const membership of memberships ?? []) {
-    const workspaceUserId = membership.workspace_user_id as string;
-    const role = membership.role as AppRole;
-    const primaryBusiness = await fetchPrimaryBusiness(workspaceUserId);
+  const assignedOptions = await Promise.all(
+    (memberships ?? []).map(async (membership) => {
+      const workspaceUserId = membership.workspace_user_id as string;
+      const role = membership.role as AppRole;
+      const primaryBusiness = await fetchPrimaryBusiness(workspaceUserId);
 
-    if (!primaryBusiness) {
-      const workspaceLabel = await fetchWorkspaceLabel(supabase, workspaceUserId);
+      if (!primaryBusiness) {
+        const workspaceLabel = await fetchWorkspaceLabel(supabase, workspaceUserId);
 
-      options.push({
-        business_id: "",
-        business_name: workspaceLabel,
+        return {
+          business_id: "",
+          business_name: workspaceLabel,
+          workspace_user_id: workspaceUserId,
+          workspace_label: workspaceLabel,
+          context_label: formatAssignedContextLabel(role, workspaceLabel),
+          role,
+          is_own_workspace: false,
+        } satisfies AccessibleBusinessOption;
+      }
+
+      return {
+        business_id: primaryBusiness.id,
+        business_name: primaryBusiness.business_name,
         workspace_user_id: workspaceUserId,
-        workspace_label: workspaceLabel,
-        context_label: formatAssignedContextLabel(role, workspaceLabel),
+        workspace_label: primaryBusiness.business_name,
+        context_label: formatAssignedContextLabel(
+          role,
+          primaryBusiness.business_name
+        ),
         role,
         is_own_workspace: false,
-      });
-      continue;
-    }
+      } satisfies AccessibleBusinessOption;
+    })
+  );
 
-    options.push({
-      business_id: primaryBusiness.id,
-      business_name: primaryBusiness.business_name,
-      workspace_user_id: workspaceUserId,
-      workspace_label: primaryBusiness.business_name,
-      context_label: formatAssignedContextLabel(role, primaryBusiness.business_name),
-      role,
-      is_own_workspace: false,
-    });
-  }
+  options.push(...assignedOptions);
 
   return options;
 }
