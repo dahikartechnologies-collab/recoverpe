@@ -7,7 +7,7 @@ import { getVertexAI } from "@/lib/firebase-admin-vertexai";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
-const GEMINI_MODEL = "gemini-3.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 const AI_FALLBACK_MESSAGE =
   "Hello! Please visit https://www.recoverpe.com to view your pending dues. - RecoverPe";
 
@@ -376,7 +376,7 @@ async function generateInboundAiReply(
     return aiResponse;
   } catch (error) {
     console.error(
-      "[WHATSAPP AI] Gemini generation failed:",
+      "[WHATSAPP AI FATAL ERROR]:",
       error instanceof Error ? error.message : error
     );
     return AI_FALLBACK_MESSAGE;
