@@ -3,20 +3,16 @@ import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
-import { getVertexAI } from "@/lib/firebase-admin-vertexai";
+import {
+  getDefaultGeminiModel,
+  getVertexAI,
+} from "@/lib/firebase-admin-vertexai";
 import { recordCommunicationSafely } from "@/lib/communication-logs";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const AI_FALLBACK_MESSAGE =
   "Hello! Please visit https://www.recoverpe.com to view your pending dues. - RecoverPe";
-
-// Read per request so a model ID can be swapped from the Vercel dashboard
-// without shipping a deploy.
-function getGeminiModel(): string {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
-}
 
 interface ContactRow {
   id: string;
@@ -361,7 +357,9 @@ Rules for your response:
 3. If they ask to pay or ask for a link, provide the exact payment link: ${appUrl}/pay/{ledger_id}
 4. CRITICAL: NEVER use Markdown formatting for links (e.g. [Link](url) is forbidden). Just output the raw URL text.
 5. Keep the message concise.
-6. If they say they already paid, politely ask them to upload a screenshot or UTR number here for reconciliation.`;
+6. If they say they already paid, politely ask them to upload a screenshot or UTR number here for reconciliation.
+
+STRICT GUARDRAILS: You are strictly an informative notification assistant. You CANNOT negotiate settlements, waive dues, modify interest, or commit to payment deadlines. If a debtor disputes a balance, politely state: 'I have logged your note and forwarded it directly to the management team for review.'`;
 }
 
 async function generateInboundAiReply(
@@ -369,7 +367,7 @@ async function generateInboundAiReply(
   ledgerSummaryData: LedgerSummaryEntry[],
   appUrl: string
 ): Promise<string> {
-  const modelId = getGeminiModel();
+  const modelId = getDefaultGeminiModel();
 
   try {
     const vertexAI = getVertexAI();

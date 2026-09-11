@@ -866,6 +866,8 @@ export interface DebtorPortalInvoice {
   balance_due: number;
   due_date: string;
   status: string;
+  total_amount?: number;
+  amount_paid?: number;
 }
 
 export interface DebtorPortalView {
@@ -878,6 +880,9 @@ export interface DebtorPortalView {
   virtual_account_number: string | null;
   ifsc_code: string | null;
   open_invoices: DebtorPortalInvoice[];
+  total_invoiced: number;
+  total_paid: number;
+  invoice_history: DebtorPortalInvoice[];
 }
 
 export interface PortalLinkResponse {

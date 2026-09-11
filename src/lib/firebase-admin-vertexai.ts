@@ -2,6 +2,13 @@ import { GoogleAuth } from "google-auth-library";
 import { getAdminAppInstance } from "@/lib/firebase-admin";
 
 const DEFAULT_VERTEX_LOCATION = "global";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+
+// Read per request so a model ID can be swapped from the Vercel dashboard
+// without shipping a deploy.
+export function getDefaultGeminiModel(): string {
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+}
 
 function getVertexProjectId(): string {
   const app = getAdminAppInstance();
@@ -50,7 +57,40 @@ async function getVertexAccessToken(): Promise<string> {
   return accessToken;
 }
 
-async function generateVertexContent(model: string, prompt: string): Promise<string> {
+export interface VertexInlineData {
+  mimeType: string;
+  data: string;
+}
+
+export type VertexPart = { text: string } | { inlineData: VertexInlineData };
+
+export type VertexPromptInput = string | VertexPart[];
+
+export interface VertexGenerationConfig {
+  responseMimeType?: string;
+  temperature?: number;
+}
+
+function toRequestParts(prompt: VertexPromptInput) {
+  const parts = typeof prompt === "string" ? [{ text: prompt }] : prompt;
+
+  return parts.map((part) =>
+    "inlineData" in part
+      ? {
+          inline_data: {
+            mime_type: part.inlineData.mimeType,
+            data: part.inlineData.data,
+          },
+        }
+      : { text: part.text }
+  );
+}
+
+async function generateVertexContent(
+  model: string,
+  prompt: VertexPromptInput,
+  generationConfig?: VertexGenerationConfig
+): Promise<string> {
   const projectId = getVertexProjectId();
 
   if (!projectId) {
@@ -71,9 +111,21 @@ async function generateVertexContent(model: string, prompt: string): Promise<str
       contents: [
         {
           role: "user",
-          parts: [{ text: prompt }],
+          parts: toRequestParts(prompt),
         },
       ],
+      ...(generationConfig
+        ? {
+            generationConfig: {
+              ...(generationConfig.responseMimeType
+                ? { responseMimeType: generationConfig.responseMimeType }
+                : {}),
+              ...(generationConfig.temperature !== undefined
+                ? { temperature: generationConfig.temperature }
+                : {}),
+            },
+          }
+        : {}),
     }),
   });
 
@@ -103,8 +155,15 @@ export function getVertexAI() {
   return {
     getGenerativeModel({ model }: { model: string }) {
       return {
-        async generateContent(prompt: string) {
-          const text = await generateVertexContent(model, prompt);
+        async generateContent(
+          prompt: VertexPromptInput,
+          generationConfig?: VertexGenerationConfig
+        ) {
+          const text = await generateVertexContent(
+            model,
+            prompt,
+            generationConfig
+          );
 
           return {
             response: {

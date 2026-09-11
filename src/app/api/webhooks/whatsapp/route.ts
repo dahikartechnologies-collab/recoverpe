@@ -5,8 +5,12 @@ import {
 } from "@/lib/communication-logs";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { processInboundWhatsAppMessage } from "@/lib/whatsapp/inbound-payment-responder";
+import { processInboundPaymentProof } from "@/lib/whatsapp/payment-proof";
 
 export const dynamic = "force-dynamic";
+// Image intake downloads media from Meta and then runs vision inference, which
+// comfortably exceeds the default function ceiling.
+export const maxDuration = 60;
 
 interface MetaInboundTextMessage {
   id?: string;
@@ -14,6 +18,10 @@ interface MetaInboundTextMessage {
   type: string;
   text?: {
     body?: string;
+  };
+  image?: {
+    id?: string;
+    mime_type?: string;
   };
 }
 
@@ -82,16 +90,31 @@ export async function POST(request: Request) {
       type: message.type,
     });
 
-    if (message.type !== "text") {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
-    }
-
     const rawFrom = message.from;
-    const messageText = message.text?.body?.trim() ?? "";
 
     if (!rawFrom) {
       return new NextResponse("EVENT_RECEIVED", { status: 200 });
     }
+
+    if (message.type === "image") {
+      const mediaId = message.image?.id;
+
+      if (mediaId) {
+        await processInboundPaymentProof(
+          rawFrom,
+          mediaId,
+          message.id ?? null
+        );
+      }
+
+      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+    }
+
+    if (message.type !== "text") {
+      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+    }
+
+    const messageText = message.text?.body?.trim() ?? "";
 
     await processInboundWhatsAppMessage(rawFrom, messageText, {
       externalMessageId: message.id ?? null,

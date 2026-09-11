@@ -1,4 +1,4 @@
-import { DebtorPortalView } from "@/types";
+import { DebtorPortalInvoice, DebtorPortalView } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const OPEN_LEDGER_STATUSES = new Set([
@@ -7,6 +7,21 @@ const OPEN_LEDGER_STATUSES = new Set([
   "partially_paid",
   "overdue",
 ]);
+
+function toPortalInvoice(ledger: Record<string, unknown>): DebtorPortalInvoice {
+  const totalAmount = Number(ledger.total_amount ?? 0);
+  const balanceDue = Number(ledger.balance_due ?? 0);
+
+  return {
+    id: ledger.id as string,
+    invoice_number: (ledger.invoice_number as string | null) ?? null,
+    balance_due: balanceDue,
+    due_date: ledger.due_date as string,
+    status: ledger.status as string,
+    total_amount: totalAmount,
+    amount_paid: Math.max(totalAmount - balanceDue, 0),
+  };
+}
 
 export async function fetchDebtorPortalView(
   supabase: SupabaseClient,
@@ -54,27 +69,47 @@ export async function fetchDebtorPortalView(
     return null;
   }
 
+  // The full relationship, not just what is owed: showing settled invoices
+  // alongside open ones is what makes the statement credible to the debtor.
   const { data: ledgers, error: ledgerError } = await supabase
     .from("ledgers")
     .select(
-      "id, invoice_number, balance_due, due_date, status, business_id, created_at"
+      "id, invoice_number, total_amount, balance_due, due_date, status, business_id, created_at"
     )
     .eq("user_id", session.user_id)
     .eq("contact_id", session.contact_id)
-    .gt("balance_due", 0)
-    .order("due_date", { ascending: true })
-    .order("created_at", { ascending: true });
+    .order("due_date", { ascending: false })
+    .order("created_at", { ascending: false });
 
   if (ledgerError) {
     throw new Error(ledgerError.message || "Failed to load debtor portal ledgers.");
   }
 
-  const openLedgers = (ledgers ?? []).filter((ledger) =>
-    OPEN_LEDGER_STATUSES.has(ledger.status as string)
-  );
+  const allLedgers = ledgers ?? [];
+
+  const openLedgers = allLedgers
+    .filter(
+      (ledger) =>
+        Number(ledger.balance_due) > 0 &&
+        OPEN_LEDGER_STATUSES.has(ledger.status as string)
+    )
+    .sort((first, second) =>
+      String(first.due_date).localeCompare(String(second.due_date))
+    );
 
   const totalOutstanding = openLedgers.reduce(
     (sum, ledger) => sum + Number(ledger.balance_due),
+    0
+  );
+
+  const totalInvoiced = allLedgers.reduce(
+    (sum, ledger) => sum + Number(ledger.total_amount ?? 0),
+    0
+  );
+
+  const totalPaid = allLedgers.reduce(
+    (sum, ledger) =>
+      sum + Math.max(Number(ledger.total_amount ?? 0) - Number(ledger.balance_due), 0),
     0
   );
 
@@ -135,12 +170,9 @@ export async function fetchDebtorPortalView(
     virtual_account_number:
       (virtualAccount?.virtual_account_number as string | null) ?? null,
     ifsc_code: (virtualAccount?.ifsc_code as string | null) ?? null,
-    open_invoices: openLedgers.map((ledger) => ({
-      id: ledger.id as string,
-      invoice_number: (ledger.invoice_number as string | null) ?? null,
-      balance_due: Number(ledger.balance_due),
-      due_date: ledger.due_date as string,
-      status: ledger.status as string,
-    })),
+    open_invoices: openLedgers.map(toPortalInvoice),
+    total_invoiced: totalInvoiced,
+    total_paid: totalPaid,
+    invoice_history: allLedgers.map(toPortalInvoice),
   };
 }
