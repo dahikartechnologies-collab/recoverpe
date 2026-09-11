@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Import, Receipt, Settings, Users, Wallet } from "lucide-react";
+import {
+  Home,
+  Import,
+  Receipt,
+  ScanLine,
+  Settings,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { RecoverpeLogo } from "@/components/brand/RecoverpeLogo";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
@@ -16,6 +24,11 @@ const SIDEBAR_LINKS = [
   { href: "/dashboard", label: "Home", icon: Home, exact: true },
   { href: "/dashboard/vendors", label: "Vendors", icon: Users, highlight: true },
   { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
+  {
+    href: "/dashboard/reconciliations",
+    label: "Payment Proofs",
+    icon: ScanLine,
+  },
   { href: "/dashboard/import", label: "Import", icon: Import },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/billing", label: "Billing", icon: Wallet },

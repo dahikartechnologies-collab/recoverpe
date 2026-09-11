@@ -107,6 +107,14 @@ export function filterNavLinksForContext<
       return canAccessExpensesNav(navContext);
     }
 
+    // Settling a claim writes a payment, so it follows ledger-edit rights.
+    if (
+      link.href === "/dashboard/reconciliations" ||
+      link.href.startsWith("/dashboard/reconciliations")
+    ) {
+      return canAccessExpensesNav(navContext);
+    }
+
     return true;
   });
 }
