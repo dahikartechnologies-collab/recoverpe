@@ -59,6 +59,22 @@ export type CommunicationStatus =
   | "failed"
   | "call_completed";
 
+export type CommunicationChannel = "whatsapp" | "sms" | "email" | "voice";
+
+export type CommunicationDirection = "inbound" | "outbound";
+
+export type ExpenseCategory =
+  | "raw_material"
+  | "transport_freight"
+  | "rent"
+  | "utilities"
+  | "salaries"
+  | "office_expense";
+
+export type ExpensePaymentMode = "bank_transfer" | "upi" | "cash" | "cheque";
+
+export type ReconciliationStatus = "pending_review" | "approved" | "rejected";
+
 export interface RecoverpeUser {
   id: string;
   firebase_uid: string;
@@ -274,7 +290,15 @@ export type VapiSentimentBadge = "cooperative" | "evasive" | "hostile";
 
 export interface CommunicationLog {
   id: string;
-  ledger_id: string;
+  // Nullable since migration 042: inbound replies map to a contact, not an invoice.
+  ledger_id: string | null;
+  user_id: string;
+  business_id?: string | null;
+  contact_id?: string | null;
+  channel: CommunicationChannel;
+  direction: CommunicationDirection;
+  external_message_id?: string | null;
+  summary?: string | null;
   type: CommunicationType;
   status: CommunicationStatus;
   cost_deducted: number;
@@ -285,6 +309,38 @@ export interface CommunicationLog {
   vapi_call_id?: string | null;
   transcript?: string | null;
   duration_seconds?: number | null;
+}
+
+export interface Expense {
+  id: string;
+  user_id: string;
+  business_id?: string | null;
+  payee_name: string;
+  amount: number;
+  category: ExpenseCategory;
+  payment_mode: ExpensePaymentMode;
+  reference_number?: string | null;
+  expense_date: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface Reconciliation {
+  id: string;
+  user_id: string;
+  business_id?: string | null;
+  contact_id?: string | null;
+  ledger_id?: string | null;
+  external_message_id?: string | null;
+  media_id?: string | null;
+  extracted_utr?: string | null;
+  extracted_amount?: number | null;
+  extracted_date?: string | null;
+  raw_extraction?: unknown;
+  status: ReconciliationStatus;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  created_at: string;
 }
 
 export interface SendWhatsAppReminderPayload {
