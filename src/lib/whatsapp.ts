@@ -337,12 +337,27 @@ export function draftLegalNoticeWhatsAppMessage({
   };
 }
 
+// Recipient numbers and message bodies are customer PII and must stay out of
+// log retention. Templates and ledger ids identify a send well enough to debug.
+function describeOutboundPayload(payload: WhatsAppOutboundPayload): {
+  payload_type: string;
+  template_name: string | null;
+} {
+  return {
+    payload_type: payload.type,
+    template_name: payload.type === "template" ? payload.template.name : null,
+  };
+}
+
 export async function sendWhatsAppMessage(
   incomingDraft: WhatsAppMessageDraft,
   options: WhatsAppSendOptions = {}
 ): Promise<WhatsAppSendResult> {
   const draft = withSanitizedRecipient(incomingDraft);
-  console.log("[WHATSAPP DISPATCHER] Triggered for:", draft.to);
+  console.log("[WHATSAPP DISPATCHER] Triggered:", {
+    ledger_id: draft.ledger_id,
+    ...describeOutboundPayload(draft.meta_payload),
+  });
 
   if (!options.skipCurfewCheck && isTraiCurfewActive()) {
     console.log("[WHATSAPP] Blocked by TRAI curfew window.");
@@ -379,7 +394,6 @@ export async function sendWhatsAppMessage(
   console.log("[WHATSAPP] Meta credential check:", {
     phoneNumberIdPresent: Boolean(phoneNumberId),
     accessTokenPresent: Boolean(accessToken),
-    recipient: draft.to,
     mode: draft.mode,
     ledger_id: draft.ledger_id,
   });
@@ -393,7 +407,7 @@ export async function sendWhatsAppMessage(
 
   const payload = draft.meta_payload;
 
-  console.log(`[WHATSAPP] Sending payload to Meta for ${payload.to}...`);
+  console.log("[WHATSAPP] Sending payload to Meta:", describeOutboundPayload(payload));
 
   try {
     const res = await fetch(
