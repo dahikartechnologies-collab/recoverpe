@@ -4,6 +4,7 @@ import { processInboundWhatsAppMessage } from "@/lib/whatsapp/inbound-payment-re
 export const dynamic = "force-dynamic";
 
 interface MetaInboundTextMessage {
+  id?: string;
   from: string;
   type: string;
   text?: {
@@ -39,7 +40,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as MetaWebhookBody;
-    console.log("[WHATSAPP WEBHOOK INCOMING]:", JSON.stringify(body, null, 2));
 
     const value = body?.entry?.[0]?.changes?.[0]?.value;
 
@@ -53,7 +53,18 @@ export async function POST(request: Request) {
 
     const message = value.messages?.[0];
 
-    if (!message || message.type !== "text") {
+    if (!message) {
+      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+    }
+
+    // Identifier and type only. The rest of the Meta payload carries the
+    // customer's phone number, profile name and message body.
+    console.log("[WHATSAPP WEBHOOK INCOMING]:", {
+      message_id: message.id,
+      type: message.type,
+    });
+
+    if (message.type !== "text") {
       return new NextResponse("EVENT_RECEIVED", { status: 200 });
     }
 
