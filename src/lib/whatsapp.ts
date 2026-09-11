@@ -430,3 +430,63 @@ export async function sendWhatsAppMessage(
     throw error;
   }
 }
+
+export async function sendWhatsAppTextMessage(
+  to: string,
+  messageBody: string
+): Promise<boolean> {
+  const cleanPhone = sanitizeMetaWhatsAppRecipient(to);
+  const forceReal = process.env.TEST_REAL_WHATSAPP_LOCALLY === "true";
+  const isDev = process.env.APP_ENV === "development";
+
+  if (isDev && !forceReal) {
+    console.log("[WHATSAPP TEXT] Mock reply to", cleanPhone, messageBody);
+    return true;
+  }
+
+  const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
+  const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN?.trim();
+
+  if (!phoneNumberId || !accessToken) {
+    console.error("[WHATSAPP] Missing Meta credentials for text dispatch");
+    return false;
+  }
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: cleanPhone,
+    type: "text",
+    text: {
+      preview_url: true,
+      body: messageBody,
+    },
+  };
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      console.error("[WHATSAPP TEXT ERROR]", JSON.stringify(err, null, 2));
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[WHATSAPP TEXT NETWORK ERROR]:", error);
+    return false;
+  }
+}
