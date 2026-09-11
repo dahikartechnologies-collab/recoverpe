@@ -1,4 +1,4 @@
-import { getAppBaseUrl, getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
+import { getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
 import { formatCurrency } from "@/lib/gst";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
@@ -25,7 +25,28 @@ interface UnpaidLedgerRow {
   invoice_number: string | null;
 }
 
+export interface BusinessDebtScope {
+  contact: ContactRow;
+  businessId: string | null;
+  businessName: string;
+  unpaidLedgers: UnpaidLedgerRow[];
+}
+
 export type InboundMessageIntent = "payment_link" | "payment_done";
+
+export function getInboundAppUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (
+    configured &&
+    configured.includes("http") &&
+    !/localhost|127\.0\.0\.1/i.test(configured)
+  ) {
+    return configured.replace(/\/$/, "");
+  }
+
+  return "https://www.recoverpe.com";
+}
 
 export function buildPhoneLookupCandidates(rawFrom: string): string[] {
   const digits = rawFrom.replace(/\D/g, "");
@@ -58,6 +79,21 @@ export function classifyInboundMessageIntent(text: string): InboundMessageIntent
   return "payment_link";
 }
 
+export function groupLedgersByBusinessId(
+  ledgers: UnpaidLedgerRow[]
+): Map<string, UnpaidLedgerRow[]> {
+  const grouped = new Map<string, UnpaidLedgerRow[]>();
+
+  for (const ledger of ledgers) {
+    const groupKey = ledger.business_id ?? `personal:${ledger.user_id}`;
+    const existing = grouped.get(groupKey) ?? [];
+    existing.push(ledger);
+    grouped.set(groupKey, existing);
+  }
+
+  return grouped;
+}
+
 async function resolveBusinessName(
   supabase: SupabaseClient,
   userId: string,
@@ -68,6 +104,7 @@ async function resolveBusinessName(
       .from("businesses")
       .select("business_name")
       .eq("id", businessId)
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (data?.business_name) {
@@ -96,18 +133,47 @@ async function resolveBusinessName(
   return (user?.email as string | undefined)?.split("@")[0] ?? "RecoverPe";
 }
 
+async function fetchContactsByPhone(
+  supabase: SupabaseClient,
+  rawFrom: string
+): Promise<ContactRow[]> {
+  const phoneCandidates = buildPhoneLookupCandidates(rawFrom);
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, user_id, name, phone_number")
+    .in("phone_number", phoneCandidates);
+
+  if (error) {
+    throw new Error(error.message || "Failed to lookup contact by phone.");
+  }
+
+  return (data ?? []) as ContactRow[];
+}
+
 async function fetchUnpaidLedgersForContact(
   supabase: SupabaseClient,
-  contactId: string
+  contactId: string,
+  businessId: string | null,
+  userId: string
 ): Promise<UnpaidLedgerRow[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("ledgers")
     .select(
       "id, user_id, business_id, balance_due, due_date, created_at, invoice_number"
     )
     .eq("contact_id", contactId)
+    .eq("user_id", userId)
     .gt("balance_due", 0)
     .order("created_at", { ascending: false });
+
+  if (businessId) {
+    query = query.eq("business_id", businessId);
+  } else {
+    query = query.is("business_id", null);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message || "Failed to fetch unpaid ledgers.");
@@ -161,52 +227,66 @@ async function ensureDebtorPortalSession(
   return session.id as string;
 }
 
-async function findBestContactMatch(
+export async function findBusinessDebtScopes(
   supabase: SupabaseClient,
   rawFrom: string
-): Promise<{ contact: ContactRow; unpaidLedgers: UnpaidLedgerRow[] } | null> {
-  const phoneCandidates = buildPhoneLookupCandidates(rawFrom);
+): Promise<BusinessDebtScope[]> {
+  const contacts = await fetchContactsByPhone(supabase, rawFrom);
+  const scopes: BusinessDebtScope[] = [];
 
-  const { data: contacts, error } = await supabase
-    .from("contacts")
-    .select("id, user_id, name, phone_number")
-    .in("phone_number", phoneCandidates);
+  for (const contact of contacts) {
+    const { data: ledgerRows, error } = await supabase
+      .from("ledgers")
+      .select(
+        "id, user_id, business_id, balance_due, due_date, created_at, invoice_number"
+      )
+      .eq("contact_id", contact.id)
+      .eq("user_id", contact.user_id)
+      .gt("balance_due", 0)
+      .order("created_at", { ascending: false });
 
-  if (error) {
-    throw new Error(error.message || "Failed to lookup contact by phone.");
-  }
+    if (error) {
+      throw new Error(error.message || "Failed to fetch unpaid ledgers.");
+    }
 
-  if (!contacts?.length) {
-    return null;
-  }
+    const grouped = groupLedgersByBusinessId((ledgerRows ?? []) as UnpaidLedgerRow[]);
 
-  let bestMatch: { contact: ContactRow; unpaidLedgers: UnpaidLedgerRow[] } | null =
-    null;
-  let bestOutstanding = -1;
+    for (const [groupKey, unpaidLedgers] of Array.from(grouped.entries())) {
+      if (unpaidLedgers.length === 0) {
+        continue;
+      }
 
-  for (const contact of contacts as ContactRow[]) {
-    const unpaidLedgers = await fetchUnpaidLedgersForContact(supabase, contact.id);
-    const totalOutstanding = unpaidLedgers.reduce(
-      (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
-      0
-    );
+      const businessId = groupKey.startsWith("personal:")
+        ? null
+        : unpaidLedgers[0]?.business_id ?? null;
 
-    if (totalOutstanding > bestOutstanding) {
-      bestOutstanding = totalOutstanding;
-      bestMatch = { contact, unpaidLedgers };
+      const scopedLedgers = await fetchUnpaidLedgersForContact(
+        supabase,
+        contact.id,
+        businessId,
+        contact.user_id
+      );
+
+      if (scopedLedgers.length === 0) {
+        continue;
+      }
+
+      const businessName = await resolveBusinessName(
+        supabase,
+        contact.user_id,
+        businessId
+      );
+
+      scopes.push({
+        contact,
+        businessId,
+        businessName,
+        unpaidLedgers: scopedLedgers,
+      });
     }
   }
 
-  if (bestMatch) {
-    return bestMatch;
-  }
-
-  const fallbackContact = contacts[0] as ContactRow;
-
-  return {
-    contact: fallbackContact,
-    unpaidLedgers: await fetchUnpaidLedgersForContact(supabase, fallbackContact.id),
-  };
+  return scopes;
 }
 
 function buildAccountSummaryReply(input: {
@@ -224,19 +304,16 @@ function buildAccountSummaryReply(input: {
     "",
     `Here is your updated account summary with ${input.businessName}:`,
     "",
-    `• Total Outstanding Balance: *${formatCurrency(input.totalBalance)}* across ${input.invoiceCount} invoice(s).`,
+    `Total Outstanding Balance: *${formatCurrency(input.totalBalance)}* across ${input.invoiceCount} unpaid invoice(s).`,
     "",
-    "💳 *Pay Full Outstanding Balance:*",
-    `👉 ${input.portalUrl}`,
+    "> Pay Full Outstanding Balance:",
+    input.portalUrl,
     "",
-    `📄 *Or Pay Most Recent Bill (${input.recentInvoiceRef} - ${formatCurrency(input.recentAmount)}):*`,
-    `👉 ${input.recentPayUrl}`,
+    `> Or Pay Most Recent Bill (${input.recentInvoiceRef} - ${formatCurrency(input.recentAmount)}):`,
+    input.recentPayUrl,
     "",
-    "• Supported modes: UPI (GPay, PhonePe, Paytm), Netbanking & Cards.",
-    "All payments reflect instantly on your ledger statement.",
-    "",
-    "Need to discuss partial payment or installments? Reply directly here and our team will assist you.",
-    "— RecoverPe",
+    "Supported modes: UPI, Netbanking & Cards.",
+    "- RecoverPe",
   ].join("\n");
 }
 
@@ -259,9 +336,9 @@ function buildNoPendingDuesReply(input: {
     `You currently have no pending dues with ${input.businessName}. All prior bills are clear!`,
     "",
     "View your account summary:",
-    `👉 ${input.portalUrl}`,
+    input.portalUrl,
     "",
-    "— RecoverPe",
+    "- RecoverPe",
   ].join("\n");
 }
 
@@ -270,7 +347,7 @@ function buildUnrecognizedNumberReply(appUrl: string): string {
     "Hello! This is an automated notification service from RecoverPe.",
     "",
     "If you need to make a payment or view your statement, please visit:",
-    `👉 ${appUrl}`,
+    appUrl,
     "",
     "For help, contact your merchant directly.",
   ].join("\n");
@@ -281,63 +358,70 @@ export async function processInboundWhatsAppMessage(
   messageText: string
 ): Promise<void> {
   const supabase = createAdminSupabaseClient();
-  const appUrl = getAppBaseUrl();
+  const appUrl = getInboundAppUrl();
   const intent = classifyInboundMessageIntent(messageText);
-  const match = await findBestContactMatch(supabase, rawFrom);
+  const contacts = await fetchContactsByPhone(supabase, rawFrom);
 
-  if (!match) {
+  if (contacts.length === 0) {
     await sendWhatsAppTextMessage(rawFrom, buildUnrecognizedNumberReply(appUrl));
     return;
   }
 
-  const { contact, unpaidLedgers } = match;
-  const businessId = unpaidLedgers[0]?.business_id ?? null;
-  const businessName = await resolveBusinessName(
-    supabase,
-    contact.user_id,
-    businessId
-  );
-  const portalSessionId = await ensureDebtorPortalSession(
-    supabase,
-    contact.user_id,
-    contact.id
-  );
-  const portalUrl = getDebtorPortalUrl(portalSessionId);
-
   if (intent === "payment_done") {
-    await sendWhatsAppTextMessage(rawFrom, buildPaymentDoneReply(contact.name));
+    await sendWhatsAppTextMessage(
+      rawFrom,
+      buildPaymentDoneReply(contacts[0]?.name ?? "there")
+    );
     return;
   }
 
-  if (unpaidLedgers.length === 0) {
+  const scopes = await findBusinessDebtScopes(supabase, rawFrom);
+
+  if (scopes.length === 0) {
+    const contact = contacts[0];
+    const businessName = await resolveBusinessName(supabase, contact.user_id, null);
+    const portalSessionId = await ensureDebtorPortalSession(
+      supabase,
+      contact.user_id,
+      contact.id
+    );
+
     await sendWhatsAppTextMessage(
       rawFrom,
       buildNoPendingDuesReply({
         contactName: contact.name,
         businessName,
-        portalUrl,
+        portalUrl: getDebtorPortalUrl(portalSessionId),
       })
     );
     return;
   }
 
-  const recentLedger = unpaidLedgers[0];
-  const totalBalance = unpaidLedgers.reduce(
-    (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
-    0
-  );
+  for (const scope of scopes) {
+    const portalSessionId = await ensureDebtorPortalSession(
+      supabase,
+      scope.contact.user_id,
+      scope.contact.id
+    );
+    const portalUrl = getDebtorPortalUrl(portalSessionId);
+    const recentLedger = scope.unpaidLedgers[0];
+    const totalBalance = scope.unpaidLedgers.reduce(
+      (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
+      0
+    );
 
-  await sendWhatsAppTextMessage(
-    rawFrom,
-    buildAccountSummaryReply({
-      contactName: contact.name,
-      businessName,
-      totalBalance,
-      invoiceCount: unpaidLedgers.length,
-      portalUrl,
-      recentInvoiceRef: formatDisplayInvoice(recentLedger),
-      recentAmount: Number(recentLedger.balance_due),
-      recentPayUrl: getPayPageUrl(recentLedger.id),
-    })
-  );
+    await sendWhatsAppTextMessage(
+      rawFrom,
+      buildAccountSummaryReply({
+        contactName: scope.contact.name,
+        businessName: scope.businessName,
+        totalBalance,
+        invoiceCount: scope.unpaidLedgers.length,
+        portalUrl,
+        recentInvoiceRef: formatDisplayInvoice(recentLedger),
+        recentAmount: Number(recentLedger.balance_due),
+        recentPayUrl: getPayPageUrl(recentLedger.id),
+      })
+    );
+  }
 }

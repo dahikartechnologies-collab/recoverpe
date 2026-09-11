@@ -4,14 +4,12 @@ export const FREE_TIER_WHATSAPP_WATERMARK =
 export function getAppBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
 
-  if (configured) {
+  if (
+    configured &&
+    configured.includes("http") &&
+    !/localhost|127\.0\.0\.1/i.test(configured)
+  ) {
     return configured.replace(/\/$/, "");
-  }
-
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/\/$/, "")}`;
   }
 
   return "https://www.recoverpe.com";

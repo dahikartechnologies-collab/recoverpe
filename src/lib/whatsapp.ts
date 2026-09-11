@@ -402,7 +402,7 @@ export async function sendWhatsAppMessage(
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.META_WHATSAPP_ACCESS_TOKEN}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify(payload),
       }
@@ -474,7 +474,7 @@ export async function sendWhatsAppTextMessage(
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify(payload),
       }
