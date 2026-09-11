@@ -8,6 +8,7 @@ import {
   getVertexAI,
 } from "@/lib/firebase-admin-vertexai";
 import { recordCommunicationSafely } from "@/lib/communication-logs";
+import { retryAsync } from "@/lib/resilient-fetch";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
@@ -300,8 +301,7 @@ export async function findBusinessDebtScopes(
 
 export async function buildLedgerSummaryData(
   supabase: SupabaseClient,
-  scopes: BusinessDebtScope[],
-  appUrl: string
+  scopes: BusinessDebtScope[]
 ): Promise<LedgerSummaryEntry[]> {
   const summaries: LedgerSummaryEntry[] = [];
 
@@ -370,10 +370,18 @@ async function generateInboundAiReply(
   const modelId = getDefaultGeminiModel();
 
   try {
-    const vertexAI = getVertexAI();
-    const model = vertexAI.getGenerativeModel({ model: modelId });
-    const prompt = buildGeminiPrompt(incomingTextMessage, ledgerSummaryData, appUrl);
-    const result = await model.generateContent(prompt);
+    const prompt = buildGeminiPrompt(
+      incomingTextMessage,
+      ledgerSummaryData,
+      appUrl
+    );
+    const result = await retryAsync(
+      () =>
+        getVertexAI()
+          .getGenerativeModel({ model: modelId })
+          .generateContent(prompt),
+      { scope: "VERTEX INBOUND", maxAttempts: 3, baseDelayMs: 800 }
+    );
     const aiResponse = result.response.text().trim();
 
     if (!aiResponse) {
@@ -455,7 +463,7 @@ export async function processInboundWhatsAppMessage(
   );
 
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
-  const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes, appUrl);
+  const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes);
   const aiResponse = await generateInboundAiReply(
     messageText,
     ledgerSummaryData,

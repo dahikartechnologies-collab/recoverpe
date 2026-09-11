@@ -1,4 +1,4 @@
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 function assertProductionAppEnvSafety() {
   if (
@@ -25,6 +25,43 @@ function assertProductionAppEnvSafety() {
 
 assertProductionAppEnvSafety();
 
+// 'unsafe-inline' and 'unsafe-eval' are required by Next's inline bootstrap
+// and by the Razorpay, GA4, and Meta Pixel loaders. The value of this policy
+// is therefore connect/frame/object restriction rather than script hardening.
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  [
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "https://checkout.razorpay.com",
+    "https://*.googletagmanager.com",
+    "https://connect.facebook.net",
+    "https://va.vercel-scripts.com",
+  ].join(" "),
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  [
+    "connect-src 'self'",
+    "https://*.googleapis.com",
+    "https://*.google-analytics.com",
+    "https://*.analytics.google.com",
+    "https://*.googletagmanager.com",
+    "https://www.facebook.com",
+    "https://*.razorpay.com",
+    "https://*.supabase.co",
+    "wss://*.supabase.co",
+    "https://*.sentry.io",
+    "https://*.ingest.sentry.io",
+    "https://vitals.vercel-insights.com",
+  ].join(" "),
+  "frame-src 'self' https://*.razorpay.com https://*.firebaseapp.com",
+  "upgrade-insecure-requests",
+].join("; ");
+
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -41,6 +78,14 @@ const securityHeaders = [
   {
     key: "Referrer-Policy",
     value: "strict-origin-when-cross-origin",
+  },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+  },
+  {
+    key: "Content-Security-Policy",
+    value: contentSecurityPolicy,
   },
 ];
 
@@ -59,8 +104,9 @@ const nextConfig = {
     ],
   },
   eslint: {
-    // Do not block Vercel production builds on lint debt in WIP routes.
-    ignoreDuringBuilds: true,
+    // The lint debt this was hiding is cleared; keep it enforced so unused
+    // bindings and hook-dependency mistakes cannot reach production again.
+    ignoreDuringBuilds: false,
   },
   typescript: {
     ignoreBuildErrors: false,
@@ -84,7 +130,6 @@ const sentryBuildOptions = {
   sourcemaps: {
     disable: !process.env.SENTRY_AUTH_TOKEN,
   },
-  disableLogger: true,
   telemetry: false,
 };
 

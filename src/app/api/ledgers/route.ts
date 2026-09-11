@@ -9,7 +9,7 @@ import {
 } from "@/lib/ledger-queries";
 import { uploadSecureInvoicePdf } from "@/lib/firebase-storage-admin";
 import { calculateGstBreakdown } from "@/lib/gst";
-import { buildInvoiceNumber, formatIndianPhoneNumber } from "@/lib/invoices";
+import { buildInvoiceNumber } from "@/lib/invoices";
 import { renderInvoicePdfBuffer } from "@/lib/pdf";
 import { countUserLedgers } from "@/lib/razorpay";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";

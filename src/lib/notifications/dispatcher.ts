@@ -23,7 +23,10 @@ import {
   sendWhatsAppMessage,
   TraiCurfewError,
 } from "@/lib/whatsapp";
-import { recordCommunication } from "@/lib/communication-logs";
+import {
+  recordCommunication,
+  recordCommunicationSafely,
+} from "@/lib/communication-logs";
 import {
   CommunicationChannel,
   CommunicationType,
@@ -182,6 +185,34 @@ async function tryWhatsAppDispatch(input: {
     message: sendResult.message,
     communicationType: "whatsapp_reminder",
   };
+}
+
+/**
+ * Records a delivery that did not land. Only successes were ever written, so
+ * a merchant reading the communication history saw silence where a reminder
+ * had actually bounced — indistinguishable from one that was never scheduled.
+ */
+async function logFailedDelivery(input: {
+  supabase: SupabaseClient;
+  userId: string;
+  businessId: string | null;
+  contactId: string;
+  ledgerId: string;
+  channel: CommunicationChannel;
+  type: CommunicationType;
+  reason: string;
+}): Promise<void> {
+  await recordCommunicationSafely(input.supabase, {
+    userId: input.userId,
+    businessId: input.businessId,
+    contactId: input.contactId,
+    ledgerId: input.ledgerId,
+    type: input.type,
+    channel: input.channel,
+    direction: "outbound",
+    status: "failed",
+    summary: `Delivery failed: ${input.reason}`.slice(0, 500),
+  });
 }
 
 async function tryEmailDispatch(input: {
@@ -379,18 +410,24 @@ export async function dispatchOmnichannelMessage(
 
       if (error instanceof TraiCurfewError) {
         // Fall through to email when configured.
-      } else if (!notificationPreferences.auto_fallback) {
-        return {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "WhatsApp dispatch failed.",
-          error:
-            error instanceof Error
-              ? error.message
-              : "WhatsApp dispatch failed.",
-        };
+      } else {
+        const reason =
+          error instanceof Error ? error.message : "WhatsApp dispatch failed.";
+
+        await logFailedDelivery({
+          supabase,
+          userId,
+          businessId,
+          contactId,
+          ledgerId,
+          channel: "whatsapp",
+          type: "whatsapp_reminder",
+          reason,
+        });
+
+        if (!notificationPreferences.auto_fallback) {
+          return { success: false, message: reason, error: reason };
+        }
       }
     }
   }
@@ -422,13 +459,21 @@ export async function dispatchOmnichannelMessage(
         fallbackTriggered: whatsappFailed,
       });
     } catch (error) {
-      return {
-        success: false,
-        message:
-          error instanceof Error ? error.message : "Email dispatch failed.",
-        error:
-          error instanceof Error ? error.message : "Email dispatch failed.",
-      };
+      const reason =
+        error instanceof Error ? error.message : "Email dispatch failed.";
+
+      await logFailedDelivery({
+        supabase,
+        userId,
+        businessId,
+        contactId,
+        ledgerId,
+        channel: "email",
+        type: isLegalNotice ? "email_invoice" : "email_reminder",
+        reason,
+      });
+
+      return { success: false, message: reason, error: reason };
     }
   }
 

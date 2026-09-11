@@ -21,6 +21,7 @@
     "@types/d3-sankey": "^0.12.5",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
+    "@vercel/analytics": "^2.0.1",
     "d3-sankey": "^0.12.3",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",

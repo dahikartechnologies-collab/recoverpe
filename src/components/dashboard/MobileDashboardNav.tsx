@@ -11,6 +11,8 @@ import { useWorkspaceStore } from "@/store/workspace-store";
 const MOBILE_NAV_LINKS = [
   { href: "/dashboard", label: "Home", exact: true },
   { href: "/dashboard/vendors", label: "Vendors", highlight: true },
+  { href: "/dashboard/reconciliations", label: "Payment Proofs" },
+  { href: "/dashboard/expenses", label: "Expenses" },
   { href: "/dashboard/import", label: "Import" },
   { href: "/dashboard/billing", label: "Billing" },
   { href: "/dashboard/settings", label: "Settings" },

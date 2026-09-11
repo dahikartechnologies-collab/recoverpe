@@ -5,6 +5,12 @@ import {
   resolveEffectiveUserContext,
 } from "@/lib/api-auth";
 import { isExpenseCategory, isExpensePaymentMode } from "@/lib/expenses";
+import {
+  calculateExpenseTax,
+  isValidGstin,
+  isValidGstRate,
+  TDS_SECTIONS,
+} from "@/lib/gst-compliance";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import { canMutateLedgers } from "@/lib/workspace-permissions";
@@ -34,7 +40,7 @@ async function assertExpenseAccess(
 }
 
 const EXPENSE_COLUMNS =
-  "id, user_id, business_id, payee_name, amount, category, payment_mode, reference_number, expense_date, notes, created_at";
+  "id, user_id, business_id, payee_name, amount, category, payment_mode, reference_number, expense_date, notes, created_at, voucher_number, supplier_gstin, hsn_sac_code, place_of_supply, gst_rate, taxable_value, cgst_amount, sgst_amount, igst_amount, is_input_credit_eligible, tds_section, tds_rate, tds_amount";
 
 // expense_date is a plain DATE, so month comparison stays lexicographic.
 function startOfCurrentIstMonth(): string {
@@ -170,6 +176,75 @@ export async function POST(request: Request) {
     const supabase = createAdminSupabaseClient();
     const businessId = getRequestedBusinessIdFromRequest(request);
 
+    const gstRate = Number(body.gst_rate ?? 0);
+
+    if (!isValidGstRate(gstRate)) {
+      return NextResponse.json(
+        { error: "GST rate must be one of 0, 0.25, 3, 5, 12, 18, or 28." },
+        { status: 400 }
+      );
+    }
+
+    const supplierGstin =
+      String(body.supplier_gstin ?? "").trim().toUpperCase() || null;
+
+    if (supplierGstin && !isValidGstin(supplierGstin)) {
+      return NextResponse.json(
+        { error: "Supplier GSTIN is not a valid 15-character GSTIN." },
+        { status: 400 }
+      );
+    }
+
+    const tdsSection = String(body.tds_section ?? "").trim() || null;
+
+    if (tdsSection && !(tdsSection in TDS_SECTIONS)) {
+      return NextResponse.json(
+        { error: "Unrecognised TDS section." },
+        { status: 400 }
+      );
+    }
+
+    // The business GSTIN decides registration status and the home state, so
+    // it must come from the database rather than the request body.
+    let businessGstin: string | null = null;
+
+    if (businessId) {
+      const { data: business } = await supabase
+        .from("businesses")
+        .select("gstin")
+        .eq("id", businessId)
+        .eq("user_id", context.effectiveUserId)
+        .maybeSingle();
+
+      businessGstin = (business?.gstin as string | null) ?? null;
+    }
+
+    // Derived server-side: a tampered split would flow into a GSTR-3B figure
+    // the merchant actually files.
+    const tax = calculateExpenseTax({
+      enteredAmount: amount,
+      gstRate,
+      isAmountInclusive: body.amount_includes_gst !== false,
+      businessGstin,
+      placeOfSupply: String(body.place_of_supply ?? "").trim() || null,
+      tdsSection,
+    });
+
+    const { data: voucherNumber, error: voucherError } = await supabase.rpc(
+      "next_expense_voucher_number",
+      {
+        p_user_id: context.effectiveUserId,
+        p_business_id: businessId,
+      }
+    );
+
+    if (voucherError) {
+      return NextResponse.json(
+        { error: voucherError.message || "Failed to allocate voucher number." },
+        { status: 500 }
+      );
+    }
+
     // Never trust a client-supplied owner: scope to the resolved workspace.
     const { data, error } = await supabase
       .from("expenses")
@@ -177,12 +252,25 @@ export async function POST(request: Request) {
         user_id: context.effectiveUserId,
         business_id: businessId,
         payee_name: payeeName,
-        amount,
+        amount: tax.grossAmount,
         category: body.category,
         payment_mode: body.payment_mode,
         reference_number: String(body.reference_number ?? "").trim() || null,
         expense_date: expenseDate,
         notes: String(body.notes ?? "").trim() || null,
+        voucher_number: voucherNumber as string,
+        supplier_gstin: supplierGstin,
+        hsn_sac_code: String(body.hsn_sac_code ?? "").trim() || null,
+        place_of_supply: String(body.place_of_supply ?? "").trim() || null,
+        gst_rate: gstRate,
+        taxable_value: tax.taxableValue,
+        cgst_amount: tax.cgstAmount,
+        sgst_amount: tax.sgstAmount,
+        igst_amount: tax.igstAmount,
+        is_input_credit_eligible: body.is_input_credit_eligible !== false,
+        tds_section: tdsSection,
+        tds_rate: tax.tdsRate,
+        tds_amount: tax.tdsAmount,
       })
       .select(EXPENSE_COLUMNS)
       .single();

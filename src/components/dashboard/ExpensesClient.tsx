@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AccountingExportCard } from "@/components/dashboard/AccountingExportCard";
 import { AddExpenseModal } from "@/components/dashboard/AddExpenseModal";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -97,6 +98,8 @@ export function ExpensesClient() {
         </Card>
       </div>
 
+      <AccountingExportCard />
+
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
       {isLoading ? (
@@ -116,10 +119,16 @@ export function ExpensesClient() {
             <thead className="bg-recoverpe-grey-light/40">
               <tr>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">Date</th>
+                <th className="px-4 py-3 font-medium text-recoverpe-black">Voucher</th>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">Paid to</th>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">Category</th>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">Mode</th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Reference</th>
+                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
+                  Taxable
+                </th>
+                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
+                  GST
+                </th>
                 <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
                   Amount
                 </th>
@@ -131,8 +140,16 @@ export function ExpensesClient() {
                   <td className="whitespace-nowrap px-4 py-3 text-recoverpe-black">
                     {formatExpenseDate(expense.expense_date)}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-recoverpe-grey-medium">
+                    {expense.voucher_number ?? "—"}
+                  </td>
                   <td className="px-4 py-3 text-recoverpe-black">
                     {expense.payee_name}
+                    {expense.supplier_gstin ? (
+                      <span className="mt-0.5 block font-mono text-xs text-recoverpe-grey-medium">
+                        {expense.supplier_gstin}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
                     {EXPENSE_CATEGORY_LABELS[expense.category]}
@@ -140,8 +157,15 @@ export function ExpensesClient() {
                   <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
                     {EXPENSE_PAYMENT_MODE_LABELS[expense.payment_mode]}
                   </td>
-                  <td className="px-4 py-3 text-recoverpe-grey-medium">
-                    {expense.reference_number ?? "—"}
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-recoverpe-grey-medium">
+                    {formatCurrency(Number(expense.taxable_value ?? 0))}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-recoverpe-grey-medium">
+                    {formatCurrency(
+                      Number(expense.cgst_amount ?? 0) +
+                        Number(expense.sgst_amount ?? 0) +
+                        Number(expense.igst_amount ?? 0)
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-recoverpe-error">
                     {formatCurrency(Number(expense.amount))}

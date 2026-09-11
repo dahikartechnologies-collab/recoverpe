@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getRequestedBusinessIdFromRequest,
   ghostModeWriteBlockedResponse,
   resolveEffectiveUserContext,
 } from "@/lib/api-auth";
@@ -104,7 +105,7 @@ export async function GET(request: Request) {
         ? requestedStatus
         : "pending_review";
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("reconciliations")
       .select(
         `id, status, extracted_utr, extracted_amount, extracted_date, created_at, contact_id, ledger_id, proof_url, source,
@@ -112,7 +113,17 @@ export async function GET(request: Request) {
          ledgers ( id, invoice_number, balance_due )`
       )
       .eq("user_id", context.effectiveUserId)
-      .eq("status", status)
+      .eq("status", status);
+
+    // Without this an owner of several businesses sees every workspace's
+    // claims merged into whichever one they happen to have selected.
+    const businessId = getRequestedBusinessIdFromRequest(request);
+
+    query = businessId
+      ? query.eq("business_id", businessId)
+      : query.is("business_id", null);
+
+    const { data, error } = await query
       .order("created_at", { ascending: false })
       .limit(100);
 

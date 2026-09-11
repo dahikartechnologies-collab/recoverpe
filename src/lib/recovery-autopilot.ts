@@ -10,6 +10,7 @@ import {
 } from "@/lib/autopilot-schedule";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
+import { captureHandledError } from "@/lib/observability";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
   getIstDayBounds,
@@ -150,6 +151,7 @@ export async function wasContactRemindedToday(
 }
 
 type DueCadenceRunRow = CadenceRun & {
+  claimed_at?: string | null;
   ledgers: AutopilotLedgerContext | AutopilotLedgerContext[] | null;
 };
 
@@ -184,15 +186,72 @@ export async function haltAutopilotForLedger(
   }
 }
 
+const MAX_CADENCE_ATTEMPTS = 3;
+
+/**
+ * Returns a claimed run to the queue after a failed dispatch, or retires it
+ * once it has burned through its attempts. Without the ceiling a permanently
+ * undeliverable number would be retried by every cron tick forever.
+ */
+async function releaseCadenceRunForRetry(
+  supabase: SupabaseClient,
+  cadenceRunId: string,
+  reason: string
+): Promise<void> {
+  const { data: current } = await supabase
+    .from("cadence_runs")
+    .select("attempt_count")
+    .eq("id", cadenceRunId)
+    .maybeSingle();
+
+  const attemptCount = Number(current?.attempt_count ?? 0) + 1;
+  const exhausted = attemptCount >= MAX_CADENCE_ATTEMPTS;
+
+  const { error } = await supabase
+    .from("cadence_runs")
+    .update({
+      status: exhausted ? "failed" : "pending",
+      attempt_count: attemptCount,
+      last_error: reason.slice(0, 500),
+    })
+    .eq("id", cadenceRunId);
+
+  if (error) {
+    captureHandledError("autopilot.cadence_release", error, {
+      cadence_run_id: cadenceRunId,
+      attempt_count: attemptCount,
+    });
+  }
+}
+
+const STALE_CLAIM_MS = 2 * 60 * 1000;
+
+/**
+ * Compare-and-set claim. Completing the run before Meta confirms is what
+ * silently dropped reminders: a crash between claim and send left the step
+ * marked done with no message sent. Claiming into in_progress instead lets
+ * the next cron reclaim a stuck worker.
+ */
 async function claimCadenceRun(
   supabase: SupabaseClient,
-  cadenceRunId: string
+  cadenceRunId: string,
+  currentStatus: CadenceRun["status"]
 ): Promise<CadenceRun | null> {
-  const { data, error } = await supabase
+  const nowIso = new Date().toISOString();
+  let query = supabase
     .from("cadence_runs")
-    .update({ status: "completed" })
-    .eq("id", cadenceRunId)
-    .eq("status", "pending")
+    .update({ status: "in_progress", claimed_at: nowIso })
+    .eq("id", cadenceRunId);
+
+  if (currentStatus === "in_progress") {
+    query = query
+      .eq("status", "in_progress")
+      .lt("claimed_at", new Date(Date.now() - STALE_CLAIM_MS).toISOString());
+  } else {
+    query = query.eq("status", "pending");
+  }
+
+  const { data, error } = await query
     .select("id, ledger_id, step_index, next_run_at, status, created_at")
     .maybeSingle();
 
@@ -201,6 +260,21 @@ async function claimCadenceRun(
   }
 
   return (data as CadenceRun | null) ?? null;
+}
+
+async function markCadenceCompleted(
+  supabase: SupabaseClient,
+  cadenceRunId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("cadence_runs")
+    .update({ status: "completed", last_error: null })
+    .eq("id", cadenceRunId)
+    .eq("status", "in_progress");
+
+  if (error) {
+    throw new Error(error.message || "Failed to complete cadence run.");
+  }
 }
 
 async function scheduleCadenceStep(
@@ -337,6 +411,7 @@ export async function fetchDueCadenceRuns(
       next_run_at,
       status,
       created_at,
+      claimed_at,
       ledgers (
         id,
         user_id,
@@ -351,7 +426,7 @@ export async function fetchDueCadenceRuns(
       )
     `
     )
-    .eq("status", "pending")
+    .in("status", ["pending", "in_progress"])
     .lte("next_run_at", nowIso)
     .order("next_run_at", { ascending: true })
     .limit(limit);
@@ -363,6 +438,14 @@ export async function fetchDueCadenceRuns(
   const rows: Array<CadenceRun & { ledger: AutopilotLedgerContext }> = [];
 
   for (const row of (data ?? []) as DueCadenceRunRow[]) {
+    if (row.status === "in_progress") {
+      const claimedAtMs = row.claimed_at ? Date.parse(row.claimed_at) : 0;
+
+      if (Number.isFinite(claimedAtMs) && Date.now() - claimedAtMs < STALE_CLAIM_MS) {
+        continue;
+      }
+    }
+
     const ledger = unwrapRelation(row.ledgers);
 
     if (!ledger) {
@@ -415,7 +498,7 @@ export async function processAutopilotRun(
       .from("cadence_runs")
       .update({ status: "halted" })
       .eq("id", cadenceRun.id)
-      .eq("status", "pending");
+      .in("status", ["pending", "in_progress"]);
 
     return {
       cadence_run_id: cadenceRun.id,
@@ -436,7 +519,11 @@ export async function processAutopilotRun(
     };
   }
 
-  const claimed = await claimCadenceRun(supabase, cadenceRun.id);
+  const claimed = await claimCadenceRun(
+    supabase,
+    cadenceRun.id,
+    cadenceRun.status
+  );
 
   if (!claimed) {
     return {
@@ -458,6 +545,8 @@ export async function processAutopilotRun(
       throw new Error(flagError.message || "Failed to flag legal escalation.");
     }
 
+    await markCadenceCompleted(supabase, cadenceRun.id);
+
     return {
       cadence_run_id: cadenceRun.id,
       ledger_id: ledger.id,
@@ -475,6 +564,12 @@ export async function processAutopilotRun(
   );
 
   if (!ledgerWithContact) {
+    await releaseCadenceRunForRetry(
+      supabase,
+      cadenceRun.id,
+      "Ledger not found."
+    );
+
     return {
       cadence_run_id: cadenceRun.id,
       ledger_id: ledger.id,
@@ -487,6 +582,8 @@ export async function processAutopilotRun(
   const tone = resolveAutopilotTone(cadenceRun.step_index);
 
   if (skipReminderDispatch) {
+    await markCadenceCompleted(supabase, cadenceRun.id);
+
     const nextStepIndex = cadenceRun.step_index + 1;
 
     if (nextStepIndex < schedule.length) {
@@ -511,25 +608,47 @@ export async function processAutopilotRun(
     };
   }
 
-  const dispatchResult = await dispatchOmnichannelMessage({
-    supabase,
-    userId: ledger.user_id,
-    businessId: ledger.business_id,
-    contactId: ledger.contact_id,
-    ledgerId: ledger.id,
-    messagePayload: {
-      subscriptionPlan,
-      autopilotStep: cadenceRun.step_index,
-      autopilotTone: tone,
-      totalOutstandingBalance,
-    },
-  });
+  // The run is claimed as in_progress so a concurrent worker cannot send a
+  // second reminder. Completing it happens only after dispatch confirms.
+  let dispatchResult: Awaited<ReturnType<typeof dispatchOmnichannelMessage>>;
+
+  try {
+    dispatchResult = await dispatchOmnichannelMessage({
+      supabase,
+      userId: ledger.user_id,
+      businessId: ledger.business_id,
+      contactId: ledger.contact_id,
+      ledgerId: ledger.id,
+      messagePayload: {
+        subscriptionPlan,
+        autopilotStep: cadenceRun.step_index,
+        autopilotTone: tone,
+        totalOutstandingBalance,
+      },
+    });
+  } catch (dispatchError) {
+    const message =
+      dispatchError instanceof Error
+        ? dispatchError.message
+        : "Autopilot dispatch failed.";
+
+    await releaseCadenceRunForRetry(supabase, cadenceRun.id, message);
+
+    return {
+      cadence_run_id: cadenceRun.id,
+      ledger_id: ledger.id,
+      step_index: cadenceRun.step_index,
+      status: "failed",
+      message,
+    };
+  }
 
   if (!dispatchResult.success) {
-    await supabase
-      .from("cadence_runs")
-      .update({ status: "pending" })
-      .eq("id", cadenceRun.id);
+    await releaseCadenceRunForRetry(
+      supabase,
+      cadenceRun.id,
+      dispatchResult.message
+    );
 
     return {
       cadence_run_id: cadenceRun.id,
@@ -539,6 +658,8 @@ export async function processAutopilotRun(
       message: dispatchResult.message,
     };
   }
+
+  await markCadenceCompleted(supabase, cadenceRun.id);
 
   const nextStepIndex = cadenceRun.step_index + 1;
 

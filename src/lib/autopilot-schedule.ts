@@ -6,7 +6,12 @@ export const DEFAULT_AUTOPILOT_SCHEDULE: number[] = [...FREE_AUTOPILOT_SCHEDULE]
 
 export type AutopilotTone = "polite" | "firm" | "critical";
 
-export type CadenceRunStatus = "pending" | "completed" | "halted";
+export type CadenceRunStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "halted"
+  | "failed";
 
 export interface CadenceRun {
   id: string;

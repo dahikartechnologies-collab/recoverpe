@@ -1,5 +1,6 @@
 import { getPayPageUrl } from "@/lib/app-url";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
+import { resilientFetch } from "@/lib/resilient-fetch";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
   buildAutopilotReminderTemplateParameters,
@@ -414,16 +415,17 @@ export async function sendWhatsAppMessage(
   console.log("[WHATSAPP] Sending payload to Meta:", describeOutboundPayload(payload));
 
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${process.env.META_WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    const res = await resilientFetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.META_WHATSAPP_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify(payload),
-      }
+      },
+      { scope: "WHATSAPP SEND", timeoutMs: 10_000, maxAttempts: 3 }
     );
 
     const data = (await res.json()) as {
@@ -487,7 +489,7 @@ export async function sendWhatsAppTextMessage(
   };
 
   try {
-    const res = await fetch(
+    const res = await resilientFetch(
       `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
       {
         method: "POST",
@@ -496,7 +498,8 @@ export async function sendWhatsAppTextMessage(
           "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify(payload),
-      }
+      },
+      { scope: "WHATSAPP TEXT", timeoutMs: 10_000, maxAttempts: 3 }
     );
 
     if (!res.ok) {

@@ -96,16 +96,6 @@ export function GlobalTransactionModal() {
   const [isLookingUpContact, setIsLookingUpContact] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  const parsedAmount = Number(amount);
-  const walletApplied =
-    useWalletBalance && walletBalance > 0 && Number.isFinite(parsedAmount)
-      ? Math.min(walletBalance, parsedAmount)
-      : 0;
-  const finalAmountDue =
-    Number.isFinite(parsedAmount) && parsedAmount > 0
-      ? Math.max(0, parsedAmount - walletApplied)
-      : 0;
-
   const canGenerateTaxInvoice = mode === "business" && Boolean(activeBusiness);
 
   useEffect(() => {

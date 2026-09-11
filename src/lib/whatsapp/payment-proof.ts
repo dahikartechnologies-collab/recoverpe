@@ -6,6 +6,7 @@ import {
 import { recordCommunicationSafely } from "@/lib/communication-logs";
 import { uploadWhatsAppPaymentProof } from "@/lib/firebase-storage-admin";
 import { captureHandledError } from "@/lib/observability";
+import { resilientFetch, retryAsync } from "@/lib/resilient-fetch";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import {
@@ -49,6 +50,17 @@ export interface WhatsAppMediaPayload {
 export async function fetchWhatsAppMedia(
   mediaId: string
 ): Promise<WhatsAppMediaPayload | null> {
+  try {
+    return await downloadWhatsAppMedia(mediaId);
+  } catch (error) {
+    captureHandledError("whatsapp.media_download", error, { media_id: mediaId });
+    return null;
+  }
+}
+
+async function downloadWhatsAppMedia(
+  mediaId: string
+): Promise<WhatsAppMediaPayload | null> {
   const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN?.trim();
 
   if (!accessToken) {
@@ -56,9 +68,12 @@ export async function fetchWhatsAppMedia(
     return null;
   }
 
-  const metadataResponse = await fetch(
+  // Meta's media URL expires within minutes, so a hung or flaky download must
+  // fail fast and retry rather than burn the whole window on one attempt.
+  const metadataResponse = await resilientFetch(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${mediaId}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { scope: "WHATSAPP MEDIA META", timeoutMs: 8_000, maxAttempts: 3 }
   );
 
   if (!metadataResponse.ok) {
@@ -93,9 +108,11 @@ export async function fetchWhatsAppMedia(
     return null;
   }
 
-  const binaryResponse = await fetch(metadata.url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const binaryResponse = await resilientFetch(
+    metadata.url,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { scope: "WHATSAPP MEDIA BINARY", timeoutMs: 15_000, maxAttempts: 3 }
+  );
 
   if (!binaryResponse.ok) {
     console.error(
@@ -179,13 +196,21 @@ export async function extractPaymentProof(
   const modelId = getDefaultGeminiModel();
 
   try {
-    const model = getVertexAI().getGenerativeModel({ model: modelId });
-    const result = await model.generateContent(
-      [
-        { inlineData: { mimeType: media.mimeType, data: media.base64 } },
-        { text: VISION_PROMPT },
-      ],
-      { responseMimeType: "application/json", temperature: 0 }
+    // Vertex returns 429/503 under burst load. A dropped extraction means the
+    // reviewer has to key the UTR in by hand, so a couple of retries are worth
+    // the added latency on a background webhook path.
+    const result = await retryAsync(
+      () =>
+        getVertexAI()
+          .getGenerativeModel({ model: modelId })
+          .generateContent(
+            [
+              { inlineData: { mimeType: media.mimeType, data: media.base64 } },
+              { text: VISION_PROMPT },
+            ],
+            { responseMimeType: "application/json", temperature: 0 }
+          ),
+      { scope: "VERTEX VISION", maxAttempts: 3, baseDelayMs: 800 }
     );
 
     const raw = result.response.text().trim();

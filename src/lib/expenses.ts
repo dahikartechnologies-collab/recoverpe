@@ -49,6 +49,14 @@ export interface CreateExpenseInput {
   reference_number?: string | null;
   expense_date: string;
   notes?: string | null;
+  gst_rate?: number;
+  /** Defaults to true server-side: MSMEs quote and pay gross. */
+  amount_includes_gst?: boolean;
+  supplier_gstin?: string | null;
+  hsn_sac_code?: string | null;
+  place_of_supply?: string | null;
+  tds_section?: string | null;
+  is_input_credit_eligible?: boolean;
 }
 
 export interface ExpenseSummary {

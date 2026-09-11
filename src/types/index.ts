@@ -323,6 +323,19 @@ export interface Expense {
   expense_date: string;
   notes?: string | null;
   created_at: string;
+  voucher_number?: string | null;
+  supplier_gstin?: string | null;
+  hsn_sac_code?: string | null;
+  place_of_supply?: string | null;
+  gst_rate: number;
+  taxable_value: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  is_input_credit_eligible: boolean;
+  tds_section?: string | null;
+  tds_rate: number;
+  tds_amount: number;
 }
 
 export interface Reconciliation {

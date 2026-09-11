@@ -16,9 +16,6 @@ import { Business } from "@/types";
 
 export function BusinessProfileView() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
-  const isOwnWorkspaceContext = useWorkspaceStore(
-    (state) => state.isOwnWorkspaceContext
-  );
   const setBusinesses = useWorkspaceStore((state) => state.setBusinesses);
   const setCustomPermissions = useWorkspaceStore((state) => state.setCustomPermissions);
   const [business, setBusiness] = useState<Business | null>(null);
@@ -68,7 +65,7 @@ export function BusinessProfileView() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeBusinessId, isOwnWorkspaceContext, setCustomPermissions]);
+  }, [activeBusinessId, setCustomPermissions]);
 
   useEffect(() => {
     void loadProfile();

@@ -328,6 +328,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
     userRefreshKey,
     ghostModeUserId,
     dashboardRefreshKey,
+    setWorkspacePermissionsReady,
   ]);
 
   function handleNewEntry() {
