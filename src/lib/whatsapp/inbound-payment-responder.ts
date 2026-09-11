@@ -7,9 +7,15 @@ import { getVertexAI } from "@/lib/firebase-admin-vertexai";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
-const GEMINI_MODEL = "gemini-2.5-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const AI_FALLBACK_MESSAGE =
   "Hello! Please visit https://www.recoverpe.com to view your pending dues. - RecoverPe";
+
+// Read per request so a model ID can be swapped from the Vercel dashboard
+// without shipping a deploy.
+function getGeminiModel(): string {
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+}
 
 interface ContactRow {
   id: string;
@@ -362,9 +368,11 @@ async function generateInboundAiReply(
   ledgerSummaryData: LedgerSummaryEntry[],
   appUrl: string
 ): Promise<string> {
+  const modelId = getGeminiModel();
+
   try {
     const vertexAI = getVertexAI();
-    const model = vertexAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const model = vertexAI.getGenerativeModel({ model: modelId });
     const prompt = buildGeminiPrompt(incomingTextMessage, ledgerSummaryData, appUrl);
     const result = await model.generateContent(prompt);
     const aiResponse = result.response.text().trim();
@@ -376,7 +384,7 @@ async function generateInboundAiReply(
     return aiResponse;
   } catch (error) {
     console.error(
-      "[WHATSAPP AI FATAL ERROR]:",
+      `[WHATSAPP AI FATAL ERROR] model=${modelId}:`,
       error instanceof Error ? error.message : error
     );
     return AI_FALLBACK_MESSAGE;
