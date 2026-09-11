@@ -53,6 +53,19 @@ export function canAccessImportNav({
   return permissions.edit_ledgers || permissions.manage_team;
 }
 
+/** Expenses expose whole-business spend, so they follow ledger-edit rights. */
+export function canAccessExpensesNav({
+  isOwnWorkspaceContext,
+  role,
+  permissions,
+}: WorkspaceNavContext): boolean {
+  if (isOwnWorkspaceContext || role === "owner") {
+    return true;
+  }
+
+  return permissions.edit_ledgers || permissions.manage_team;
+}
+
 /** True restricted partners lack both settings delegation flags. */
 export function isRestrictedPartnerContext({
   isOwnWorkspaceContext,
@@ -88,6 +101,10 @@ export function filterNavLinksForContext<
 
     if (link.href === "/dashboard/import" || link.href.startsWith("/dashboard/import")) {
       return canAccessImportNav(navContext);
+    }
+
+    if (link.href === "/dashboard/expenses" || link.href.startsWith("/dashboard/expenses")) {
+      return canAccessExpensesNav(navContext);
     }
 
     return true;

@@ -116,6 +116,9 @@ export interface WhatsAppSendResult {
   simulated: boolean;
   message: string;
   draft: WhatsAppMessageDraft;
+  // Meta's wamid. Delivery receipts reference only this, so it is the join key
+  // for status transitions in communication_logs.
+  externalMessageId?: string | null;
 }
 
 interface DraftMessageInput {
@@ -385,6 +388,7 @@ export async function sendWhatsAppMessage(
       simulated: true,
       message: "WhatsApp reminder simulated in development mode.",
       draft,
+      externalMessageId: null,
     };
   }
 
@@ -442,6 +446,7 @@ export async function sendWhatsAppMessage(
       simulated: false,
       message: "WhatsApp reminder sent successfully.",
       draft,
+      externalMessageId: data.messages?.[0]?.id ?? null,
     };
   } catch (error) {
     console.error("[WHATSAPP NETWORK ERROR]:", error);

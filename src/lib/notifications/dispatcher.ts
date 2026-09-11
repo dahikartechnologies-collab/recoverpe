@@ -23,7 +23,12 @@ import {
   sendWhatsAppMessage,
   TraiCurfewError,
 } from "@/lib/whatsapp";
-import { CommunicationType, SubscriptionPlan } from "@/types";
+import { recordCommunication } from "@/lib/communication-logs";
+import {
+  CommunicationChannel,
+  CommunicationType,
+  SubscriptionPlan,
+} from "@/types";
 
 export interface OmnichannelMessagePayload {
   subscriptionPlan?: SubscriptionPlan;
@@ -61,22 +66,29 @@ export interface DispatchOmnichannelMessageResult {
   error?: string;
 }
 
-async function logCommunication(
-  supabase: SupabaseClient,
-  ledgerId: string,
-  type: CommunicationType
-) {
-  const { error } = await supabase.from("communication_logs").insert({
-    ledger_id: ledgerId,
-    type,
+async function logCommunication(input: {
+  supabase: SupabaseClient;
+  userId: string;
+  businessId: string | null;
+  contactId: string;
+  ledgerId: string;
+  type: CommunicationType;
+  channel: CommunicationChannel;
+  externalMessageId?: string | null;
+  summary?: string | null;
+}) {
+  await recordCommunication(input.supabase, {
+    userId: input.userId,
+    businessId: input.businessId,
+    contactId: input.contactId,
+    ledgerId: input.ledgerId,
+    type: input.type,
+    channel: input.channel,
+    direction: "outbound",
     status: "sent",
-    cost_deducted: 0,
-    executed_at: new Date().toISOString(),
+    externalMessageId: input.externalMessageId ?? null,
+    summary: input.summary ?? null,
   });
-
-  if (error) {
-    throw new Error(error.message || "Failed to log communication.");
-  }
 }
 
 async function tryWhatsAppDispatch(input: {
@@ -146,11 +158,21 @@ async function tryWhatsAppDispatch(input: {
 
   const sendResult = await sendWhatsAppMessage(draft);
 
-  await logCommunication(
-    input.supabase,
-    input.ledgerId,
-    "whatsapp_reminder"
-  );
+  await logCommunication({
+    supabase: input.supabase,
+    userId: input.userId,
+    businessId: input.businessId,
+    contactId: input.contactId,
+    ledgerId: input.ledgerId,
+    type: "whatsapp_reminder",
+    channel: "whatsapp",
+    externalMessageId: sendResult.externalMessageId,
+    summary: input.isLegalNotice
+      ? "Legal notice sent on WhatsApp"
+      : input.isPaymentReceipt
+        ? "Payment receipt sent on WhatsApp"
+        : "Payment reminder sent on WhatsApp",
+  });
 
   return {
     success: true,
@@ -216,7 +238,18 @@ async function tryEmailDispatch(input: {
     ? "email_invoice"
     : "email_reminder";
 
-  await logCommunication(input.supabase, input.ledgerId, communicationType);
+  await logCommunication({
+    supabase: input.supabase,
+    userId: input.userId,
+    businessId: input.businessId,
+    contactId: input.contactId,
+    ledgerId: input.ledgerId,
+    type: communicationType,
+    channel: "email",
+    summary: input.isLegalNotice
+      ? "Legal notice sent by email"
+      : "Payment reminder sent by email",
+  });
 
   return {
     success: true,

@@ -8,6 +8,7 @@ import {
   LazyDsoCohortHeatmap,
 } from "@/components/dashboard/analytics/lazy-analytics-charts";
 import { MetricsGrid } from "@/components/dashboard/analytics/MetricsGrid";
+import { NetCashflowCard } from "@/components/dashboard/analytics/NetCashflowCard";
 import { useDashboardAnalytics } from "@/hooks/use-dashboard-analytics";
 import { WorkspaceMode } from "@/types";
 
@@ -45,6 +46,13 @@ export function DashboardAnalyticsSection({
       ) : null}
 
       <MetricsGrid summary={analytics.summary} isLoading={isLoading} />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <NetCashflowCard
+          collectedThisMonth={analytics.summary.collectedThisMonth}
+          isLoading={isLoading}
+        />
+      </div>
 
       <Suspense fallback={<AnalyticsChartSkeleton heightClassName="h-80" />}>
         <LazyCashFlowChart data={analytics.cashFlow} isLoading={isLoading} />

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AssignAgentCard } from "@/components/dashboard/AssignAgentCard";
+import { CommunicationHistory } from "@/components/dashboard/CommunicationHistory";
 import { ExportLedgerButton } from "@/components/dashboard/ExportLedgerButton";
 import { HeroMetricCard } from "@/components/dashboard/HeroMetricCard";
 import { LedgerTable } from "@/components/dashboard/LedgerTable";
@@ -60,6 +61,13 @@ interface ToastState {
   message: string;
   variant: "success" | "error";
 }
+
+type VendorDetailTab = "ledger" | "communications";
+
+const VENDOR_DETAIL_TABS: Array<{ id: VendorDetailTab; label: string }> = [
+  { id: "ledger", label: "Statement & Wallet" },
+  { id: "communications", label: "Communication History" },
+];
 
 export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
   const searchParams = useSearchParams();
@@ -121,6 +129,7 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
     useState<MicroTransactionFulfillment | null>(null);
   const [isSamadhaanModalOpen, setIsSamadhaanModalOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [activeTab, setActiveTab] = useState<VendorDetailTab>("ledger");
 
   const loadVendor = useCallback(
     async (targetPage: number) => {
@@ -511,6 +520,29 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
         />
       ) : null}
 
+      <div className="border-b border-recoverpe-grey-light">
+        <nav className="-mb-px flex gap-2 overflow-x-auto">
+          {VENDOR_DETAIL_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? "border-recoverpe-black text-recoverpe-black"
+                  : "border-transparent text-recoverpe-grey-medium hover:text-recoverpe-black"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {activeTab === "communications" ? (
+        <CommunicationHistory contactId={contactId} />
+      ) : (
+        <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-recoverpe-black">
@@ -630,6 +662,8 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
           </div>
         )}
       </div>
+        </>
+      )}
 
       <LogAdvanceModal
         contactId={contactId}

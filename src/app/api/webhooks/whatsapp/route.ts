@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  MetaStatusUpdate,
+  applyWhatsAppDeliveryStatuses,
+} from "@/lib/communication-logs";
+import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { processInboundWhatsAppMessage } from "@/lib/whatsapp/inbound-payment-responder";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +22,7 @@ interface MetaWebhookBody {
     changes?: Array<{
       value?: {
         messages?: MetaInboundTextMessage[];
-        statuses?: unknown[];
+        statuses?: MetaStatusUpdate[];
       };
     }>;
   }>;
@@ -47,8 +52,21 @@ export async function POST(request: Request) {
       return new NextResponse("EVENT_RECEIVED", { status: 200 });
     }
 
-    if (value.statuses?.length && !value.messages?.length) {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+    if (value.statuses?.length) {
+      const supabase = createAdminSupabaseClient();
+      const updated = await applyWhatsAppDeliveryStatuses(
+        supabase,
+        value.statuses
+      );
+
+      console.log("[WHATSAPP WEBHOOK STATUS]:", {
+        received: value.statuses.length,
+        updated,
+      });
+
+      if (!value.messages?.length) {
+        return new NextResponse("EVENT_RECEIVED", { status: 200 });
+      }
     }
 
     const message = value.messages?.[0];
@@ -75,7 +93,9 @@ export async function POST(request: Request) {
       return new NextResponse("EVENT_RECEIVED", { status: 200 });
     }
 
-    await processInboundWhatsAppMessage(rawFrom, messageText);
+    await processInboundWhatsAppMessage(rawFrom, messageText, {
+      externalMessageId: message.id ?? null,
+    });
   } catch (error) {
     console.error(
       "[WHATSAPP WEBHOOK] Failed to process inbound message:",

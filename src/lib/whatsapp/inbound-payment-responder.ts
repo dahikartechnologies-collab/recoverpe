@@ -4,6 +4,7 @@ import { formatIndianPhoneNumber } from "@/lib/invoices";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import { getVertexAI } from "@/lib/firebase-admin-vertexai";
+import { recordCommunicationSafely } from "@/lib/communication-logs";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
@@ -402,9 +403,32 @@ function buildUnrecognizedNumberReply(appUrl: string): string {
   ].join("\n");
 }
 
+const INBOUND_SUMMARY_MAX_LENGTH = 120;
+
+// The audit timeline is a delivery record, not a message archive. Keep enough
+// of the text to recognise the conversation without storing it wholesale.
+function summariseInboundMessage(messageText: string): string {
+  const collapsed = messageText.replace(/\s+/g, " ").trim();
+
+  if (!collapsed) {
+    return "Customer sent a message";
+  }
+
+  if (collapsed.length <= INBOUND_SUMMARY_MAX_LENGTH) {
+    return `Customer: ${collapsed}`;
+  }
+
+  return `Customer: ${collapsed.slice(0, INBOUND_SUMMARY_MAX_LENGTH)}...`;
+}
+
+export interface ProcessInboundOptions {
+  externalMessageId?: string | null;
+}
+
 export async function processInboundWhatsAppMessage(
   rawFrom: string,
-  messageText: string
+  messageText: string,
+  options: ProcessInboundOptions = {}
 ): Promise<void> {
   const supabase = createAdminSupabaseClient();
   const appUrl = getInboundAppUrl();
@@ -415,6 +439,23 @@ export async function processInboundWhatsAppMessage(
     return;
   }
 
+  // One audit row per merchant that knows this number, so each workspace sees
+  // the inbound message on its own contact timeline.
+  await Promise.all(
+    contacts.map((contact) =>
+      recordCommunicationSafely(supabase, {
+        userId: contact.user_id,
+        contactId: contact.id,
+        type: "whatsapp_reminder",
+        channel: "whatsapp",
+        direction: "inbound",
+        status: "delivered",
+        externalMessageId: options.externalMessageId ?? null,
+        summary: summariseInboundMessage(messageText),
+      })
+    )
+  );
+
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
   const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes, appUrl);
   const aiResponse = await generateInboundAiReply(
@@ -424,4 +465,19 @@ export async function processInboundWhatsAppMessage(
   );
 
   await sendWhatsAppTextMessage(rawFrom, aiResponse);
+
+  await Promise.all(
+    scopes.map((scope) =>
+      recordCommunicationSafely(supabase, {
+        userId: scope.contact.user_id,
+        businessId: scope.businessId,
+        contactId: scope.contact.id,
+        type: "whatsapp_reminder",
+        channel: "whatsapp",
+        direction: "outbound",
+        status: "sent",
+        summary: "Automated assistant reply",
+      })
+    )
+  );
 }
