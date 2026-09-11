@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { MetaPixel } from "@/components/MetaPixel";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
@@ -44,6 +45,7 @@ export default function RootLayout({
         {GA_MEASUREMENT_ID ? <GoogleAnalytics gaId={GA_MEASUREMENT_ID} /> : null}
         <MetaPixel />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
