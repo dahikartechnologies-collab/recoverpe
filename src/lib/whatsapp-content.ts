@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { formatCurrency } from "@/lib/gst";
 import { getPayPageUrl, FREE_TIER_WHATSAPP_WATERMARK } from "@/lib/app-url";
+import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { parseDateOnly } from "@/lib/timezone";
 import { SubscriptionPlan } from "@/types";
 import { LedgerWithContact } from "@/types";
@@ -35,12 +36,18 @@ export function buildAutopilotReminderTemplateParameters(input: {
     "id" | "invoice_number" | "balance_due" | "due_date" | "contact"
   >;
   businessName: string | null;
+  amountDue?: number;
 }): string[] {
+  const amount =
+    input.amountDue !== undefined
+      ? input.amountDue
+      : Number(input.ledger.balance_due);
+
   return [
     input.ledger.contact.name,
     input.businessName ?? "Our business",
-    input.ledger.invoice_number ?? input.ledger.id,
-    formatCurrency(input.ledger.balance_due),
+    formatDisplayInvoice(input.ledger),
+    formatCurrency(amount),
     formatWhatsAppDueDate(input.ledger.due_date),
   ];
 }
@@ -80,7 +87,7 @@ export function buildWhatsAppReminderBody({
     body += `\n\nPay securely here: ${payPageUrl}`;
   } else {
     const businessLabel = businessName ?? "Our business";
-    const invoiceLabel = ledger.invoice_number ?? ledger.id;
+    const invoiceLabel = formatDisplayInvoice(ledger);
 
     if (autopilotTone === "polite" || !autopilotTone) {
       body += `Dear ${ledger.contact.name},\n\nThis is a payment reminder from ${businessLabel} regarding Invoice ${invoiceLabel} for ${amountLabel}, due on ${ledger.due_date}.`;

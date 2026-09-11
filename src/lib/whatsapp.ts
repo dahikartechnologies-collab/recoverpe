@@ -1,4 +1,5 @@
 import { getPayPageUrl } from "@/lib/app-url";
+import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
   buildAutopilotReminderTemplateParameters,
@@ -184,9 +185,11 @@ export function draftWhatsAppReminderMessage({
   subscriptionPlan = "free",
   invoiceDocumentLink = null,
   autopilotTone,
+  totalOutstandingBalance,
 }: DraftMessageInput & {
   invoiceDocumentLink?: string | null;
   autopilotTone?: "polite" | "firm" | "critical";
+  totalOutstandingBalance?: number;
 }): WhatsAppMessageDraft {
   const recipient = normalizeWhatsAppRecipient(ledger.contact.phone_number);
   const payPageUrl = getPayPageUrl(ledger.id);
@@ -206,6 +209,7 @@ export function draftWhatsAppReminderMessage({
     buildAutopilotReminderTemplateParameters({
       ledger,
       businessName: business?.business_name ?? null,
+      amountDue: totalOutstandingBalance,
     })
   );
 
@@ -310,7 +314,7 @@ export function draftLegalNoticeWhatsAppMessage({
         type: "document",
         document: {
           link: legalNoticePdfUrl,
-          filename: `Legal-Notice-${ledger.invoice_number ?? ledger.id}.pdf`,
+          filename: `Legal-Notice-${formatDisplayInvoice(ledger)}.pdf`,
         },
       },
       body: { text: body },

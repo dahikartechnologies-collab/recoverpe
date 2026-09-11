@@ -84,6 +84,8 @@ export async function GET(request: Request) {
     let autopilotRun: Awaited<ReturnType<typeof runAutopilotCadenceJob>> = {
       enrolled_count: 0,
       processed_count: 0,
+      contact_groups_processed: 0,
+      batched_skips: 0,
       results: [],
     };
 
@@ -97,7 +99,7 @@ export async function GET(request: Request) {
         runLog,
         "autopilot_dispatch",
         "ok",
-        `Enrolled ${autopilotRun.enrolled_count}; processed ${autopilotRun.processed_count} cadence run(s).`
+        `Enrolled ${autopilotRun.enrolled_count}; processed ${autopilotRun.processed_count} cadence run(s) across ${autopilotRun.contact_groups_processed} contact batch(es); ${autopilotRun.batched_skips} duplicate reminder(s) skipped.`
       );
     } catch (autopilotError) {
       const message =
@@ -152,6 +154,8 @@ export async function GET(request: Request) {
       dpdp_purged_count: purgeResults.length,
       enrolled_count: autopilotRun.enrolled_count,
       processed_count: autopilotRun.processed_count,
+      contact_groups_processed: autopilotRun.contact_groups_processed,
+      batched_skips: autopilotRun.batched_skips,
       sent_count: sentCount,
       monetization_count: monetizationCount,
       skipped_idempotent_count: skippedIdempotentCount,
@@ -173,6 +177,8 @@ export async function GET(request: Request) {
       dpdp_purge_failures: purgeFailures,
       enrolled_count: autopilotRun.enrolled_count,
       processed_count: autopilotRun.processed_count,
+      contact_groups_processed: autopilotRun.contact_groups_processed,
+      batched_skips: autopilotRun.batched_skips,
       sent_count: sentCount,
       monetization_count: monetizationCount,
       skipped_idempotent_count: skippedIdempotentCount,

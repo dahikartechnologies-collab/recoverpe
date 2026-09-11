@@ -14,7 +14,7 @@ export function getAppBaseUrl(): string {
     return `https://${vercelUrl.replace(/\/$/, "")}`;
   }
 
-  return "http://localhost:3000";
+  return "https://www.recoverpe.com";
 }
 
 export function getPayPageUrl(ledgerId: string): string {

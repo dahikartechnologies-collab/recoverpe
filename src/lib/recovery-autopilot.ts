@@ -11,7 +11,12 @@ import {
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
-import { parseDateOnly, RECOVERPE_TIMEZONE } from "@/lib/timezone";
+import {
+  getIstDayBounds,
+  getTodayDateStringInIst,
+  parseDateOnly,
+  RECOVERPE_TIMEZONE,
+} from "@/lib/timezone";
 import { SubscriptionPlan } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -21,10 +26,127 @@ export interface ProcessAutopilotRunResult {
   cadence_run_id: string;
   ledger_id: string;
   step_index: number;
-  status: "completed" | "halted" | "skipped_curfew" | "skipped_idempotent" | "failed";
+  status:
+    | "completed"
+    | "halted"
+    | "skipped_curfew"
+    | "skipped_idempotent"
+    | "skipped_contact_batch"
+    | "failed";
   message?: string;
   monetization_flagged?: boolean;
   reminder_sent?: boolean;
+}
+
+export function getAutopilotContactGroupKey(
+  contactId: string,
+  businessId: string | null
+): string {
+  return `${contactId}:${businessId ?? "personal"}`;
+}
+
+export function computeTotalOutstandingBalance(
+  ledgers: AutopilotLedgerContext[]
+): number {
+  return ledgers.reduce(
+    (sum, ledger) => sum + Number(ledger.balance_due ?? 0),
+    0
+  );
+}
+
+export function pickPrimaryReminderLedger(
+  ledgers: AutopilotLedgerContext[]
+): AutopilotLedgerContext | null {
+  if (ledgers.length === 0) {
+    return null;
+  }
+
+  const sorted = [...ledgers].sort((left, right) => {
+    const dueCompare = left.due_date.localeCompare(right.due_date);
+
+    if (dueCompare !== 0) {
+      return dueCompare;
+    }
+
+    return Number(right.balance_due) - Number(left.balance_due);
+  });
+
+  return sorted[0] ?? null;
+}
+
+export async function fetchUnpaidLedgersForContactScope(
+  supabase: SupabaseClient,
+  contactId: string,
+  businessId: string | null
+): Promise<AutopilotLedgerContext[]> {
+  let query = supabase
+    .from("ledgers")
+    .select(
+      `
+      id,
+      user_id,
+      contact_id,
+      business_id,
+      due_date,
+      balance_due,
+      status,
+      communication_paused,
+      communication_autopilot,
+      legal_escalation_ready
+    `
+    )
+    .eq("contact_id", contactId)
+    .gt("balance_due", 0)
+    .not("status", "in", '("paid","cancelled","refunded")');
+
+  if (businessId) {
+    query = query.eq("business_id", businessId);
+  } else {
+    query = query.is("business_id", null);
+  }
+
+  const { data, error } = await query.order("due_date", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Failed to fetch unpaid ledgers.");
+  }
+
+  return (data ?? []) as AutopilotLedgerContext[];
+}
+
+export async function wasContactRemindedToday(
+  supabase: SupabaseClient,
+  contactId: string,
+  businessId: string | null,
+  referenceDate: string = getTodayDateStringInIst()
+): Promise<boolean> {
+  const unpaidLedgers = await fetchUnpaidLedgersForContactScope(
+    supabase,
+    contactId,
+    businessId
+  );
+  const ledgerIds = unpaidLedgers.map((ledger) => ledger.id);
+
+  if (ledgerIds.length === 0) {
+    return false;
+  }
+
+  const { startIso, endIso } = getIstDayBounds(referenceDate);
+
+  const { data, error } = await supabase
+    .from("communication_logs")
+    .select("id")
+    .in("ledger_id", ledgerIds)
+    .in("type", ["whatsapp_reminder", "email_reminder"])
+    .gte("executed_at", startIso)
+    .lte("executed_at", endIso)
+    .limit(1);
+
+  if (error) {
+    throw new Error(error.message || "Failed to check contact reminder dedup.");
+  }
+
+  return (data?.length ?? 0) > 0;
 }
 
 type DueCadenceRunRow = CadenceRun & {
@@ -268,9 +390,18 @@ export async function processAutopilotRun(
     ledger: AutopilotLedgerContext;
     business: AutopilotBusinessContext | null;
     subscriptionPlan: SubscriptionPlan;
+    skipReminderDispatch?: boolean;
+    totalOutstandingBalance?: number;
   }
 ): Promise<ProcessAutopilotRunResult> {
-  const { cadenceRun, ledger, business, subscriptionPlan } = input;
+  const {
+    cadenceRun,
+    ledger,
+    business,
+    subscriptionPlan,
+    skipReminderDispatch = false,
+    totalOutstandingBalance,
+  } = input;
   const schedule = resolveAutopilotSchedule(subscriptionPlan, business);
 
   if (
@@ -355,6 +486,31 @@ export async function processAutopilotRun(
 
   const tone = resolveAutopilotTone(cadenceRun.step_index);
 
+  if (skipReminderDispatch) {
+    const nextStepIndex = cadenceRun.step_index + 1;
+
+    if (nextStepIndex < schedule.length) {
+      const nextRunAt = computeNextRunAt(ledger.due_date, schedule[nextStepIndex]);
+      await scheduleCadenceStep(supabase, ledger.id, nextStepIndex, nextRunAt);
+    } else {
+      await scheduleCadenceStep(
+        supabase,
+        ledger.id,
+        schedule.length,
+        new Date().toISOString()
+      );
+    }
+
+    return {
+      cadence_run_id: cadenceRun.id,
+      ledger_id: ledger.id,
+      step_index: cadenceRun.step_index,
+      status: "skipped_contact_batch",
+      message:
+        "Cadence advanced without duplicate WhatsApp — contact already reminded today or batched.",
+    };
+  }
+
   const dispatchResult = await dispatchOmnichannelMessage({
     supabase,
     userId: ledger.user_id,
@@ -365,7 +521,7 @@ export async function processAutopilotRun(
       subscriptionPlan,
       autopilotStep: cadenceRun.step_index,
       autopilotTone: tone,
-      // WhatsApp delivery uses Meta template recoverpe_autopilot_reminder (body-only).
+      totalOutstandingBalance,
     },
   });
 

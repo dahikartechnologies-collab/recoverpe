@@ -31,6 +31,7 @@ export interface OmnichannelMessagePayload {
   legalNoticeDocumentLink?: string | null;
   autopilotStep?: number;
   autopilotTone?: "polite" | "firm" | "critical";
+  totalOutstandingBalance?: number;
   paymentReceipt?: {
     amountReceived: number;
     netOutstanding: number;
@@ -95,6 +96,7 @@ async function tryWhatsAppDispatch(input: {
   invoiceDocumentLink: string | null;
   legalNoticeDocumentLink: string | null;
   autopilotTone?: "polite" | "firm" | "critical";
+  totalOutstandingBalance?: number;
 }): Promise<DispatchOmnichannelMessageResult | null> {
   if (isTraiCurfewActive()) {
     return null;
@@ -139,6 +141,7 @@ async function tryWhatsAppDispatch(input: {
         subscriptionPlan: input.subscriptionPlan,
         invoiceDocumentLink: input.invoiceDocumentLink,
         autopilotTone: input.autopilotTone,
+        totalOutstandingBalance: input.totalOutstandingBalance,
       });
 
   const sendResult = await sendWhatsAppMessage(draft);
@@ -330,6 +333,7 @@ export async function dispatchOmnichannelMessage(
         invoiceDocumentLink,
         legalNoticeDocumentLink,
         autopilotTone: messagePayload.autopilotTone,
+        totalOutstandingBalance: messagePayload.totalOutstandingBalance,
       });
 
       if (whatsappResult) {
