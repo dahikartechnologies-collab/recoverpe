@@ -98,6 +98,15 @@ function getPublicOnboardLimiter(): Ratelimit | null {
   return getLimiter("public-onboard", "public-onboard", 10, "1 m");
 }
 
+/**
+ * Public debtor-facing pages (/pay, /portal, /q) are unauthenticated and carry
+ * guessable-ish identifiers, so they get their own bucket. The ceiling is well
+ * above human browsing but low enough to make token enumeration impractical.
+ */
+function getPublicPageLimiter(): Ratelimit | null {
+  return getLimiter("public-page", "public-page", 60, "1 m");
+}
+
 function getPayVerifyUploadLimiter(): Ratelimit | null {
   return getLimiter("pay-verify-upload", "pay-verify-upload", 5, "1 h");
 }
@@ -187,21 +196,18 @@ function handleLimiterFailure(
   return redisUnavailableResponse(costBearing);
 }
 
-export async function enforceGlobalApiRateLimit(
-  request: Request
+async function enforceIpRateLimit(
+  request: Request,
+  limiter: Ratelimit | null
 ): Promise<NextResponse | null> {
-  const limiter = getGlobalApiLimiter();
-
+  // Fail closed in production: an unreachable limiter must not silently
+  // disable the only brute-force and DDoS control in front of the app.
   if (!limiter) {
-    console.warn(
-      "[Recoverpe Rate Limit] Redis not configured — skipping edge global API rate limit."
-    );
-    return null;
+    return redisUnavailableResponse(false);
   }
 
   try {
-    const ip = getClientIp(request);
-    const result = await limiter.limit(ip);
+    const result = await limiter.limit(getClientIp(request));
 
     if (!result.success) {
       return rateLimitExceededResponse(result.reset);
@@ -209,12 +215,20 @@ export async function enforceGlobalApiRateLimit(
 
     return null;
   } catch (error) {
-    console.error(
-      "[Recoverpe Rate Limit] Edge global limiter failed — fail-open:",
-      error instanceof Error ? error.message : error
-    );
-    return null;
+    return handleLimiterFailure(error, false);
   }
+}
+
+export async function enforceGlobalApiRateLimit(
+  request: Request
+): Promise<NextResponse | null> {
+  return enforceIpRateLimit(request, getGlobalApiLimiter());
+}
+
+export async function enforcePublicPageRateLimit(
+  request: Request
+): Promise<NextResponse | null> {
+  return enforceIpRateLimit(request, getPublicPageLimiter());
 }
 
 export async function enforceVapiCallRateLimit(

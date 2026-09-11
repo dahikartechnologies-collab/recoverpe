@@ -13,8 +13,17 @@ import {
   SubscriptionPurchaseType,
 } from "@/types";
 import {
+  getPurchaseProduct,
   isSubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
+import {
+  trackCheckoutStarted,
+  trackPurchaseClientSide,
+} from "@/lib/analytics-events";
+
+function purchaseValueInr(purchaseType: PurchaseType): number {
+  return getPurchaseProduct(purchaseType).amountPaise / 100;
+}
 
 const RAZORPAY_SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -190,6 +199,13 @@ export async function startRazorpayCheckout({
   onSuccess,
   onDismiss,
 }: StartCheckoutInput): Promise<void> {
+  // Single entry point for every SKU, including subscriptions delegated below,
+  // so InitiateCheckout fires exactly once per attempt.
+  trackCheckoutStarted({
+    purchaseType,
+    valueInr: purchaseValueInr(purchaseType),
+  });
+
   if (isSubscriptionPurchaseType(purchaseType)) {
     return startRazorpaySubscriptionCheckout({
       purchaseType,
@@ -247,6 +263,13 @@ export async function startRazorpayCheckout({
           const fulfillment = await fulfillRazorpayOrderAfterCheckout(
             orderResponse.order.id
           );
+          // GA4 purchase is emitted server-side from the webhook; this is the
+          // Pixel counterpart, which has no server-side path today.
+          trackPurchaseClientSide({
+            purchaseType,
+            valueInr: orderResponse.order.amount / 100,
+            transactionId: orderResponse.order.id,
+          });
           onSuccess?.(fulfillment.micro_fulfillment ?? null);
           resolve();
         } catch (fulfillError) {
@@ -327,6 +350,11 @@ export async function startRazorpaySubscriptionCheckout({
         color: "#0A0A0A",
       },
       handler: () => {
+        trackPurchaseClientSide({
+          purchaseType,
+          valueInr: purchaseValueInr(purchaseType),
+          transactionId: subscriptionResponse.subscription.id,
+        });
         onSuccess?.();
         resolve();
       },

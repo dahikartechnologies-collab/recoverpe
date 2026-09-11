@@ -14,6 +14,9 @@ export interface ReconciliationQueueEntry {
   ledger_id: string | null;
   suggested_invoice: string | null;
   suggested_invoice_balance: number | null;
+  /** Short-lived signed URL, or null when the image could not be retained. */
+  proof_url: string | null;
+  source: string;
 }
 
 export async function fetchReconciliations(

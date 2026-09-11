@@ -134,6 +134,40 @@ export async function uploadPaymentProofScreenshot(
   return filePath;
 }
 
+const WHATSAPP_PROOF_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
+
+/**
+ * Retains an inbound WhatsApp payment screenshot. Meta media URLs expire within
+ * minutes, so the bytes must be copied to our own bucket at webhook time or the
+ * reviewer has nothing to look at.
+ *
+ * Unlike the debtor portal upload this does not re-sniff magic bytes: the image
+ * arrives over an authenticated Meta Graph download on an HMAC-verified webhook,
+ * and Meta already constrains the media type. HEIC has no stable signature in
+ * the first bytes, so sniffing would reject legitimate iPhone screenshots.
+ */
+export async function uploadWhatsAppPaymentProof(
+  contactId: string,
+  fileBuffer: Buffer,
+  mimeType: string
+): Promise<string> {
+  const extension = WHATSAPP_PROOF_EXTENSIONS[mimeType] ?? "jpg";
+  const filePath = `secure/payment-proofs/whatsapp/${contactId}/${Date.now()}.${extension}`;
+  const file = requireStorageBucket().file(filePath);
+
+  await file.save(fileBuffer, {
+    metadata: { contentType: mimeType },
+  });
+
+  return filePath;
+}
+
 const MAX_EVIDENCE_FILE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_EVIDENCE_CONTENT_TYPES = new Set([
   "application/pdf",

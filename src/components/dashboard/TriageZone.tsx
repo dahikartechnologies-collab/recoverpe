@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/gst";
@@ -121,14 +122,12 @@ export function TriageZone({
                       </span>{" "}
                       · {formatTimestamp(alert.submitted_at)}
                     </p>
-                    <a
-                      href={alert.screenshot_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <Link
+                      href="/dashboard/reconciliations"
                       className="focus-ring mt-3 inline-block rounded-sm text-sm font-medium text-recoverpe-black underline underline-offset-2 transition-all duration-200 ease-out hover:text-recoverpe-grey-medium"
                     >
-                      View payment screenshot
-                    </a>
+                      Review payment proof
+                    </Link>
                   </div>
                 </div>
               </li>

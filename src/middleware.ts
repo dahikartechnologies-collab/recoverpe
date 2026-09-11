@@ -5,7 +5,10 @@ import {
   AUTH_SESSION_COOKIE,
 } from "@/lib/auth-cookies";
 import { isPartnerContextFromCookies } from "@/lib/partner-context";
-import { enforceGlobalApiRateLimit } from "@/lib/rate-limit";
+import {
+  enforceGlobalApiRateLimit,
+  enforcePublicPageRateLimit,
+} from "@/lib/rate-limit";
 import { WORKSPACE_USER_COOKIE } from "@/lib/cookie-constants";
 
 function redirectTo(request: NextRequest, pathname: string): NextResponse {
@@ -94,6 +97,21 @@ function applyPartnerApiGuards(request: NextRequest): NextResponse | null {
   return null;
 }
 
+const PUBLIC_RATE_LIMITED_PREFIXES = ["/pay/", "/portal/", "/q/"];
+
+function isPublicRateLimitedPath(pathname: string): boolean {
+  return PUBLIC_RATE_LIMITED_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+}
+
+function serviceUnavailableResponse(): NextResponse {
+  return NextResponse.json(
+    { error: "Service temporarily unavailable. Please try again later." },
+    { status: 503 }
+  );
+}
+
 export async function middleware(request: NextRequest) {
   try {
     const roleGuardResponse = applyRoleRouteGuards(request);
@@ -114,21 +132,31 @@ export async function middleware(request: NextRequest) {
       return partnerApiGuardResponse;
     }
 
-    if (!request.nextUrl.pathname.startsWith("/api/")) {
+    const pathname = request.nextUrl.pathname;
+    const isApiPath = pathname.startsWith("/api/");
+    const isPublicPath = isPublicRateLimitedPath(pathname);
+
+    if (!isApiPath && !isPublicPath) {
       return NextResponse.next();
     }
 
     try {
-      const rateLimitResponse = await enforceGlobalApiRateLimit(request);
+      const rateLimitResponse = isApiPath
+        ? await enforceGlobalApiRateLimit(request)
+        : await enforcePublicPageRateLimit(request);
 
       if (rateLimitResponse) {
         return rateLimitResponse;
       }
     } catch (error) {
+      // The limiter already fails closed internally; reaching here means the
+      // limiter itself threw, so treat the request as unprotected and reject.
       console.error(
-        "[Recoverpe Middleware] Rate limiter failed — fail-open:",
+        "[Recoverpe Middleware] Rate limiter threw — failing closed:",
         error instanceof Error ? error.message : error
       );
+
+      return serviceUnavailableResponse();
     }
 
     return NextResponse.next();
@@ -149,5 +177,8 @@ export const config = {
     "/dashboard/:path*",
     "/kiosk",
     "/kiosk/:path*",
+    "/pay/:path*",
+    "/portal/:path*",
+    "/q/:path*",
   ],
 };

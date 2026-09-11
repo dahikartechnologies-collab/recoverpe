@@ -234,8 +234,16 @@ export async function POST(request: Request) {
       body.upi_vpa = resolvedUpiVpa;
     }
 
+    // Activation signal for the acquisition funnel: a user who records their
+    // first receivable has crossed from signup into real usage.
+    const priorLedgerCount = await countUserLedgers(
+      supabase,
+      contextResult.effectiveUserId
+    );
+    const isFirstLedger = priorLedgerCount === 0;
+
     if (userRow.subscription_plan === "free") {
-      const ledgerCount = await countUserLedgers(supabase, contextResult.effectiveUserId);
+      const ledgerCount = priorLedgerCount;
 
       if (ledgerCount >= FREE_PLAN_LEDGER_LIMIT) {
         return NextResponse.json(
@@ -478,12 +486,18 @@ export async function POST(request: Request) {
 
       revalidateDashboardData(contextResult.effectiveUserId);
       refreshContactRiskScoreAsync(supabase, contact.id);
-      return NextResponse.json({ ledger: updatedLedger as Ledger }, { status: 201 });
+      return NextResponse.json(
+        { ledger: updatedLedger as Ledger, is_first_ledger: isFirstLedger },
+        { status: 201 }
+      );
     }
 
     revalidateDashboardData(contextResult.effectiveUserId);
     refreshContactRiskScoreAsync(supabase, contact.id);
-    return NextResponse.json({ ledger: finalLedger as Ledger }, { status: 201 });
+    return NextResponse.json(
+      { ledger: finalLedger as Ledger, is_first_ledger: isFirstLedger },
+      { status: 201 }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create ledger entry.";

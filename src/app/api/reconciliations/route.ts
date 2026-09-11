@@ -5,6 +5,7 @@ import {
 } from "@/lib/api-auth";
 import { recordCommunicationSafely } from "@/lib/communication-logs";
 import { revalidateDashboardData } from "@/lib/dashboard-cache";
+import { createShortLivedSignedUrl } from "@/lib/firebase-storage-admin";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
@@ -32,6 +33,8 @@ export interface ReconciliationQueueEntry {
   ledger_id: string | null;
   suggested_invoice: string | null;
   suggested_invoice_balance: number | null;
+  proof_url: string | null;
+  source: string;
 }
 
 interface ContactJoin {
@@ -44,6 +47,27 @@ interface LedgerJoin {
   id: string;
   invoice_number: string | null;
   balance_due: number;
+}
+
+/**
+ * Proof objects live in a private bucket. The queue renders them with a plain
+ * <img>, which cannot send a bearer token, so each row carries its own
+ * short-lived signed URL instead of a durable public link.
+ */
+async function signProofUrl(storagePath: string | null): Promise<string | null> {
+  if (!storagePath) {
+    return null;
+  }
+
+  try {
+    return await createShortLivedSignedUrl(storagePath);
+  } catch (error) {
+    console.error(
+      "[RECONCILIATION] Failed to sign proof URL:",
+      error instanceof Error ? error.message : error
+    );
+    return null;
+  }
 }
 
 function firstOrNull<T>(value: T | T[] | null | undefined): T | null {
@@ -83,7 +107,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
       .from("reconciliations")
       .select(
-        `id, status, extracted_utr, extracted_amount, extracted_date, created_at, contact_id, ledger_id,
+        `id, status, extracted_utr, extracted_amount, extracted_date, created_at, contact_id, ledger_id, proof_url, source,
          contacts ( id, name, phone_number ),
          ledgers ( id, invoice_number, balance_due )`
       )
@@ -96,8 +120,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const reconciliations: ReconciliationQueueEntry[] = (data ?? []).map(
-      (row) => {
+    const reconciliations: ReconciliationQueueEntry[] = await Promise.all(
+      (data ?? []).map(async (row) => {
         const contact = firstOrNull(
           row.contacts as unknown as ContactJoin | ContactJoin[] | null
         );
@@ -126,8 +150,10 @@ export async function GET(request: Request) {
               })
             : null,
           suggested_invoice_balance: ledger ? Number(ledger.balance_due) : null,
+          proof_url: await signProofUrl(row.proof_url as string | null),
+          source: (row.source as string | null) ?? "whatsapp",
         };
-      }
+      })
     );
 
     return NextResponse.json({ reconciliations });

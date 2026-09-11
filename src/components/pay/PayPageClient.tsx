@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import {
+  trackPayPageViewed,
+  trackPaymentClaimed,
+} from "@/lib/analytics-events";
 import { formatCurrency } from "@/lib/gst";
 import { generateUPIIntent, generateUPIQRCodeBase64 } from "@/lib/upi";
 import { PublicPayLedgerData } from "@/types";
@@ -54,6 +58,7 @@ function PaymentProofUpload({ ledgerId, balanceDue }: PaymentProofUploadProps) {
 
       setMessage(body.message ?? "Payment proof submitted for verification.");
       setFile(null);
+      trackPaymentClaimed({ amountInr: claimedAmount });
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -115,6 +120,12 @@ export function PayPageClient({ data }: PayPageClientProps) {
 
   const merchantName = data.business_name ?? "Recoverpe Merchant";
   const transactionReference = data.invoice_number ?? data.ledger_id;
+
+  // Top of the debtor funnel. Fires once per mount; the ledger id is
+  // deliberately not sent to third parties.
+  useEffect(() => {
+    trackPayPageViewed({ amountDueInr: data.balance_due });
+  }, [data.balance_due]);
 
   const normalizedAmount = useMemo(
     () => clampPaymentAmount(paymentAmount, data.balance_due),

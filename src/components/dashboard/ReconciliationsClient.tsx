@@ -17,6 +17,108 @@ interface ToastState {
   variant: "success" | "error";
 }
 
+interface ProofPreview {
+  url: string;
+  contactName: string;
+}
+
+function ProofThumbnail({
+  entry,
+  onOpen,
+}: {
+  entry: ReconciliationQueueEntry;
+  onOpen: () => void;
+}) {
+  if (!entry.proof_url) {
+    return (
+      <div className="flex h-14 w-14 items-center justify-center rounded-sm border border-dashed border-recoverpe-grey-light text-center text-[10px] leading-tight text-recoverpe-grey-medium">
+        No image
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="focus-ring block h-14 w-14 overflow-hidden rounded-sm border border-recoverpe-grey-light transition-all duration-200 ease-out hover:opacity-80"
+      aria-label={`View payment proof from ${entry.contact_name ?? "customer"}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset */}
+      <img
+        src={entry.proof_url}
+        alt=""
+        className="h-full w-full object-cover"
+        loading="lazy"
+      />
+    </button>
+  );
+}
+
+function ProofViewer({
+  preview,
+  onClose,
+}: {
+  preview: ProofPreview;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Payment proof"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-recoverpe-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-full w-full max-w-2xl overflow-auto rounded-lg border border-recoverpe-grey-light bg-recoverpe-white"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-recoverpe-grey-light px-4 py-3">
+          <p className="text-sm font-medium text-recoverpe-black">
+            Payment proof — {preview.contactName}
+          </p>
+          <div className="flex items-center gap-2">
+            <a
+              href={preview.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus-ring rounded-sm text-sm font-medium text-recoverpe-black underline underline-offset-2"
+            >
+              Open original
+            </a>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              className="min-h-9 px-3 py-1.5 text-xs"
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset */}
+        <img
+          src={preview.url}
+          alt={`Payment proof from ${preview.contactName}`}
+          className="w-full bg-recoverpe-grey-light/30 object-contain"
+        />
+      </div>
+    </div>
+  );
+}
+
 function formatSubmittedAt(value: string): string {
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
@@ -37,6 +139,7 @@ export function ReconciliationsClient() {
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [preview, setPreview] = useState<ProofPreview | null>(null);
 
   const loadQueue = useCallback(async () => {
     setIsLoading(true);
@@ -126,6 +229,9 @@ export function ReconciliationsClient() {
             <thead className="bg-recoverpe-grey-light/40">
               <tr>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">
+                  Proof
+                </th>
+                <th className="px-4 py-3 font-medium text-recoverpe-black">
                   Received
                 </th>
                 <th className="px-4 py-3 font-medium text-recoverpe-black">
@@ -153,6 +259,18 @@ export function ReconciliationsClient() {
 
                 return (
                   <tr key={entry.id}>
+                    <td className="px-4 py-3">
+                      <ProofThumbnail
+                        entry={entry}
+                        onOpen={() =>
+                          entry.proof_url &&
+                          setPreview({
+                            url: entry.proof_url,
+                            contactName: entry.contact_name ?? "Unknown",
+                          })
+                        }
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
                       {formatSubmittedAt(entry.created_at)}
                     </td>
@@ -226,6 +344,10 @@ export function ReconciliationsClient() {
           </table>
         </div>
       )}
+
+      {preview ? (
+        <ProofViewer preview={preview} onClose={() => setPreview(null)} />
+      ) : null}
 
       {toast ? (
         <Toast

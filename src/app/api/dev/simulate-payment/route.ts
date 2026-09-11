@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
+import { isDevelopmentAppEnv } from "@/lib/app-env";
 import { requireDiagnosticsAccess } from "@/lib/diagnostics/access";
 import { processRazorpayVirtualAccountCredit } from "@/lib/payments/razorpay-webhook-handler";
 import { RazorpaySmartCollectWebhookPayload } from "@/lib/reconciliation/razorpay-smart-collect";
@@ -9,6 +10,12 @@ import { SimulatePaymentPayload } from "@/types";
 
 export async function POST(request: Request) {
   try {
+    // This route credits real wallets. Super-admin access is not a sufficient
+    // guard — the endpoint must not exist outside a development deployment.
+    if (!isDevelopmentAppEnv()) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+
     const access = await requireDiagnosticsAccess(request);
 
     if ("error" in access) {

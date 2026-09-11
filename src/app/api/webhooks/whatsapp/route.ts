@@ -3,9 +3,14 @@ import {
   MetaStatusUpdate,
   applyWhatsAppDeliveryStatuses,
 } from "@/lib/communication-logs";
+import { captureHandledError } from "@/lib/observability";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { processInboundWhatsAppMessage } from "@/lib/whatsapp/inbound-payment-responder";
 import { processInboundPaymentProof } from "@/lib/whatsapp/payment-proof";
+import {
+  readMetaSignatureHeader,
+  verifyMetaWebhookSignature,
+} from "@/lib/whatsapp/verify-signature";
 
 export const dynamic = "force-dynamic";
 // Image intake downloads media from Meta and then runs vision inference, which
@@ -42,7 +47,14 @@ export async function GET(request: Request) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  const myVerifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN;
+  const myVerifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN?.trim();
+
+  if (!myVerifyToken) {
+    console.error(
+      "[WHATSAPP WEBHOOK] META_WHATSAPP_VERIFY_TOKEN is not configured."
+    );
+    return new NextResponse("Forbidden", { status: 403 });
+  }
 
   if (mode === "subscribe" && token === myVerifyToken) {
     return new NextResponse(challenge, { status: 200 });
@@ -51,8 +63,25 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // Read the body as text and verify before parsing: an unsigned payload must
+  // never reach the handlers that create reconciliations or send messages.
+  const rawBody = await request.text();
+  const signature = verifyMetaWebhookSignature(
+    rawBody,
+    readMetaSignatureHeader(request)
+  );
+
+  if (!signature.ok) {
+    console.error("[WHATSAPP WEBHOOK] Rejected payload:", signature.reason);
+
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 }
+    );
+  }
+
   try {
-    const body = (await request.json()) as MetaWebhookBody;
+    const body = JSON.parse(rawBody) as MetaWebhookBody;
 
     const value = body?.entry?.[0]?.changes?.[0]?.value;
 
@@ -120,10 +149,9 @@ export async function POST(request: Request) {
       externalMessageId: message.id ?? null,
     });
   } catch (error) {
-    console.error(
-      "[WHATSAPP WEBHOOK] Failed to process inbound message:",
-      error instanceof Error ? error.message : error
-    );
+    // Meta retries non-200 responses, which would re-run inference and re-reply
+    // to the customer, so the failure is absorbed and reported instead.
+    captureHandledError("whatsapp.webhook", error);
   }
 
   return new NextResponse("EVENT_RECEIVED", { status: 200 });

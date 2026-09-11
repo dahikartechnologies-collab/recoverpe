@@ -87,7 +87,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("ledgers")
-      .select("id, user_id, balance_due, status")
+      .select("id, user_id, business_id, contact_id, balance_due, status")
       .eq("id", ledgerId)
       .maybeSingle();
 
@@ -121,16 +121,26 @@ export async function POST(request: Request, context: RouteContext) {
       }
     }
 
+    // Portal uploads land in the same review queue as WhatsApp screenshots.
+    // Two parallel queues meant a merchant had to check both, and only one of
+    // them could actually settle a ledger.
     const { data: verification, error: insertError } = await supabase
-      .from("payment_verifications")
+      .from("reconciliations")
       .insert({
-        ledger_id: ledgerId,
         user_id: ledgerRow.user_id,
-        screenshot_url: screenshotUrl,
-        claimed_amount: claimedAmount,
-        status: "pending",
+        business_id: ledgerRow.business_id,
+        contact_id: ledgerRow.contact_id,
+        ledger_id: ledgerId,
+        proof_url: screenshotUrl,
+        source: "portal_upload",
+        extracted_amount: claimedAmount,
+        raw_extraction: {
+          claimed_amount: claimedAmount,
+          submitted_via: "pay_page",
+        },
+        status: "pending_review",
       })
-      .select("id, ledger_id, status, submitted_at")
+      .select("id, ledger_id, status, created_at")
       .single();
 
     if (insertError || !verification) {

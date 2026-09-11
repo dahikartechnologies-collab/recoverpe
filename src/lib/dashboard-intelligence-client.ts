@@ -24,7 +24,7 @@ export interface PendingVerificationAlert {
   contact_name: string;
   balance_due: number;
   claimed_amount: number | null;
-  screenshot_url: string;
+  screenshot_url: string | null;
   submitted_at: string;
 }
 

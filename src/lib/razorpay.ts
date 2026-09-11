@@ -550,17 +550,14 @@ export async function fulfillRazorpayOrder(
     );
   }
 
-  if (
-    purchaseType === "legal_notice_999" ||
-    purchaseType === "subscription_premium"
-  ) {
-    emitGa4PurchaseEvent({
-      userId: lockedOrder.user_id,
-      transactionId: razorpayOrderId,
-      purchaseType,
-      valueInr: lockedOrder.amount_paise / 100,
-    });
-  }
+  // Every paid SKU is a conversion. Reaching here means the order moved
+  // created -> paid exactly once, so this cannot double-count on webhook replay.
+  emitGa4PurchaseEvent({
+    userId: lockedOrder.user_id,
+    transactionId: razorpayOrderId,
+    purchaseType,
+    valueInr: lockedOrder.amount_paise / 100,
+  });
 
   return {
     alreadyFulfilled: false,

@@ -4,6 +4,8 @@ import {
   getVertexAI,
 } from "@/lib/firebase-admin-vertexai";
 import { recordCommunicationSafely } from "@/lib/communication-logs";
+import { uploadWhatsAppPaymentProof } from "@/lib/firebase-storage-admin";
+import { captureHandledError } from "@/lib/observability";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import {
@@ -37,6 +39,7 @@ export interface PaymentProofExtraction {
 export interface WhatsAppMediaPayload {
   base64: string;
   mimeType: string;
+  buffer: Buffer;
 }
 
 /**
@@ -113,9 +116,12 @@ export async function fetchWhatsAppMedia(
     return null;
   }
 
+  const buffer = Buffer.from(arrayBuffer);
+
   return {
-    base64: Buffer.from(arrayBuffer).toString("base64"),
+    base64: buffer.toString("base64"),
     mimeType,
+    buffer,
   };
 }
 
@@ -186,10 +192,10 @@ export async function extractPaymentProof(
 
     return { extraction: parsePaymentProofExtraction(raw), raw };
   } catch (error) {
-    console.error(
-      `[WHATSAPP VISION FATAL ERROR] model=${modelId}:`,
-      error instanceof Error ? error.message : error
-    );
+    // A vision failure still produces a reviewable claim, so it is reported
+    // rather than thrown — but silent degradation here means every claim
+    // arrives blank, which must be visible in alerting.
+    captureHandledError("vertex.payment_proof_vision", error, { model: modelId });
     return { extraction: null, raw: null };
   }
 }
@@ -228,6 +234,7 @@ async function recordReconciliation(
   input: {
     externalMessageId: string | null;
     mediaId: string;
+    proofUrl: string | null;
     extraction: PaymentProofExtraction | null;
     raw: string | null;
   }
@@ -242,6 +249,8 @@ async function recordReconciliation(
     ledger_id: primaryLedgerId,
     external_message_id: input.externalMessageId,
     media_id: input.mediaId,
+    proof_url: input.proofUrl,
+    source: "whatsapp",
     extracted_utr: input.extraction?.utr ?? null,
     extracted_amount: input.extraction?.amount ?? null,
     extracted_date: toDateColumnValue(input.extraction?.date ?? null),
@@ -252,9 +261,22 @@ async function recordReconciliation(
     status: "pending_review",
   });
 
-  if (error) {
-    console.error("[RECONCILIATION] Failed to record claim:", error.message);
+  if (!error) {
+    return;
   }
+
+  // 23505 is the idempotency keys doing their job: the same wamid or the same
+  // UTR was already claimed for this merchant. Re-sending a screenshot is
+  // normal customer behaviour, not a failure worth alerting on.
+  if (error.code === "23505") {
+    console.log(
+      "[RECONCILIATION] Duplicate claim ignored for user:",
+      scope.contact.user_id
+    );
+    return;
+  }
+
+  console.error("[RECONCILIATION] Failed to record claim:", error.message);
 }
 
 export async function processInboundPaymentProof(
@@ -277,6 +299,25 @@ export async function processInboundPaymentProof(
     return;
   }
 
+  // Retain the image before inference. Meta's URL is dead within minutes, and a
+  // reviewer approving a settlement needs to see what the customer actually
+  // sent — an extraction failure must not also lose the evidence.
+  let proofUrl: string | null = null;
+
+  try {
+    proofUrl = await uploadWhatsAppPaymentProof(
+      scopes[0].contact.id,
+      media.buffer,
+      media.mimeType
+    );
+  } catch (uploadError) {
+    // Losing the image does not block the claim, but the reviewer will be
+    // approving blind — that degradation needs to page someone.
+    captureHandledError("reconciliation.proof_upload", uploadError, {
+      contact_id: scopes[0].contact.id,
+    });
+  }
+
   const { extraction, raw } = await extractPaymentProof(media);
 
   // One claim per merchant the customer owes: we cannot tell from a screenshot
@@ -285,6 +326,7 @@ export async function processInboundPaymentProof(
     await recordReconciliation(supabase, scope, {
       externalMessageId,
       mediaId,
+      proofUrl,
       extraction,
       raw,
     });

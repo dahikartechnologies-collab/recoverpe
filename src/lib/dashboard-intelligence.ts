@@ -24,7 +24,7 @@ export interface PendingVerificationAlert {
   contact_name: string;
   balance_due: number;
   claimed_amount: number | null;
-  screenshot_url: string;
+  screenshot_url: string | null;
   submitted_at: string;
 }
 
@@ -224,15 +224,18 @@ export async function fetchPendingVerificationAlerts(
   businessId: string | null,
   assignedToUserId?: string | null
 ): Promise<PendingVerificationAlert[]> {
+  // Reads the unified reconciliations queue. Portal uploads and WhatsApp
+  // screenshots both land here, so this alert now points at the one place a
+  // merchant can actually approve a claim.
   const { data, error } = await supabase
-    .from("payment_verifications")
+    .from("reconciliations")
     .select(
       `
       id,
       ledger_id,
-      claimed_amount,
-      screenshot_url,
-      submitted_at,
+      extracted_amount,
+      proof_url,
+      created_at,
       ledgers!inner (
         balance_due,
         business_id,
@@ -243,8 +246,8 @@ export async function fetchPendingVerificationAlerts(
     `
     )
     .eq("user_id", userId)
-    .eq("status", "pending")
-    .order("submitted_at", { ascending: false })
+    .eq("status", "pending_review")
+    .order("created_at", { ascending: false })
     .limit(10);
 
   if (error) {
@@ -254,9 +257,9 @@ export async function fetchPendingVerificationAlerts(
   type RawVerificationRow = {
     id: string;
     ledger_id: string;
-    claimed_amount: number | null;
-    screenshot_url: string;
-    submitted_at: string;
+    extracted_amount: number | null;
+    proof_url: string | null;
+    created_at: string;
     ledgers:
       | {
           balance_due: number;
@@ -315,9 +318,9 @@ export async function fetchPendingVerificationAlerts(
         contact_name: contactData?.name ?? "Unknown",
         balance_due: Number(ledgerData?.balance_due ?? 0),
         claimed_amount:
-          row.claimed_amount != null ? Number(row.claimed_amount) : null,
-        screenshot_url: row.screenshot_url,
-        submitted_at: row.submitted_at,
+          row.extracted_amount != null ? Number(row.extracted_amount) : null,
+        screenshot_url: row.proof_url,
+        submitted_at: row.created_at,
       };
     });
 }

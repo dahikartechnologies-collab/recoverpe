@@ -7,6 +7,7 @@ import {
   RectifyLedgerPayload,
   WorkspaceMode,
 } from "@/types";
+import { trackLedgerCreated } from "@/lib/analytics-events";
 import { getAuthHeaders, getAuthHeadersForUpload } from "@/lib/auth-headers";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 
@@ -33,6 +34,7 @@ export async function createLedgerEntry(
     ledger?: Ledger;
     error?: string;
     upgrade_required?: boolean;
+    is_first_ledger?: boolean;
   }>(response);
 
   if (response.status === 402 && body.upgrade_required) {
@@ -45,6 +47,11 @@ export async function createLedgerEntry(
   if (!response.ok || !body.ledger) {
     throw new Error(body.error || "Failed to create ledger entry.");
   }
+
+  trackLedgerCreated({
+    valueInr: Number(body.ledger.total_amount),
+    isFirstLedger: Boolean(body.is_first_ledger),
+  });
 
   return body.ledger;
 }
