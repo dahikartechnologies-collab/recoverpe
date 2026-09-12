@@ -69,6 +69,7 @@ export type VertexPromptInput = string | VertexPart[];
 export interface VertexGenerationConfig {
   responseMimeType?: string;
   temperature?: number;
+  systemInstruction?: string;
 }
 
 function toRequestParts(prompt: VertexPromptInput) {
@@ -108,13 +109,21 @@ async function generateVertexContent(
       "Content-Type": "application/json; charset=utf-8",
     },
     body: JSON.stringify({
+      ...(generationConfig?.systemInstruction
+        ? {
+            systemInstruction: {
+              parts: [{ text: generationConfig.systemInstruction }],
+            },
+          }
+        : {}),
       contents: [
         {
           role: "user",
           parts: toRequestParts(prompt),
         },
       ],
-      ...(generationConfig
+      ...(generationConfig?.responseMimeType ||
+      generationConfig?.temperature !== undefined
         ? {
             generationConfig: {
               ...(generationConfig.responseMimeType

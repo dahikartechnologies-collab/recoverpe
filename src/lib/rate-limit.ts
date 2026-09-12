@@ -112,16 +112,30 @@ function getPayVerifyUploadLimiter(): Ratelimit | null {
 }
 
 /**
- * Vertex text + vision on the inbound WhatsApp webhook. Shared bucket so a
- * debtor cannot burn Gemini by alternating "hi" and screenshots.
+ * Vertex on the inbound WhatsApp webhook. Text and vision are separate
+ * budgets so screenshots cannot exhaust conversational replies.
  */
-export const WHATSAPP_AI_INFERENCE_LIMIT = 5;
+export const WHATSAPP_AI_INFERENCE_LIMIT = 20;
+export const WHATSAPP_AI_VISION_INFERENCE_LIMIT = 6;
 export const WHATSAPP_AI_INFERENCE_WINDOW = "1 h" as const;
 
-function getWhatsappAiInferenceLimiter(): Ratelimit | null {
+export type WhatsAppAiInferenceKind = "text" | "vision";
+
+function getWhatsappAiInferenceLimiter(
+  kind: WhatsAppAiInferenceKind
+): Ratelimit | null {
+  if (kind === "vision") {
+    return getLimiter(
+      "whatsapp-ai-vision",
+      "whatsapp-ai-vision",
+      WHATSAPP_AI_VISION_INFERENCE_LIMIT,
+      WHATSAPP_AI_INFERENCE_WINDOW
+    );
+  }
+
   return getLimiter(
-    "whatsapp-ai",
-    "whatsapp-ai",
+    "whatsapp-ai-text",
+    "whatsapp-ai-text",
     WHATSAPP_AI_INFERENCE_LIMIT,
     WHATSAPP_AI_INFERENCE_WINDOW
   );
@@ -324,10 +338,11 @@ export async function enforceWhatsAppSendRateLimit(
 }
 
 export async function isWhatsAppAiInferenceAllowed(
-  rawFrom: string
+  rawFrom: string,
+  kind: WhatsAppAiInferenceKind = "text"
 ): Promise<boolean> {
-  const limiter = getWhatsappAiInferenceLimiter();
-  const key = whatsAppAiRateLimitKey(rawFrom);
+  const limiter = getWhatsappAiInferenceLimiter(kind);
+  const key = `${kind}:${whatsAppAiRateLimitKey(rawFrom)}`;
 
   if (!limiter) {
     return !shouldFailClosedOnMissingRedis();

@@ -321,7 +321,7 @@ export async function processInboundPaymentProof(
     return;
   }
 
-  if (!(await isWhatsAppAiInferenceAllowed(rawFrom))) {
+  if (!(await isWhatsAppAiInferenceAllowed(rawFrom, "vision"))) {
     console.warn("[WHATSAPP AI] Inference budget exhausted for inbound image.");
     await sendWhatsAppTextMessage(rawFrom, VISION_RATE_LIMIT_MESSAGE);
     return;
