@@ -9,11 +9,15 @@ import {
 } from "@/lib/firebase-admin-vertexai";
 import { recordCommunicationSafely } from "@/lib/communication-logs";
 import { retryAsync } from "@/lib/resilient-fetch";
+import { isWhatsAppAiInferenceAllowed } from "@/lib/rate-limit";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const PORTAL_LINK_TTL_DAYS = 7;
 const AI_FALLBACK_MESSAGE =
   "Hello! Please visit https://www.recoverpe.com to view your pending dues. - RecoverPe";
+
+export const AI_RATE_LIMIT_MESSAGE =
+  "We have received several messages from this number already. Please wait before sending more, or visit https://www.recoverpe.com to view your dues. - RecoverPe";
 
 interface ContactRow {
   id: string;
@@ -461,6 +465,12 @@ export async function processInboundWhatsAppMessage(
       })
     )
   );
+
+  if (!(await isWhatsAppAiInferenceAllowed(rawFrom))) {
+    console.warn("[WHATSAPP AI] Inference budget exhausted for inbound text.");
+    await sendWhatsAppTextMessage(rawFrom, AI_RATE_LIMIT_MESSAGE);
+    return;
+  }
 
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
   const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes);

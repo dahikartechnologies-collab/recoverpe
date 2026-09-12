@@ -8,6 +8,7 @@ import { uploadWhatsAppPaymentProof } from "@/lib/firebase-storage-admin";
 import { captureHandledError } from "@/lib/observability";
 import { resilientFetch, retryAsync } from "@/lib/resilient-fetch";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
+import { isWhatsAppAiInferenceAllowed } from "@/lib/rate-limit";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import {
   BusinessDebtScope,
@@ -29,6 +30,9 @@ const VISION_PROMPT =
 
 const ACKNOWLEDGEMENT_FALLBACK =
   "We received your payment proof. Our accounts team has logged this and will reconcile your ledger shortly. Thank you! - RecoverPe";
+
+const VISION_RATE_LIMIT_MESSAGE =
+  "We have already logged several payment proofs from this number. Please wait before sending more screenshots. Your earlier images are with the accounts team. - RecoverPe";
 
 export interface PaymentProofExtraction {
   utr: string | null;
@@ -314,6 +318,12 @@ export async function processInboundPaymentProof(
 
   if (scopes.length === 0) {
     console.log("[RECONCILIATION] Payment proof from unrecognised number.");
+    return;
+  }
+
+  if (!(await isWhatsAppAiInferenceAllowed(rawFrom))) {
+    console.warn("[WHATSAPP AI] Inference budget exhausted for inbound image.");
+    await sendWhatsAppTextMessage(rawFrom, VISION_RATE_LIMIT_MESSAGE);
     return;
   }
 

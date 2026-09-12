@@ -111,6 +111,34 @@ function getPayVerifyUploadLimiter(): Ratelimit | null {
   return getLimiter("pay-verify-upload", "pay-verify-upload", 5, "1 h");
 }
 
+/**
+ * Vertex text + vision on the inbound WhatsApp webhook. Shared bucket so a
+ * debtor cannot burn Gemini by alternating "hi" and screenshots.
+ */
+export const WHATSAPP_AI_INFERENCE_LIMIT = 5;
+export const WHATSAPP_AI_INFERENCE_WINDOW = "1 h" as const;
+
+function getWhatsappAiInferenceLimiter(): Ratelimit | null {
+  return getLimiter(
+    "whatsapp-ai",
+    "whatsapp-ai",
+    WHATSAPP_AI_INFERENCE_LIMIT,
+    WHATSAPP_AI_INFERENCE_WINDOW
+  );
+}
+
+/** Last 10 digits so +91 / 91 / 0 prefixes collapse to one budget. */
+export function whatsAppAiRateLimitKey(rawFrom: string): string {
+  const digits = rawFrom.replace(/\D/g, "");
+  const last10 = digits.slice(-10);
+
+  if (last10.length === 10) {
+    return last10;
+  }
+
+  return digits || "unknown";
+}
+
 /** @deprecated Use getPublicOnboardLimiter() — kept for call-site compatibility. */
 export const publicOnboardLimiter = {
   limit: async (identifier: string) => {
@@ -292,6 +320,29 @@ export async function enforceWhatsAppSendRateLimit(
     return null;
   } catch (error) {
     return handleLimiterFailure(error, true);
+  }
+}
+
+export async function isWhatsAppAiInferenceAllowed(
+  rawFrom: string
+): Promise<boolean> {
+  const limiter = getWhatsappAiInferenceLimiter();
+  const key = whatsAppAiRateLimitKey(rawFrom);
+
+  if (!limiter) {
+    return !shouldFailClosedOnMissingRedis();
+  }
+
+  try {
+    const result = await limiter.limit(key);
+    return result.success;
+  } catch (error) {
+    console.error(
+      "[Recoverpe Rate Limit] WhatsApp AI limiter failed:",
+      error instanceof Error ? error.message : error
+    );
+
+    return !shouldFailClosedOnMissingRedis();
   }
 }
 
