@@ -3,7 +3,13 @@ import {
   FREE_PLAN_LEDGER_LIMIT,
   PurchaseType,
 } from "@/lib/razorpay-products";
+import {
+  BusinessEntitlementRow,
+  hasEntitlement,
+  resolveEffectiveTier,
+} from "@/lib/entitlements";
 import { getTodayDateStringInIst } from "@/lib/timezone";
+import { BusinessSubscriptionTier } from "@/types";
 
 export const FREE_OPEN_PROMISES = 5;
 
@@ -24,6 +30,7 @@ export type BusinessAddonsMap = Partial<Record<BusinessAddonSku, BusinessAddonSt
 
 export interface BusinessMeteringRow {
   id: string;
+  subscription_tier?: BusinessSubscriptionTier;
   addons: BusinessAddonsMap | null;
   proof_quota_used_month: number;
   proof_quota_reset_on: string | null;
@@ -82,11 +89,18 @@ export function normalizedProofQuotaUsed(
   return Number(row.proof_quota_used_month ?? 0);
 }
 
+function toEntitlementRow(row: BusinessMeteringRow): BusinessEntitlementRow {
+  return {
+    subscription_tier: row.subscription_tier ?? "free",
+    addons: row.addons,
+  };
+}
+
 export function hasSettlementDeskQuotaRemaining(
   row: BusinessMeteringRow,
   today = getTodayDateStringInIst()
 ): boolean {
-  if (isBusinessAddonActive(row.addons, "settlement_desk_monthly")) {
+  if (hasEntitlement(toEntitlementRow(row), "settlement_desk_unlimited")) {
     return true;
   }
 
@@ -97,7 +111,7 @@ export function settlementDeskQuotaMessage(appUrl: string): string {
   return [
     `Your free Settlement Desk quota (${FREE_PLAN_LEDGER_LIMIT} AI proof scans per month) is used up.`,
     "",
-    `Upgrade Settlement Desk (₹499/mo) for unlimited WhatsApp proof extraction:`,
+    "Upgrade to Business for unlimited WhatsApp proof extraction:",
     `${appUrl}/dashboard/billing`,
     "",
     "Thank you! - RecoverPe",
@@ -110,7 +124,9 @@ export async function fetchBusinessMeteringRow(
 ): Promise<BusinessMeteringRow | null> {
   const { data, error } = await supabase
     .from("businesses")
-    .select("id, addons, proof_quota_used_month, proof_quota_reset_on")
+    .select(
+      "id, subscription_tier, addons, proof_quota_used_month, proof_quota_reset_on"
+    )
     .eq("id", businessId)
     .maybeSingle();
 
@@ -124,6 +140,7 @@ export async function fetchBusinessMeteringRow(
 
   return {
     id: data.id as string,
+    subscription_tier: (data.subscription_tier as BusinessSubscriptionTier) ?? "free",
     addons: parseBusinessAddons(data.addons),
     proof_quota_used_month: Number(data.proof_quota_used_month ?? 0),
     proof_quota_reset_on: (data.proof_quota_reset_on as string | null) ?? null,
@@ -142,7 +159,7 @@ export async function incrementBusinessProofQuota(
     return;
   }
 
-  if (isBusinessAddonActive(row.addons, "settlement_desk_monthly")) {
+  if (hasEntitlement(toEntitlementRow(row), "settlement_desk_unlimited")) {
     return;
   }
 
@@ -194,7 +211,7 @@ export async function canRecordInboundPromise(
     return false;
   }
 
-  if (isBusinessAddonActive(row.addons, "promise_register_monthly")) {
+  if (hasEntitlement(toEntitlementRow(row), "promise_register_unlimited")) {
     return true;
   }
 
@@ -233,9 +250,18 @@ export async function activateBusinessAddon(
     },
   };
 
+  const baseTier = row.subscription_tier ?? "free";
+  const nextTier =
+    resolveEffectiveTier({ subscription_tier: baseTier, addons }) === "business"
+      ? baseTier === "premium" ? "premium" : "business"
+      : baseTier;
+
   const { error } = await supabase
     .from("businesses")
-    .update({ addons })
+    .update({
+      addons,
+      subscription_tier: nextTier,
+    })
     .eq("id", businessId);
 
   if (error) {

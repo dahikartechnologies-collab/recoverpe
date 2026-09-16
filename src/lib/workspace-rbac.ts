@@ -22,7 +22,8 @@ export type BusinessSubscriptionTier = Business["subscription_tier"];
 export function isPremiumBusiness(
   business: Pick<Business, "subscription_tier"> | null | undefined
 ): boolean {
-  return business?.subscription_tier === "premium";
+  const tier = business?.subscription_tier;
+  return tier === "premium" || tier === "business";
 }
 
 export interface WorkspaceAccessContext {

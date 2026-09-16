@@ -3,7 +3,7 @@ import {
   fetchCronReminderTargets,
 } from "@/lib/cron/daily-runner";
 import { fetchLedgerById } from "@/lib/ledger-queries";
-import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
+import { dispatchDebtReminder } from "@/lib/notifications/omnichannel-dispatcher";
 import { getIstDayBounds } from "@/lib/timezone";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -34,7 +34,7 @@ async function wasReminderSentToday(
     .from("communication_logs")
     .select("id")
     .eq("ledger_id", ledgerId)
-    .in("type", ["whatsapp_reminder", "email_reminder", "email_invoice"])
+    .in("type", ["whatsapp_reminder", "email_reminder", "email_invoice", "sms_reminder"])
     .gte("executed_at", startIso)
     .lte("executed_at", endIso)
     .limit(1);
@@ -100,23 +100,18 @@ export async function processCronReminderTargets(
         continue;
       }
 
-      const dispatchResult = await dispatchOmnichannelMessage({
+      const dispatchResult = await dispatchDebtReminder(
         supabase,
-        userId: target.user_id,
-        businessId: ledger.business_id,
-        contactId: ledger.contact_id,
-        ledgerId: ledger.id,
-        messagePayload: {
-          subscriptionPlan: target.subscription_plan,
-        },
-      });
+        ledger.id,
+        target.days_from_due > 3 ? "overdue_escalation" : "normal"
+      );
 
-      if (!dispatchResult.success) {
+      if (!dispatchResult.whatsapp?.success) {
         results.push({
           ledger_id: target.ledger_id,
           cadence: target.cadence,
           status: "failed",
-          message: dispatchResult.message,
+          message: dispatchResult.whatsapp?.message ?? "Reminder dispatch failed.",
         });
         continue;
       }
@@ -125,10 +120,10 @@ export async function processCronReminderTargets(
         ledger_id: target.ledger_id,
         cadence: target.cadence,
         status: "sent",
-        simulated: dispatchResult.simulated,
-        channel: dispatchResult.channel,
-        fallbackTriggered: dispatchResult.fallbackTriggered,
-        message: dispatchResult.message,
+        simulated: dispatchResult.whatsapp.simulated,
+        channel: dispatchResult.whatsapp.channel,
+        fallbackTriggered: dispatchResult.whatsapp.fallbackTriggered,
+        message: dispatchResult.whatsapp.message,
       });
     } catch (error) {
       results.push({

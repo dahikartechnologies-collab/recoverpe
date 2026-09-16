@@ -1,6 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
+import { dispatchPaymentSettlementSms } from "@/lib/notifications/omnichannel-dispatcher";
+import { createRouteTransferForPayment } from "@/lib/payments/razorpay-route";
 import {
   resolveVirtualAccountOwner,
   ResolvedVirtualAccountOwner,
@@ -363,11 +365,25 @@ async function dispatchReceipt(input: {
     .eq("id", input.ledgerId)
     .maybeSingle();
 
+  const businessId = (ledger?.business_id as string | null) ?? null;
+
+  let businessName = "RecoverPe Merchant";
+
+  if (businessId) {
+    const { data: business } = await input.supabase
+      .from("businesses")
+      .select("business_name")
+      .eq("id", businessId)
+      .maybeSingle();
+
+    businessName = (business?.business_name as string | undefined) ?? businessName;
+  }
+
   try {
     const dispatchResult = await dispatchOmnichannelMessage({
       supabase: input.supabase,
       userId: input.userId,
-      businessId: (ledger?.business_id as string | null) ?? null,
+      businessId,
       contactId: input.contactId,
       ledgerId: input.ledgerId,
       options: {
@@ -379,6 +395,15 @@ async function dispatchReceipt(input: {
           netOutstanding: input.netOutstanding,
         },
       },
+    });
+
+    await dispatchPaymentSettlementSms(input.supabase, {
+      userId: input.userId,
+      businessId,
+      contactId: input.contactId,
+      ledgerId: input.ledgerId,
+      amountReceived: input.amountReceived,
+      businessName,
     });
 
     return {
@@ -394,6 +419,57 @@ async function dispatchReceipt(input: {
           ? dispatchError.message
           : "Payment receipt dispatch failed.",
     };
+  }
+}
+
+async function settleInboundPaymentToMerchantRoute(input: {
+  supabase: SupabaseClient;
+  inboundPaymentId: string;
+  businessId: string | null;
+  externalPaymentId: string;
+  amountPaise: number;
+}): Promise<void> {
+  if (!input.businessId) {
+    return;
+  }
+
+  const { data: business, error } = await input.supabase
+    .from("businesses")
+    .select("razorpay_linked_account_id, razorpay_route_status, business_name")
+    .eq("id", input.businessId)
+    .maybeSingle();
+
+  if (
+    error ||
+    !business?.razorpay_linked_account_id ||
+    business.razorpay_route_status !== "active"
+  ) {
+    return;
+  }
+
+  try {
+    const transfer = await createRouteTransferForPayment({
+      razorpayPaymentId: input.externalPaymentId,
+      linkedAccountId: business.razorpay_linked_account_id as string,
+      amountPaise: input.amountPaise,
+      notes: {
+        inbound_payment_id: input.inboundPaymentId,
+        business_id: input.businessId,
+      },
+    });
+
+    await input.supabase
+      .from("inbound_payments")
+      .update({
+        route_transfer_id: transfer.transferId,
+        route_transfer_status: transfer.status,
+      })
+      .eq("id", input.inboundPaymentId);
+  } catch (routeError) {
+    console.error(
+      "[smart-collect] Route transfer failed:",
+      routeError instanceof Error ? routeError.message : routeError
+    );
   }
 }
 
@@ -556,6 +632,22 @@ export async function reconcileContactVirtualAccountCredit(
         netOutstanding,
       })
     : undefined;
+
+  if (primaryLedgerId) {
+    const { data: primaryLedger } = await supabase
+      .from("ledgers")
+      .select("business_id")
+      .eq("id", primaryLedgerId)
+      .maybeSingle();
+
+    await settleInboundPaymentToMerchantRoute({
+      supabase,
+      inboundPaymentId: inboundPayment.id,
+      businessId: (primaryLedger?.business_id as string | null) ?? owner.legacyBusinessId,
+      externalPaymentId: credit.externalPaymentId,
+      amountPaise: credit.amountPaise,
+    });
+  }
 
   refreshContactRiskScoreAsync(supabase, owner.contactId);
 

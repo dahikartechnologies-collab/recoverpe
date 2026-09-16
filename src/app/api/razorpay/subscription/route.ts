@@ -19,7 +19,7 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       return NextResponse.json(
         {
           error:
-            "purchase_type must be subscription_premium or subscription_premium_annual.",
+            "purchase_type must be a valid subscription SKU.",
         },
         { status: 400 }
       );

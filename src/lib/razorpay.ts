@@ -7,6 +7,7 @@ import {
 import {
   getPurchaseProduct,
   getSubscriptionPlanId,
+  getSubscriptionTierFromPurchase,
   getSubscriptionTotalCount,
   isBusinessAddonPurchaseType,
   isMicroTransactionPurchaseType,
@@ -15,6 +16,7 @@ import {
   PurchaseType,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
+import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
 import { MicroTransactionFulfillment } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -112,30 +114,42 @@ function addIntervalToDate(base: Date, interval: "monthly" | "annual"): Date {
   return next;
 }
 
-export async function activatePremiumForUser(
+export async function activateBusinessSubscription(
   supabase: SupabaseClient,
   userId: string,
+  tier: BusinessSubscriptionTier,
   planInterval: "monthly" | "annual",
-  periodEnd?: Date | null
+  periodEnd?: Date | null,
+  razorpaySubscriptionId?: string | null
 ): Promise<void> {
   const expiresAt =
     periodEnd ?? addIntervalToDate(new Date(), planInterval);
 
+  const userPlan =
+    tier === "free" || tier === "starter" ? "free" : ("premium" as const);
+
   const { error } = await supabase
     .from("users")
     .update({
-      subscription_plan: "premium",
-      premium_expires_at: expiresAt.toISOString(),
+      subscription_plan: userPlan,
+      premium_expires_at:
+        tier === "free" ? null : expiresAt.toISOString(),
     })
     .eq("id", userId);
 
   if (error) {
-    throw new Error(error.message || "Failed to activate Premium subscription.");
+    throw new Error(error.message || "Failed to activate subscription.");
   }
 
   const { error: businessTierError } = await supabase
     .from("businesses")
-    .update({ subscription_tier: "premium" })
+    .update({
+      subscription_tier: tier,
+      subscription_interval: planInterval,
+      subscription_status: tier === "free" ? "none" : "active",
+      subscription_current_period_end: expiresAt.toISOString(),
+      razorpay_subscription_id: razorpaySubscriptionId ?? null,
+    })
     .eq("user_id", userId);
 
   if (businessTierError) {
@@ -143,6 +157,22 @@ export async function activatePremiumForUser(
       businessTierError.message || "Failed to sync business subscription tier."
     );
   }
+}
+
+/** @deprecated Use activateBusinessSubscription */
+export async function activatePremiumForUser(
+  supabase: SupabaseClient,
+  userId: string,
+  planInterval: "monthly" | "annual",
+  periodEnd?: Date | null
+): Promise<void> {
+  await activateBusinessSubscription(
+    supabase,
+    userId,
+    "premium",
+    planInterval,
+    periodEnd
+  );
 }
 
 export async function downgradePremiumIfExpired(
@@ -177,7 +207,12 @@ export async function downgradePremiumIfExpired(
 
   await supabase
     .from("businesses")
-    .update({ subscription_tier: "free" })
+    .update({
+      subscription_tier: "free",
+      subscription_status: "none",
+      subscription_interval: null,
+      subscription_current_period_end: null,
+    })
     .eq("user_id", userId);
 }
 
@@ -646,16 +681,19 @@ export async function fulfillRazorpaySubscriptionWebhook(
 
   const purchaseType = subscriptionRow.purchase_type as SubscriptionPurchaseType;
   const planInterval = subscriptionRow.plan_interval as "monthly" | "annual";
+  const tier = getSubscriptionTierFromPurchase(purchaseType);
   const periodEnd = subscriptionEntity.current_end
     ? new Date(subscriptionEntity.current_end * 1000)
     : addIntervalToDate(new Date(), planInterval);
 
   if (SUBSCRIPTION_ACTIVE_EVENTS.has(event)) {
-    await activatePremiumForUser(
+    await activateBusinessSubscription(
       supabase,
       subscriptionRow.user_id,
+      tier,
       planInterval,
-      periodEnd
+      periodEnd,
+      subscriptionEntity.id
     );
 
     await supabase
@@ -717,6 +755,14 @@ export async function fulfillRazorpaySubscriptionWebhook(
           premium_expires_at: periodEnd.toISOString(),
         })
         .eq("id", subscriptionRow.user_id);
+
+      await supabase
+        .from("businesses")
+        .update({
+          subscription_status: "cancelled",
+          subscription_current_period_end: periodEnd.toISOString(),
+        })
+        .eq("user_id", subscriptionRow.user_id);
     }
 
     if (event === "subscription.halted") {
@@ -749,8 +795,16 @@ export async function fulfillSimulatedSubscription(
 
   const purchaseType = subscriptionRow.purchase_type as SubscriptionPurchaseType;
   const planInterval = subscriptionRow.plan_interval as "monthly" | "annual";
+  const tier = getSubscriptionTierFromPurchase(purchaseType);
 
-  await activatePremiumForUser(supabase, subscriptionRow.user_id, planInterval);
+  await activateBusinessSubscription(
+    supabase,
+    subscriptionRow.user_id,
+    tier,
+    planInterval,
+    addIntervalToDate(new Date(), planInterval),
+    subscriptionId
+  );
 
   await supabase
     .from("razorpay_subscriptions")

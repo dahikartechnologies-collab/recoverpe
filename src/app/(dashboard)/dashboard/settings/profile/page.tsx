@@ -1,6 +1,7 @@
 "use client";
 
 import { BusinessProfileView } from "@/components/settings/BusinessProfileView";
+import { PayoutDetailsCard } from "@/components/settings/PayoutDetailsCard";
 import { DangerZone } from "@/components/settings/DangerZone";
 import { PermissionWorkspaceGuard } from "@/components/dashboard/OwnerWorkspaceGuard";
 import { canEditBusinessSettings } from "@/lib/workspace-permissions";
@@ -20,6 +21,7 @@ export default function BusinessProfileSettingsPage() {
     >
       <div className="space-y-8">
         <BusinessProfileView />
+        <PayoutDetailsCard />
         {showDangerZone ? <DangerZone /> : null}
       </div>
     </PermissionWorkspaceGuard>

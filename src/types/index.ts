@@ -2,7 +2,7 @@ export type WorkspaceMode = "personal" | "business";
 
 export type SubscriptionPlan = "free" | "premium";
 
-export type BusinessSubscriptionTier = "free" | "premium";
+export type BusinessSubscriptionTier = "free" | "starter" | "business" | "premium";
 
 export type PaymentReliabilityTier =
   | "excellent"
@@ -48,6 +48,7 @@ export type CollectionMode =
 
 export type CommunicationType =
   | "whatsapp_reminder"
+  | "sms_reminder"
   | "vapi_call"
   | "email_invoice"
   | "email_reminder";
@@ -124,6 +125,16 @@ export interface Business {
   next_invoice_sequence: number;
   khata_auto_approve: boolean;
   subscription_tier: BusinessSubscriptionTier;
+  subscription_interval?: "monthly" | "annual" | null;
+  subscription_status?: "none" | "active" | "past_due" | "cancelled";
+  razorpay_subscription_id?: string | null;
+  subscription_current_period_end?: string | null;
+  payout_pan?: string | null;
+  payout_bank_account_number?: string | null;
+  payout_bank_ifsc?: string | null;
+  payout_account_holder_name?: string | null;
+  razorpay_linked_account_id?: string | null;
+  razorpay_route_status?: string | null;
   ai_credits: number;
   autopilot_schedule?: number[];
   notification_preferences?: BusinessNotificationPreferences;
@@ -144,6 +155,8 @@ export interface Contact {
   name: string;
   phone_number: string;
   email: string | null;
+  sms_opt_out?: boolean;
+  email_opt_out?: boolean;
   client_gstin: string | null;
   billing_address: string | null;
   wallet_balance?: number;
@@ -384,13 +397,35 @@ export interface SendWhatsAppReminderResponse {
 
 export interface PublicPayLedgerData {
   ledger_id: string;
+  contact_id: string;
   contact_name: string;
   business_name: string | null;
   invoice_number: string | null;
   balance_due: number;
   due_date: string;
-  merchant_vpa: string;
+  merchant_vpa: string | null;
   pdf_url: string | null;
+  business_tier: BusinessSubscriptionTier | null;
+  virtual_bank_account_number: string | null;
+  virtual_ifsc_code: string | null;
+  checkout: {
+    mode: "upi_standard" | "zero_mdr_bank";
+    amount: number;
+    payment_reference: string;
+    smart_collect_ready: boolean;
+    upi?: {
+      vpa: string;
+      amount: number;
+      transaction_reference: string;
+    };
+    bank?: {
+      beneficiary_name: string;
+      account_number: string;
+      ifsc: string;
+      amount: number;
+      payment_reference: string;
+    };
+  };
 }
 
 export interface Transaction {
@@ -624,6 +659,10 @@ export interface InitiateVapiCallResponse {
 }
 
 export type PurchaseType =
+  | "subscription_starter_monthly"
+  | "subscription_starter_annual"
+  | "subscription_business_monthly"
+  | "subscription_business_annual"
   | "subscription_premium"
   | "subscription_premium_annual"
   | "vapi_recharge_100"
@@ -685,6 +724,10 @@ export interface AdminAgentCreateResponse {
 }
 
 export type SubscriptionPurchaseType =
+  | "subscription_starter_monthly"
+  | "subscription_starter_annual"
+  | "subscription_business_monthly"
+  | "subscription_business_annual"
   | "subscription_premium"
   | "subscription_premium_annual";
 

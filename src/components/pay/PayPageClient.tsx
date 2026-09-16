@@ -9,6 +9,7 @@ import {
   trackPaymentClaimed,
 } from "@/lib/analytics-events";
 import { formatCurrency } from "@/lib/gst";
+import { resolveSmartCheckout } from "@/lib/payments/smart-checkout-router";
 import { generateUPIIntent, generateUPIQRCodeBase64 } from "@/lib/upi";
 import { PublicPayLedgerData } from "@/types";
 
@@ -113,16 +114,28 @@ function clampPaymentAmount(value: number, maxAmount: number): number {
   return Math.min(value, maxAmount);
 }
 
+async function copyToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 export function PayPageClient({ data }: PayPageClientProps) {
   const [paymentAmount, setPaymentAmount] = useState(data.balance_due);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
 
   const merchantName = data.business_name ?? "Recoverpe Merchant";
-  const transactionReference = data.invoice_number ?? data.ledger_id;
 
-  // Top of the debtor funnel. Fires once per mount; the ledger id is
-  // deliberately not sent to third parties.
   useEffect(() => {
     trackPayPageViewed({ amountDueInr: data.balance_due });
   }, [data.balance_due]);
@@ -132,25 +145,60 @@ export function PayPageClient({ data }: PayPageClientProps) {
     [paymentAmount, data.balance_due]
   );
 
-  const upiIntentUri = useMemo(
+  const checkout = useMemo(
     () =>
-      generateUPIIntent(
-        data.merchant_vpa,
-        merchantName,
-        normalizedAmount,
-        transactionReference
-      ),
-    [data.merchant_vpa, merchantName, normalizedAmount, transactionReference]
+      resolveSmartCheckout({
+        amount: normalizedAmount,
+        ledgerId: data.ledger_id,
+        invoiceNumber: data.invoice_number,
+        business: data.business_tier
+          ? { subscription_tier: data.business_tier }
+          : null,
+        businessName: data.business_name,
+        merchantVpa: data.merchant_vpa,
+        virtualBankAccountNumber: data.virtual_bank_account_number,
+        virtualIfscCode: data.virtual_ifsc_code,
+      }),
+    [
+      data.business_name,
+      data.business_tier,
+      data.invoice_number,
+      data.ledger_id,
+      data.merchant_vpa,
+      data.virtual_bank_account_number,
+      data.virtual_ifsc_code,
+      normalizedAmount,
+    ]
   );
 
+  const isZeroMdrBank = checkout.mode === "zero_mdr_bank";
+
+  const upiIntentUri = useMemo(() => {
+    if (!checkout.upi) {
+      return null;
+    }
+
+    return generateUPIIntent(
+      checkout.upi.vpa,
+      merchantName,
+      normalizedAmount,
+      checkout.paymentReference
+    );
+  }, [checkout.paymentReference, checkout.upi, merchantName, normalizedAmount]);
+
   useEffect(() => {
+    if (!upiIntentUri || isZeroMdrBank) {
+      setQrCodeDataUrl(null);
+      return;
+    }
+
     let cancelled = false;
 
     async function renderQrCode() {
       setQrError("");
 
       try {
-        const dataUrl = await generateUPIQRCodeBase64(upiIntentUri);
+        const dataUrl = await generateUPIQRCodeBase64(upiIntentUri!);
 
         if (!cancelled) {
           setQrCodeDataUrl(dataUrl);
@@ -168,7 +216,7 @@ export function PayPageClient({ data }: PayPageClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [upiIntentUri]);
+  }, [isZeroMdrBank, upiIntentUri]);
 
   function handleAmountChange(rawValue: string) {
     const parsed = Number.parseFloat(rawValue);
@@ -179,6 +227,12 @@ export function PayPageClient({ data }: PayPageClientProps) {
     }
 
     setPaymentAmount(clampPaymentAmount(parsed, data.balance_due));
+  }
+
+  async function handleCopy(value: string, label: string) {
+    await copyToClipboard(value);
+    setCopyMessage(`${label} copied`);
+    window.setTimeout(() => setCopyMessage(""), 2000);
   }
 
   return (
@@ -229,45 +283,120 @@ export function PayPageClient({ data }: PayPageClientProps) {
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="md:hidden">
-              <a href={upiIntentUri} className="block">
-                <Button type="button" className="w-full">
-                  Pay via UPI App
-                </Button>
-              </a>
-              <p className="mt-2 text-center text-xs text-recoverpe-grey-medium">
-                Opens Google Pay, PhonePe, Paytm, or your default UPI app.
-              </p>
-            </div>
-
-            <div className="hidden md:block">
-              <div className="flex flex-col items-center rounded-md border border-recoverpe-grey-light px-4 py-6">
-                <p className="text-sm font-medium text-recoverpe-black">
-                  Scan to pay on mobile
+          {isZeroMdrBank && checkout.bank ? (
+            <div className="space-y-4 rounded-md border border-recoverpe-grey-light px-4 py-5">
+              <div>
+                <p className="text-sm font-semibold text-recoverpe-black">
+                  Pay via IMPS / NEFT / RTGS
                 </p>
                 <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                  Use any UPI app to scan this QR code.
+                  Zero UPI MDR for payments above ₹2,000. Your invoice updates
+                  automatically once the transfer is received.
                 </p>
-                {qrCodeDataUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={qrCodeDataUrl}
-                    alt="UPI payment QR code"
-                    className="mt-4 h-44 w-44 rounded-md border border-recoverpe-grey-light bg-recoverpe-white p-2"
-                  />
-                ) : (
-                  <p className="mt-4 text-sm text-recoverpe-grey-medium">
-                    {qrError || "Generating QR code..."}
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-recoverpe-grey-medium">Beneficiary</p>
+                    <p className="font-medium">{checkout.bank.beneficiaryName}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-recoverpe-grey-medium">Account number</p>
+                    <p className="font-mono">{checkout.bank.accountNumber}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      void handleCopy(checkout.bank!.accountNumber, "Account number")
+                    }
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-recoverpe-grey-medium">IFSC</p>
+                    <p className="font-mono">{checkout.bank.ifsc}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void handleCopy(checkout.bank!.ifsc, "IFSC")}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-recoverpe-grey-medium">Payment reference</p>
+                    <p className="font-mono">{checkout.paymentReference}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      void handleCopy(
+                        checkout.paymentReference,
+                        "Payment reference"
+                      )
+                    }
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+              {copyMessage ? (
+                <p className="text-xs text-recoverpe-success">{copyMessage}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="md:hidden">
+                {upiIntentUri ? (
+                  <a href={upiIntentUri} className="block">
+                    <Button type="button" className="w-full">
+                      Pay via UPI App
+                    </Button>
+                  </a>
+                ) : null}
+                <p className="mt-2 text-center text-xs text-recoverpe-grey-medium">
+                  Opens Google Pay, PhonePe, Paytm, or your default UPI app.
+                </p>
+              </div>
+
+              <div className="hidden md:block">
+                <div className="flex flex-col items-center rounded-md border border-recoverpe-grey-light px-4 py-6">
+                  <p className="text-sm font-medium text-recoverpe-black">
+                    Scan to pay on mobile
                   </p>
-                )}
+                  <p className="mt-1 text-xs text-recoverpe-grey-medium">
+                    Use any UPI app to scan this QR code.
+                  </p>
+                  {qrCodeDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={qrCodeDataUrl}
+                      alt="UPI payment QR code"
+                      className="mt-4 h-44 w-44 rounded-md border border-recoverpe-grey-light bg-recoverpe-white p-2"
+                    />
+                  ) : (
+                    <p className="mt-4 text-sm text-recoverpe-grey-medium">
+                      {qrError || "Generating QR code..."}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="border-t border-recoverpe-grey-light pt-4 space-y-3">
             <p className="text-sm font-medium text-recoverpe-black">
-              Already paid? Upload payment screenshot
+              {isZeroMdrBank
+                ? "Paid but invoice not updated yet?"
+                : "Already paid? Upload payment screenshot"}
             </p>
             <PaymentProofUpload ledgerId={data.ledger_id} balanceDue={data.balance_due} />
           </div>
@@ -286,8 +415,9 @@ export function PayPageClient({ data }: PayPageClientProps) {
           ) : null}
 
           <p className="text-center text-[11px] text-recoverpe-grey-medium">
-            Payments go directly to the merchant UPI ID. Recoverpe does not hold
-            your funds.
+            {isZeroMdrBank
+              ? "Bank transfers are reconciled automatically via RecoverPe Smart Collect."
+              : "Payments go directly to the merchant UPI ID."}
           </p>
         </CardContent>
       </Card>

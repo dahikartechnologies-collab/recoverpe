@@ -5,9 +5,48 @@ export const PREMIUM_DISCOUNT_RATE = 0.5;
 export const RECOVERY_UPSELL_THRESHOLD_INR = 50_000;
 
 export const PURCHASE_PRODUCTS = {
+  subscription_starter_monthly: {
+    label: "Starter Monthly",
+    description:
+      "Core Khata, WhatsApp reminders, inbound AI bot, and live inbox.",
+    amountPaise: 49_900,
+    amountLabel: "₹499/mo",
+    tier: "starter" as const,
+    billingMode: "subscription" as const,
+    planInterval: "monthly" as const,
+  },
+  subscription_starter_annual: {
+    label: "Starter Annual",
+    description: "Save with annual Starter billing.",
+    amountPaise: 499_900,
+    amountLabel: "₹4,999/yr",
+    tier: "starter" as const,
+    billingMode: "subscription" as const,
+    planInterval: "annual" as const,
+  },
+  subscription_business_monthly: {
+    label: "Business Monthly",
+    description:
+      "Zero-MDR Smart Checkout, Settlement Desk, Promise Register, and SMS receipts.",
+    amountPaise: 99_900,
+    amountLabel: "₹999/mo",
+    tier: "business" as const,
+    billingMode: "subscription" as const,
+    planInterval: "monthly" as const,
+  },
+  subscription_business_annual: {
+    label: "Business Annual",
+    description: "Save with annual Business billing.",
+    amountPaise: 999_900,
+    amountLabel: "₹9,999/yr",
+    tier: "business" as const,
+    billingMode: "subscription" as const,
+    planInterval: "annual" as const,
+  },
   subscription_premium: {
     label: "Premium Monthly",
-    description: "Unlimited invoices, priority automations, and business tools.",
+    description:
+      "Command Center: Morning Briefing, DHS, Field Agent network, and omnichannel escalation.",
     amountPaise: 199_900,
     amountLabel: "₹1,999/mo",
     tier: "premium" as const,
@@ -16,7 +55,7 @@ export const PURCHASE_PRODUCTS = {
   },
   subscription_premium_annual: {
     label: "Premium Annual",
-    description: "Save with annual billing — full Premium for 12 months.",
+    description: "Save with annual Premium billing.",
     amountPaise: 1_799_900,
     amountLabel: "₹17,999/yr",
     tier: "premium" as const,
@@ -50,8 +89,7 @@ export const PURCHASE_PRODUCTS = {
   },
   promise_register_monthly: {
     label: "Promise Register",
-    description:
-      "Unlimited inbound WhatsApp payment promises with keep/break tracking.",
+    description: "Deprecated — included in Business tier.",
     amountPaise: 29_900,
     amountLabel: "₹299/mo",
     tier: "addon" as const,
@@ -59,8 +97,7 @@ export const PURCHASE_PRODUCTS = {
   },
   settlement_desk_monthly: {
     label: "Settlement Desk",
-    description:
-      "Unlimited AI extraction of UTR, amount, and date from WhatsApp payment proofs.",
+    description: "Deprecated — included in Business tier.",
     amountPaise: 49_900,
     amountLabel: "₹499/mo",
     tier: "addon" as const,
@@ -71,6 +108,10 @@ export const PURCHASE_PRODUCTS = {
 export type PurchaseType = keyof typeof PURCHASE_PRODUCTS;
 
 export type SubscriptionPurchaseType =
+  | "subscription_starter_monthly"
+  | "subscription_starter_annual"
+  | "subscription_business_monthly"
+  | "subscription_business_annual"
   | "subscription_premium"
   | "subscription_premium_annual";
 
@@ -83,10 +124,15 @@ export function isPurchaseType(value: string): value is PurchaseType {
 }
 
 export function isSubscriptionPurchaseType(
-  value: PurchaseType
+  value: PurchaseType | string
 ): value is SubscriptionPurchaseType {
   return (
-    value === "subscription_premium" || value === "subscription_premium_annual"
+    value === "subscription_starter_monthly" ||
+    value === "subscription_starter_annual" ||
+    value === "subscription_business_monthly" ||
+    value === "subscription_business_annual" ||
+    value === "subscription_premium" ||
+    value === "subscription_premium_annual"
   );
 }
 
@@ -104,6 +150,18 @@ export function isBusinessAddonPurchaseType(
 
 export function getPurchaseProduct(purchaseType: PurchaseType) {
   return PURCHASE_PRODUCTS[purchaseType];
+}
+
+export function getSubscriptionTierFromPurchase(
+  purchaseType: SubscriptionPurchaseType
+): "starter" | "business" | "premium" {
+  const product = PURCHASE_PRODUCTS[purchaseType];
+
+  if (product.tier === "starter" || product.tier === "business") {
+    return product.tier;
+  }
+
+  return "premium";
 }
 
 export function getPremiumOrderAmountPaise(eligibleForDiscount: boolean): number {
@@ -131,22 +189,33 @@ export function getSubscriptionPlanId(
   purchaseType: SubscriptionPurchaseType,
   eligibleForDiscount: boolean
 ): string | null {
-  if (purchaseType === "subscription_premium_annual") {
-    return process.env.RAZORPAY_PLAN_PREMIUM_ANNUAL?.trim() || null;
-  }
+  switch (purchaseType) {
+    case "subscription_starter_monthly":
+      return process.env.RAZORPAY_PLAN_STARTER_MONTHLY?.trim() || null;
+    case "subscription_starter_annual":
+      return process.env.RAZORPAY_PLAN_STARTER_ANNUAL?.trim() || null;
+    case "subscription_business_monthly":
+      return process.env.RAZORPAY_PLAN_BUSINESS_MONTHLY?.trim() || null;
+    case "subscription_business_annual":
+      return process.env.RAZORPAY_PLAN_BUSINESS_ANNUAL?.trim() || null;
+    case "subscription_premium_annual":
+      return process.env.RAZORPAY_PLAN_PREMIUM_ANNUAL?.trim() || null;
+    case "subscription_premium":
+      if (
+        eligibleForDiscount &&
+        process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED?.trim()
+      ) {
+        return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED.trim();
+      }
 
-  if (
-    eligibleForDiscount &&
-    process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED?.trim()
-  ) {
-    return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED.trim();
+      return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY?.trim() || null;
+    default:
+      return null;
   }
-
-  return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY?.trim() || null;
 }
 
 export function getSubscriptionTotalCount(
   purchaseType: SubscriptionPurchaseType
 ): number {
-  return purchaseType === "subscription_premium_annual" ? 1 : 120;
+  return purchaseType.endsWith("_annual") ? 1 : 120;
 }

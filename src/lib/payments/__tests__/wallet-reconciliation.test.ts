@@ -15,6 +15,17 @@ vi.mock("@/lib/notifications/dispatcher", () => ({
   dispatchOmnichannelMessage,
 }));
 
+vi.mock("@/lib/notifications/omnichannel-dispatcher", () => ({
+  dispatchPaymentSettlementSms: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/payments/razorpay-route", () => ({
+  createRouteTransferForPayment: vi.fn().mockResolvedValue({
+    transferId: null,
+    status: "skipped",
+  }),
+}));
+
 const USER_ID = "user-1";
 const CONTACT_ID = "contact-1";
 const RAZORPAY_VA_ID = "va_LiveAccount01";
