@@ -174,21 +174,42 @@ export async function dispatchDebtReminder(
         }),
       });
 
-      await logChannelAttempt(supabase, {
-        userId,
-        businessId,
-        contactId,
-        ledgerId,
-        channel: "sms",
-        type: "sms_reminder",
-        status: "sent",
-        summary: reminderType === "overdue_escalation"
-          ? "Overdue SMS escalation sent"
-          : "Payment reminder SMS sent",
-        externalMessageId: smsResult.externalMessageId,
-      });
+      if (smsResult.success) {
+        await logChannelAttempt(supabase, {
+          userId,
+          businessId,
+          contactId,
+          ledgerId,
+          channel: "sms",
+          type: "sms_reminder",
+          status: "sent",
+          summary: reminderType === "overdue_escalation"
+            ? "Overdue SMS escalation sent"
+            : "Payment reminder SMS sent",
+          externalMessageId: smsResult.externalMessageId,
+        });
 
-      result.sms = { success: true, message: smsResult.message };
+        result.sms = { success: true, message: smsResult.message };
+      } else {
+        const failureSummary =
+          smsResult.error ?? smsResult.message ?? "SMS dispatch failed.";
+
+        await logChannelAttempt(supabase, {
+          userId,
+          businessId,
+          contactId,
+          ledgerId,
+          channel: "sms",
+          type: "sms_reminder",
+          status: "failed",
+          summary:
+            smsResult.status === "DLT_PENDING"
+              ? `DLT pending: ${failureSummary}`
+              : failureSummary,
+        });
+
+        result.sms = { success: false, message: failureSummary };
+      }
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : "SMS dispatch failed.";
@@ -234,18 +255,36 @@ export async function dispatchDebtReminder(
           smtpSettings,
         });
 
-        await logChannelAttempt(supabase, {
-          userId,
-          businessId,
-          contactId,
-          ledgerId,
-          channel: "email",
-          type: "email_reminder",
-          status: "sent",
-          summary: "Overdue email escalation sent",
-        });
+        if (emailResult.success) {
+          await logChannelAttempt(supabase, {
+            userId,
+            businessId,
+            contactId,
+            ledgerId,
+            channel: "email",
+            type: "email_reminder",
+            status: "sent",
+            summary: "Overdue email escalation sent",
+          });
 
-        result.email = { success: true, message: emailResult.message };
+          result.email = { success: true, message: emailResult.message };
+        } else {
+          const failureSummary =
+            emailResult.error ?? emailResult.message ?? "Email dispatch failed.";
+
+          await logChannelAttempt(supabase, {
+            userId,
+            businessId,
+            contactId,
+            ledgerId,
+            channel: "email",
+            type: "email_reminder",
+            status: "failed",
+            summary: failureSummary,
+          });
+
+          result.email = { success: false, message: failureSummary };
+        }
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Email dispatch failed.";
@@ -325,6 +364,21 @@ export async function dispatchPaymentSettlementSms(
       message: `Payment of ${amountLabel} received for ${input.businessName}. Thank you! - RecoverPe`,
     });
 
+    if (smsResult.success) {
+      await logChannelAttempt(supabase, {
+        userId: input.userId,
+        businessId: input.businessId,
+        contactId: input.contactId,
+        ledgerId: input.ledgerId,
+        channel: "sms",
+        type: "sms_reminder",
+        status: "sent",
+        summary: "Payment settlement SMS receipt sent",
+        externalMessageId: smsResult.externalMessageId,
+      });
+      return;
+    }
+
     await logChannelAttempt(supabase, {
       userId: input.userId,
       businessId: input.businessId,
@@ -332,9 +386,11 @@ export async function dispatchPaymentSettlementSms(
       ledgerId: input.ledgerId,
       channel: "sms",
       type: "sms_reminder",
-      status: "sent",
-      summary: "Payment settlement SMS receipt sent",
-      externalMessageId: smsResult.externalMessageId,
+      status: "failed",
+      summary:
+        smsResult.status === "DLT_PENDING"
+          ? `DLT pending: ${smsResult.error ?? smsResult.message}`
+          : smsResult.error ?? smsResult.message,
     });
   } catch (error) {
     const reason =

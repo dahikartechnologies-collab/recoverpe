@@ -64,6 +64,24 @@ export async function POST(request: Request) {
       });
     }
 
+    const routeAndSettlementEvents = new Set([
+      "settlement.processed",
+      "refund.processed",
+      "transfer.processed",
+    ]);
+
+    if (payload.event && routeAndSettlementEvents.has(payload.event)) {
+      console.info("[razorpay-webhook] route/settlement event acknowledged", {
+        event: payload.event,
+      });
+
+      return NextResponse.json({
+        received: true,
+        handled: payload.event,
+        note: "Route/settlement lifecycle event logged; wallet reconciliation unaffected.",
+      });
+    }
+
     const supportedOrderEvents = new Set(["payment.captured", "order.paid"]);
 
     if (!payload.event || !supportedOrderEvents.has(payload.event)) {
