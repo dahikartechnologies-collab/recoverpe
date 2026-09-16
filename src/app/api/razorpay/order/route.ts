@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
 import {
+  isBusinessAddonPurchaseType,
   isMicroTransactionPurchaseType,
   isPurchaseType,
   isSubscriptionPurchaseType,
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
     }
 
     let ledgerId: string | null = null;
+    let businessId: string | null = null;
 
     if (isMicroTransactionPurchaseType(body.purchase_type)) {
       ledgerId = body.ledger_id?.trim() ?? null;
@@ -107,6 +109,28 @@ export async function POST(request: Request) {
       }
     }
 
+    if (isBusinessAddonPurchaseType(body.purchase_type)) {
+      businessId = body.business_id?.trim() ?? null;
+
+      if (!businessId) {
+        return NextResponse.json(
+          { error: "business_id is required for this purchase." },
+          { status: 400 }
+        );
+      }
+
+      const { data: businessRow, error: businessError } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("id", businessId)
+        .eq("user_id", contextResult.effectiveUserId)
+        .maybeSingle();
+
+      if (businessError || !businessRow) {
+        return NextResponse.json({ error: "Business not found." }, { status: 404 });
+      }
+    }
+
     const amountPaiseOverride = undefined;
 
     const { order, simulated, publicKey, amount_paise, discount_applied } =
@@ -115,7 +139,8 @@ export async function POST(request: Request) {
         contextResult.effectiveUserId,
         body.purchase_type,
         amountPaiseOverride,
-        ledgerId
+        ledgerId,
+        businessId
       );
 
     return NextResponse.json({

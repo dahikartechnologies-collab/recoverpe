@@ -48,6 +48,24 @@ export const PURCHASE_PRODUCTS = {
     tier: "micro" as const,
     billingMode: "order" as const,
   },
+  promise_register_monthly: {
+    label: "Promise Register",
+    description:
+      "Unlimited inbound WhatsApp payment promises with keep/break tracking.",
+    amountPaise: 29_900,
+    amountLabel: "₹299/mo",
+    tier: "addon" as const,
+    billingMode: "order" as const,
+  },
+  settlement_desk_monthly: {
+    label: "Settlement Desk",
+    description:
+      "Unlimited AI extraction of UTR, amount, and date from WhatsApp payment proofs.",
+    amountPaise: 49_900,
+    amountLabel: "₹499/mo",
+    tier: "addon" as const,
+    billingMode: "order" as const,
+  },
 } as const;
 
 export type PurchaseType = keyof typeof PURCHASE_PRODUCTS;
@@ -55,6 +73,10 @@ export type PurchaseType = keyof typeof PURCHASE_PRODUCTS;
 export type SubscriptionPurchaseType =
   | "subscription_premium"
   | "subscription_premium_annual";
+
+export type BusinessAddonPurchaseType =
+  | "promise_register_monthly"
+  | "settlement_desk_monthly";
 
 export function isPurchaseType(value: string): value is PurchaseType {
   return value in PURCHASE_PRODUCTS;
@@ -70,6 +92,14 @@ export function isSubscriptionPurchaseType(
 
 export function isMicroTransactionPurchaseType(value: PurchaseType): boolean {
   return value === "legal_notice_999" || value === "samadhaan_499";
+}
+
+export function isBusinessAddonPurchaseType(
+  value: PurchaseType
+): value is BusinessAddonPurchaseType {
+  return (
+    value === "promise_register_monthly" || value === "settlement_desk_monthly"
+  );
 }
 
 export function getPurchaseProduct(purchaseType: PurchaseType) {

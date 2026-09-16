@@ -2,6 +2,7 @@ import { tryConsumeMerchantOtpFromInbound } from "@/lib/agent/inbound-otp";
 import { getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
+import { tryExtractAndRecordPaymentPromises } from "@/lib/promise-register";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import {
@@ -485,9 +486,11 @@ export async function processInboundWhatsAppMessage(
 
   // One audit row per merchant that knows this number, so each workspace sees
   // the inbound message on its own contact timeline.
+  const communicationLogIds = new Map<string, string | null>();
+
   await Promise.all(
-    contacts.map((contact) =>
-      recordCommunicationSafely(supabase, {
+    contacts.map(async (contact) => {
+      const logId = await recordCommunicationSafely(supabase, {
         userId: contact.user_id,
         contactId: contact.id,
         type: "whatsapp_reminder",
@@ -496,8 +499,10 @@ export async function processInboundWhatsAppMessage(
         status: "delivered",
         externalMessageId: options.externalMessageId ?? null,
         summary: summariseInboundMessage(incomingText),
-      })
-    )
+      });
+
+      communicationLogIds.set(contact.id, logId);
+    })
   );
 
   if (contacts.every((contact) => contact.bot_paused)) {
@@ -534,4 +539,23 @@ export async function processInboundWhatsAppMessage(
       })
     )
   );
+
+  try {
+    const recorded = await tryExtractAndRecordPaymentPromises(
+      supabase,
+      scopes,
+      incomingText,
+      ledgerSummaryData,
+      communicationLogIds
+    );
+
+    if (recorded > 0) {
+      console.log(`[PROMISE REGISTER] Recorded ${recorded} inbound promise(s).`);
+    }
+  } catch (promiseError) {
+    console.error(
+      "[PROMISE REGISTER] Failed after inbound reply:",
+      promiseError instanceof Error ? promiseError.message : promiseError
+    );
+  }
 }

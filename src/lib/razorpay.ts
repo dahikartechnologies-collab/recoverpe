@@ -2,9 +2,13 @@ import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { isDevelopmentAppEnv } from "@/lib/app-env";
 import { emitGa4PurchaseEvent } from "@/lib/ga4-measurement";
 import {
+  activateBusinessAddon,
+} from "@/lib/business-addons";
+import {
   getPurchaseProduct,
   getSubscriptionPlanId,
   getSubscriptionTotalCount,
+  isBusinessAddonPurchaseType,
   isMicroTransactionPurchaseType,
   PREMIUM_DISCOUNT_RATE,
   PURCHASE_PRODUCTS,
@@ -182,7 +186,8 @@ export async function createRazorpayOrderRecord(
   userId: string,
   purchaseType: PurchaseType,
   amountPaiseOverride?: number,
-  ledgerId?: string | null
+  ledgerId?: string | null,
+  businessId?: string | null
 ): Promise<{
   order: CreatedRazorpayOrder;
   simulated: boolean;
@@ -223,6 +228,7 @@ export async function createRazorpayOrderRecord(
       amount_paise: amountPaise,
       status: "created",
       ledger_id: ledgerId ?? null,
+      business_id: businessId ?? null,
     });
 
     if (error) {
@@ -253,6 +259,7 @@ export async function createRazorpayOrderRecord(
         purchase_type: purchaseType,
         discount_applied: discountApplied,
         ledger_id: ledgerId ?? undefined,
+        business_id: businessId ?? undefined,
       },
     }),
   });
@@ -271,6 +278,7 @@ export async function createRazorpayOrderRecord(
     amount_paise: amountPaise,
     status: "created",
     ledger_id: ledgerId ?? null,
+    business_id: businessId ?? null,
   });
 
   if (error) {
@@ -440,7 +448,7 @@ export async function fulfillRazorpayOrder(
     })
     .eq("razorpay_order_id", razorpayOrderId)
     .eq("status", "created")
-    .select("id, user_id, purchase_type, status, amount_paise, ledger_id")
+    .select("id, user_id, purchase_type, status, amount_paise, ledger_id, business_id")
     .maybeSingle();
 
   if (lockError) {
@@ -450,7 +458,7 @@ export async function fulfillRazorpayOrder(
   if (!lockedOrder) {
     const { data: orderRow, error: orderError } = await supabase
       .from("razorpay_orders")
-      .select("id, user_id, purchase_type, status, amount_paise, ledger_id")
+      .select("id, user_id, purchase_type, status, amount_paise, ledger_id, business_id")
       .eq("razorpay_order_id", razorpayOrderId)
       .maybeSingle();
 
@@ -550,7 +558,19 @@ export async function fulfillRazorpayOrder(
     );
   }
 
-  // Every paid SKU is a conversion. Reaching here means the order moved
+  if (isBusinessAddonPurchaseType(purchaseType)) {
+    if (!lockedOrder.business_id) {
+      throw new Error("Business add-on order is missing business context.");
+    }
+
+    await activateBusinessAddon(
+      supabase,
+      lockedOrder.business_id as string,
+      purchaseType
+    );
+  }
+
+  // Every paid SKU is a conversion.
   // created -> paid exactly once, so this cannot double-count on webhook replay.
   emitGa4PurchaseEvent({
     userId: lockedOrder.user_id,

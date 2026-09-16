@@ -628,7 +628,61 @@ export type PurchaseType =
   | "subscription_premium_annual"
   | "vapi_recharge_100"
   | "legal_notice_999"
-  | "samadhaan_499";
+  | "samadhaan_499"
+  | "promise_register_monthly"
+  | "settlement_desk_monthly";
+
+export type BusinessAddonPurchaseType =
+  | "promise_register_monthly"
+  | "settlement_desk_monthly";
+
+export type PromiseStatus = "open" | "kept" | "broken" | "void";
+
+export interface PaymentPromiseRecord {
+  id: string;
+  user_id: string;
+  business_id: string | null;
+  contact_id: string;
+  ledger_id: string | null;
+  promised_on: string;
+  promised_amount: number;
+  source: "inbound" | "owner";
+  status: PromiseStatus;
+  created_at: string;
+  contact_name?: string;
+}
+
+export interface PaymentPromisesListResponse {
+  promises: PaymentPromiseRecord[];
+}
+
+export interface AdminAgentRecord {
+  id: string;
+  user_id: string;
+  display_name: string;
+  status: string;
+  referral_code: string;
+  discount_cap_bps: number;
+  created_at: string;
+  user_email?: string;
+  user_phone?: string;
+}
+
+export interface AdminAgentsListResponse {
+  agents: AdminAgentRecord[];
+}
+
+export interface AdminAgentCreatePayload {
+  phone_number: string;
+  display_name?: string;
+  discount_cap_bps?: number;
+}
+
+export interface AdminAgentCreateResponse {
+  success: boolean;
+  message: string;
+  agent: AdminAgentRecord;
+}
 
 export type SubscriptionPurchaseType =
   | "subscription_premium"
@@ -637,6 +691,7 @@ export type SubscriptionPurchaseType =
 export interface CreateRazorpayOrderPayload {
   purchase_type: Exclude<PurchaseType, SubscriptionPurchaseType>;
   ledger_id?: string;
+  business_id?: string;
 }
 
 export interface CreateRazorpaySubscriptionPayload {

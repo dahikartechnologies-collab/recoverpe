@@ -12,7 +12,7 @@ import {
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import { useWorkspaceStore } from "@/store/workspace-store";
-import { RecoverpeUser, SubscriptionPlan } from "@/types";
+import { BusinessAddonPurchaseType, RecoverpeUser, SubscriptionPlan } from "@/types";
 
 interface BillingViewProps {
   user: RecoverpeUser;
@@ -43,6 +43,10 @@ export function BillingView({ user }: BillingViewProps) {
   const bumpWalletRefresh = useWorkspaceStore((state) => state.bumpWalletRefresh);
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
   const setUserBillingState = useWorkspaceStore((state) => state.setUserBillingState);
+  const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
+  const businesses = useWorkspaceStore((state) => state.businesses);
+  const activeBusiness =
+    businesses.find((business) => business.id === activeBusinessId) ?? null;
   const [processingPurchase, setProcessingPurchase] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
@@ -105,6 +109,51 @@ export function BillingView({ user }: BillingViewProps) {
           const creditsAdded = PURCHASE_PRODUCTS.vapi_recharge_100.credits ?? 0;
           setToast({
             message: `${creditsAdded} AI credits added to your wallet.`,
+            variant: "success",
+          });
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Payment cancelled.") {
+        return;
+      }
+
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Payment could not be completed.",
+        variant: "error",
+      });
+    } finally {
+      setProcessingPurchase(null);
+    }
+  }
+
+  async function handleAddonPurchase(purchaseType: BusinessAddonPurchaseType) {
+    if (!activeBusiness) {
+      setToast({
+        message: "Select a business workspace before buying command-center add-ons.",
+        variant: "error",
+      });
+      return;
+    }
+
+    setProcessingPurchase(purchaseType);
+
+    try {
+      const product = PURCHASE_PRODUCTS[purchaseType];
+
+      await startRazorpayCheckout({
+        purchaseType,
+        businessId: activeBusiness.id,
+        description: `${product.label} — ${activeBusiness.business_name}`,
+        prefill: {
+          email: user.email,
+          contact: user.phone_number,
+        },
+        onSuccess: () => {
+          bumpUserRefresh();
+          setToast({
+            message: `${product.label} activated for ${activeBusiness.business_name}.`,
             variant: "success",
           });
         },
@@ -277,6 +326,79 @@ export function BillingView({ user }: BillingViewProps) {
                 <li>Credits are deducted when a call completes.</li>
                 <li>Recharges apply instantly after successful payment.</li>
               </ul>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-recoverpe-black">
+            Command Center Add-ons
+          </h2>
+          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+            {activeBusiness
+              ? `Purchases apply to ${activeBusiness.business_name}. Free tier includes 5 open promises and ${FREE_PLAN_LEDGER_LIMIT} AI proof scans per month.`
+              : "Add a business profile to purchase Promise Register or Settlement Desk."}
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardContent className="space-y-4 pt-6">
+              <div>
+                <p className="text-sm font-medium text-recoverpe-black">
+                  {PURCHASE_PRODUCTS.promise_register_monthly.label}
+                </p>
+                <p className="mt-1 text-sm text-recoverpe-grey-medium">
+                  {PURCHASE_PRODUCTS.promise_register_monthly.description}
+                </p>
+              </div>
+              <p className="text-2xl font-semibold text-recoverpe-black">
+                {PURCHASE_PRODUCTS.promise_register_monthly.amountLabel}
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void handleAddonPurchase("promise_register_monthly")}
+                disabled={
+                  !activeBusiness ||
+                  processingPurchase === "promise_register_monthly"
+                }
+              >
+                {processingPurchase === "promise_register_monthly"
+                  ? "Processing..."
+                  : "Buy Promise Register"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-4 pt-6">
+              <div>
+                <p className="text-sm font-medium text-recoverpe-black">
+                  {PURCHASE_PRODUCTS.settlement_desk_monthly.label}
+                </p>
+                <p className="mt-1 text-sm text-recoverpe-grey-medium">
+                  {PURCHASE_PRODUCTS.settlement_desk_monthly.description}
+                </p>
+              </div>
+              <p className="text-2xl font-semibold text-recoverpe-black">
+                {PURCHASE_PRODUCTS.settlement_desk_monthly.amountLabel}
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void handleAddonPurchase("settlement_desk_monthly")}
+                disabled={
+                  !activeBusiness ||
+                  processingPurchase === "settlement_desk_monthly"
+                }
+              >
+                {processingPurchase === "settlement_desk_monthly"
+                  ? "Processing..."
+                  : "Buy Settlement Desk"}
+              </Button>
             </CardContent>
           </Card>
         </div>

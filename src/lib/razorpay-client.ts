@@ -67,7 +67,7 @@ function loadRazorpayScript(): Promise<void> {
 
 export async function createRazorpayOrder(
   purchaseType: Exclude<PurchaseType, SubscriptionPurchaseType>,
-  ledgerId?: string
+  options: { ledgerId?: string; businessId?: string } = {}
 ): Promise<CreateRazorpayOrderResponse> {
   const headers = await getAuthHeaders();
   const response = await fetch("/api/razorpay/order", {
@@ -75,7 +75,8 @@ export async function createRazorpayOrder(
     headers,
     body: JSON.stringify({
       purchase_type: purchaseType,
-      ledger_id: ledgerId,
+      ledger_id: options.ledgerId,
+      business_id: options.businessId,
     } satisfies CreateRazorpayOrderPayload),
   });
 
@@ -180,6 +181,7 @@ interface StartCheckoutInput {
   purchaseType: PurchaseType;
   description: string;
   ledgerId?: string;
+  businessId?: string;
   prefill?: {
     name?: string;
     email?: string;
@@ -195,6 +197,7 @@ export async function startRazorpayCheckout({
   purchaseType,
   description,
   ledgerId,
+  businessId,
   prefill,
   onSuccess,
   onDismiss,
@@ -218,7 +221,7 @@ export async function startRazorpayCheckout({
 
   const orderResponse = await createRazorpayOrder(
     purchaseType as OneTimePurchaseType,
-    ledgerId
+    { ledgerId, businessId }
   );
 
   if (orderResponse.simulated) {

@@ -1,3 +1,9 @@
+import {
+  fetchBusinessMeteringRow,
+  hasSettlementDeskQuotaRemaining,
+  incrementBusinessProofQuota,
+  settlementDeskQuotaMessage,
+} from "@/lib/business-addons";
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   getDefaultGeminiModel,
@@ -13,6 +19,7 @@ import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import {
   BusinessDebtScope,
   findBusinessDebtScopes,
+  getInboundAppUrl,
 } from "@/lib/whatsapp/inbound-payment-responder";
 
 const META_GRAPH_VERSION = "v19.0";
@@ -321,6 +328,25 @@ export async function processInboundPaymentProof(
     return;
   }
 
+  const appUrl = getInboundAppUrl();
+
+  for (const scope of scopes) {
+    if (!scope.businessId) {
+      continue;
+    }
+
+    const metering = await fetchBusinessMeteringRow(supabase, scope.businessId);
+
+    if (metering && !hasSettlementDeskQuotaRemaining(metering)) {
+      console.warn(
+        "[SETTLEMENT DESK] Monthly proof quota exhausted for business:",
+        scope.businessId
+      );
+      await sendWhatsAppTextMessage(rawFrom, settlementDeskQuotaMessage(appUrl));
+      return;
+    }
+  }
+
   if (!(await isWhatsAppAiInferenceAllowed(rawFrom, "vision"))) {
     console.warn("[WHATSAPP AI] Inference budget exhausted for inbound image.");
     await sendWhatsAppTextMessage(rawFrom, VISION_RATE_LIMIT_MESSAGE);
@@ -365,6 +391,16 @@ export async function processInboundPaymentProof(
       extraction,
       raw,
     });
+
+    if (scope.businessId) {
+      try {
+        await incrementBusinessProofQuota(supabase, scope.businessId);
+      } catch (quotaError) {
+        captureHandledError("settlement_desk.quota_increment", quotaError, {
+          business_id: scope.businessId,
+        });
+      }
+    }
 
     await recordCommunicationSafely(supabase, {
       userId: scope.contact.user_id,

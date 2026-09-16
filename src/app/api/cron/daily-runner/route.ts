@@ -7,6 +7,7 @@ import {
 } from "@/lib/cron/dpdp-purge";
 import { refreshDebtorHealthScores } from "@/lib/debtor-health-refresh";
 import { fetchDpdpPurgeCandidates } from "@/lib/dpdp-erasure";
+import { markBrokenPromisesAfterMidnight } from "@/lib/promise-register";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -147,6 +148,26 @@ export async function GET(request: Request) {
       logPhase(runLog, "debtor_health", "error", message);
     }
 
+    let brokenPromiseCount = 0;
+    try {
+      brokenPromiseCount = await markBrokenPromisesAfterMidnight(
+        supabase,
+        referenceDate
+      );
+      logPhase(
+        runLog,
+        "promise_register",
+        "ok",
+        `Marked ${brokenPromiseCount} promise(s) as broken after IST midnight.`
+      );
+    } catch (promiseError) {
+      const message =
+        promiseError instanceof Error
+          ? promiseError.message
+          : "Promise register cron failed.";
+      logPhase(runLog, "promise_register", "error", message);
+    }
+
     const sentCount = autopilotRun.results.filter(
       (result) => result.reminder_sent
     ).length;
@@ -223,6 +244,7 @@ export async function GET(request: Request) {
       failed_count: failedCount,
       briefing_count: briefingCount,
       dhs_updated_count: dhsCount,
+      broken_promise_count: brokenPromiseCount,
       autopilot_errors: autopilotErrors,
       run_log: runLog,
       results: autopilotRun.results,

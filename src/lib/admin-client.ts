@@ -1,5 +1,8 @@
 import { getAuthHeaders } from "@/lib/businesses";
 import {
+  AdminAgentCreatePayload,
+  AdminAgentCreateResponse,
+  AdminAgentsListResponse,
   AdminManageUserPayload,
   AdminManageUserResponse,
   AdminMetricsResponse,
@@ -20,6 +23,72 @@ export async function fetchAdminMetrics(): Promise<AdminMetricsResponse> {
 
   if (!response.ok || !body.metrics) {
     throw new Error(body.error || "Failed to load admin metrics.");
+  }
+
+  return body;
+}
+
+export async function fetchAdminAgents(): Promise<AdminAgentsListResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/agents", { headers });
+  const body = (await response.json()) as AdminAgentsListResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.agents) {
+    throw new Error(body.error || "Failed to load agents.");
+  }
+
+  return body;
+}
+
+export async function createAdminAgent(
+  payload: AdminAgentCreatePayload
+): Promise<AdminAgentCreateResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/agents", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as AdminAgentCreateResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to create agent.");
+  }
+
+  return body;
+}
+
+export async function createAdminAgentForMe(): Promise<AdminAgentCreateResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/agents/me", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({}),
+  });
+
+  const body = (await response.json()) as AdminAgentCreateResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to assign agent row.");
   }
 
   return body;
