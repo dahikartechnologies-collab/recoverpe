@@ -1,11 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
+import {
+  formatExpectedCashCollection,
+  getAgentDiscountOptionsForCap,
+  referralStatusLabel,
+} from "@/lib/agent/discounts";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { persistActiveContext } from "@/lib/post-auth-navigation";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
@@ -30,6 +35,9 @@ interface AgentMeResponse {
   }>;
 }
 
+const selectClassName =
+  "w-full rounded-md border border-recoverpe-grey-light bg-recoverpe-white px-3 py-2 text-sm text-recoverpe-black";
+
 export default function AgentDashboardPage() {
   const router = useRouter();
   const [payload, setPayload] = useState<AgentMeResponse | null>(null);
@@ -38,6 +46,12 @@ export default function AgentDashboardPage() {
   const [shop, setShop] = useState("");
   const [discountBps, setDiscountBps] = useState("0");
   const [isSaving, setIsSaving] = useState(false);
+  const [otpByReferralId, setOtpByReferralId] = useState<Record<string, string>>(
+    {}
+  );
+  const [confirmingReferralId, setConfirmingReferralId] = useState<string | null>(
+    null
+  );
 
   async function load() {
     const headers = await getAuthHeaders();
@@ -52,6 +66,29 @@ export default function AgentDashboardPage() {
       );
     });
   }, []);
+
+  const discountOptions = useMemo(
+    () =>
+      payload
+        ? getAgentDiscountOptionsForCap(payload.agent.discount_cap_bps)
+        : getAgentDiscountOptionsForCap(1200),
+    [payload]
+  );
+
+  const expectedCollection = useMemo(
+    () => formatExpectedCashCollection(Number(discountBps)),
+    [discountBps]
+  );
+
+  useEffect(() => {
+    if (discountOptions.length === 0) {
+      return;
+    }
+
+    if (!discountOptions.some((option) => String(option.bps) === discountBps)) {
+      setDiscountBps(String(discountOptions[0].bps));
+    }
+  }, [discountBps, discountOptions]);
 
   async function handleReferral(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,6 +116,42 @@ export default function AgentDashboardPage() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleConfirmOtp(referralId: string) {
+    const otp = otpByReferralId[referralId]?.trim() ?? "";
+
+    if (!/^\d{6}$/.test(otp)) {
+      setError("Enter the 6-digit OTP the merchant received on WhatsApp.");
+      return;
+    }
+
+    setError("");
+    setConfirmingReferralId(referralId);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/agent/referrals/${referralId}/confirm-otp`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ otp }),
+      });
+      await parseApiJsonResponse(response);
+      setOtpByReferralId((current) => {
+        const next = { ...current };
+        delete next[referralId];
+        return next;
+      });
+      await load();
+    } catch (confirmError) {
+      setError(
+        confirmError instanceof Error
+          ? confirmError.message
+          : "Failed to confirm merchant OTP."
+      );
+    } finally {
+      setConfirmingReferralId(null);
     }
   }
 
@@ -155,12 +228,12 @@ export default function AgentDashboardPage() {
             Refer a merchant
           </h2>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            OTP goes to their WhatsApp. Premium activates when they reply — you
-            cannot punch it in from this phone. ₹100 accrues after remittance.
+            We WhatsApp a 6-digit OTP to the merchant. Collect the discounted
+            Premium cash, then enter their OTP below to open the remittance ticket.
           </p>
         </CardHeader>
-        <CardContent>
-          <form className="grid gap-3 sm:grid-cols-3" onSubmit={handleReferral}>
+        <CardContent className="space-y-4">
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleReferral}>
             <Input
               placeholder="Merchant mobile"
               value={phone}
@@ -172,14 +245,31 @@ export default function AgentDashboardPage() {
               value={shop}
               onChange={(event) => setShop(event.target.value)}
             />
-            <Input
-              placeholder="Discount bps (max 1200)"
-              value={discountBps}
-              onChange={(event) => setDiscountBps(event.target.value)}
-            />
+            <label className="block text-sm sm:col-span-2">
+              <span className="font-medium text-recoverpe-black">
+                Discount (Premium list ₹1,999/mo)
+              </span>
+              <select
+                className={`${selectClassName} mt-1`}
+                value={discountBps}
+                onChange={(event) => setDiscountBps(event.target.value)}
+              >
+                {discountOptions.map((option) => (
+                  <option key={option.bps} value={option.bps}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm sm:col-span-2">
+              <span className="text-recoverpe-grey-medium">Collect from merchant: </span>
+              <span className="font-semibold text-recoverpe-black">
+                {expectedCollection}
+              </span>
+            </div>
             <Button
               type="submit"
-              className="sm:col-span-3"
+              className="sm:col-span-2"
               disabled={isSaving || agent.referrals_frozen}
             >
               {isSaving ? "Sending OTP…" : "Send merchant OTP"}
@@ -203,19 +293,59 @@ export default function AgentDashboardPage() {
             referrals.map((referral) => (
               <div
                 key={referral.id}
-                className="flex items-center justify-between border border-recoverpe-grey-light px-3 py-2 text-sm"
+                className="space-y-3 border border-recoverpe-grey-light px-3 py-3 text-sm"
               >
-                <div>
-                  <p className="font-medium text-recoverpe-black">
-                    {referral.business_name || referral.merchant_phone}
-                  </p>
-                  <p className="text-recoverpe-grey-medium">
-                    {referral.merchant_phone} · {referral.status}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-recoverpe-black">
+                      {referral.business_name || referral.merchant_phone}
+                    </p>
+                    <p className="text-recoverpe-grey-medium">
+                      {referral.merchant_phone} ·{" "}
+                      {referralStatusLabel(referral.status)}
+                    </p>
+                  </div>
+                  <div className="text-right text-recoverpe-grey-medium">
+                    <p>{referral.discount_bps / 100}% off</p>
+                    <p className="mt-1 font-medium text-recoverpe-black">
+                      {formatExpectedCashCollection(referral.discount_bps)}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-recoverpe-grey-medium">
-                  {referral.discount_bps / 100}% off
-                </p>
+
+                {referral.status === "awaiting_merchant_otp" ? (
+                  <div className="flex flex-col gap-2 border-t border-recoverpe-grey-light pt-3 sm:flex-row sm:items-end">
+                    <label className="block flex-1 text-sm">
+                      <span className="font-medium text-recoverpe-black">
+                        Merchant OTP
+                      </span>
+                      <Input
+                        className="mt-1"
+                        inputMode="numeric"
+                        pattern="\d{6}"
+                        maxLength={6}
+                        placeholder="6-digit code"
+                        value={otpByReferralId[referral.id] ?? ""}
+                        onChange={(event) =>
+                          setOtpByReferralId((current) => ({
+                            ...current,
+                            [referral.id]: event.target.value.replace(/\D/g, "").slice(0, 6),
+                          }))
+                        }
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={confirmingReferralId === referral.id}
+                      onClick={() => void handleConfirmOtp(referral.id)}
+                    >
+                      {confirmingReferralId === referral.id
+                        ? "Confirming…"
+                        : "Confirm OTP"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ))
           )}

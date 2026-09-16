@@ -3,8 +3,10 @@ import {
   AGENT_LIABILITY_FREEZE_INR,
   AGENT_MAX_OPEN_CASH_TICKETS,
   AGENT_ONBOARD_PAYOUT_INR,
+  AGENT_OTP_MAX_ATTEMPTS,
 } from "@/lib/agent/constants";
-import { expectedPremiumInr } from "@/lib/agent/otp";
+import { agentOtpMatches, expectedPremiumInr } from "@/lib/agent/otp";
+import { buildPhoneLookupCandidates } from "@/lib/whatsapp/inbound-payment-responder";
 
 interface AgentRow {
   id: string;
@@ -126,6 +128,183 @@ export async function activateReferralAtMerchantOtp(
     const { activatePremiumForUser } = await import("@/lib/razorpay");
     await activatePremiumForUser(supabase, merchantUserId, "monthly");
   }
+}
+
+export class AgentReferralOtpError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | "not_found"
+      | "expired"
+      | "max_attempts"
+      | "invalid_otp"
+      | "invalid_state"
+  ) {
+    super(message);
+    this.name = "AgentReferralOtpError";
+  }
+}
+
+/**
+ * Agent-entered merchant OTP moves the referral to cash_held so the ticket
+ * shows as pending remittance until HQ confirms the cash landed.
+ */
+export async function confirmReferralOtpByAgent(
+  supabase: SupabaseClient,
+  agentId: string,
+  referralId: string,
+  otpCode: string
+): Promise<{ status: "cash_held"; expected_inr: number }> {
+  const trimmedOtp = otpCode.trim();
+
+  if (!/^\d{6}$/.test(trimmedOtp)) {
+    throw new AgentReferralOtpError(
+      "Enter the 6-digit OTP the merchant received on WhatsApp.",
+      "invalid_otp"
+    );
+  }
+
+  const { data: referral, error } = await supabase
+    .from("agent_referrals")
+    .select(
+      "id, agent_id, merchant_user_id, merchant_phone, discount_bps, status, merchant_otp_hash, merchant_otp_expires_at, merchant_otp_attempts"
+    )
+    .eq("id", referralId)
+    .eq("agent_id", agentId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to load referral.");
+  }
+
+  if (!referral || referral.status !== "awaiting_merchant_otp") {
+    throw new AgentReferralOtpError(
+      "This referral is not waiting for an OTP.",
+      "invalid_state"
+    );
+  }
+
+  const expiresAt = referral.merchant_otp_expires_at
+    ? new Date(referral.merchant_otp_expires_at as string).getTime()
+    : 0;
+
+  if (!expiresAt || expiresAt < Date.now()) {
+    await supabase
+      .from("agent_referrals")
+      .update({ status: "cancelled", merchant_otp_hash: null })
+      .eq("id", referral.id)
+      .eq("status", "awaiting_merchant_otp");
+
+    throw new AgentReferralOtpError(
+      "This OTP has expired. Start a new referral for the merchant.",
+      "expired"
+    );
+  }
+
+  const attempts = Number(referral.merchant_otp_attempts ?? 0);
+
+  if (attempts >= AGENT_OTP_MAX_ATTEMPTS) {
+    await supabase
+      .from("agent_referrals")
+      .update({ status: "cancelled", merchant_otp_hash: null })
+      .eq("id", referral.id);
+
+    throw new AgentReferralOtpError(
+      "Too many invalid attempts. Start a new referral for this merchant.",
+      "max_attempts"
+    );
+  }
+
+  const storedHash = String(referral.merchant_otp_hash ?? "");
+
+  if (!storedHash || !agentOtpMatches(trimmedOtp, storedHash)) {
+    await supabase
+      .from("agent_referrals")
+      .update({ merchant_otp_attempts: attempts + 1 })
+      .eq("id", referral.id);
+
+    throw new AgentReferralOtpError(
+      "Incorrect OTP. Ask the merchant to read the WhatsApp code again.",
+      "invalid_otp"
+    );
+  }
+
+  const phones = buildPhoneLookupCandidates(referral.merchant_phone as string);
+  const { data: merchant } = await supabase
+    .from("users")
+    .select("id")
+    .in("phone_number", phones)
+    .limit(1)
+    .maybeSingle();
+
+  const merchantUserId = (merchant?.id as string | undefined) ?? null;
+  const expectedInr = expectedPremiumInr(Number(referral.discount_bps ?? 0));
+
+  const { data: agent, error: agentError } = await supabase
+    .from("agents")
+    .select("id, wallet_liability_inr")
+    .eq("id", agentId)
+    .single();
+
+  if (agentError || !agent) {
+    throw new Error(agentError?.message || "Agent not found.");
+  }
+
+  const nextLiability = Number(agent.wallet_liability_inr ?? 0) + expectedInr;
+
+  const { error: referralError } = await supabase
+    .from("agent_referrals")
+    .update({
+      status: "cash_held",
+      merchant_user_id: merchantUserId,
+      merchant_otp_hash: null,
+      merchant_otp_attempts: 0,
+    })
+    .eq("id", referral.id)
+    .eq("status", "awaiting_merchant_otp");
+
+  if (referralError) {
+    throw new Error(referralError.message || "Failed to confirm referral OTP.");
+  }
+
+  const { error: cashError } = await supabase.from("agent_cash_collections").insert({
+    agent_id: agentId,
+    referral_id: referral.id,
+    declared_inr: expectedInr,
+    expected_inr: expectedInr,
+    status: "declared",
+  });
+
+  if (cashError) {
+    throw new Error(cashError.message || "Failed to record cash ticket.");
+  }
+
+  const { error: payoutError } = await supabase.from("agent_payouts").insert({
+    agent_id: agentId,
+    referral_id: referral.id,
+    kind: "onboard_100",
+    amount_inr: AGENT_ONBOARD_PAYOUT_INR,
+    period_ym: null,
+    status: "accrued",
+  });
+
+  if (payoutError && !payoutError.message.toLowerCase().includes("duplicate")) {
+    throw new Error(payoutError.message || "Failed to accrue onboard payout.");
+  }
+
+  const { error: liabilityError } = await supabase
+    .from("agents")
+    .update({ wallet_liability_inr: nextLiability })
+    .eq("id", agentId);
+
+  if (liabilityError) {
+    throw new Error(liabilityError.message || "Failed to increase wallet liability.");
+  }
+
+  return {
+    status: "cash_held",
+    expected_inr: expectedInr,
+  };
 }
 
 export async function remitAgentCashCollection(

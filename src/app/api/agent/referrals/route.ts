@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { requireActiveAgent } from "@/lib/agent/auth";
 import {
   AGENT_OTP_TTL_MS,
-  AGENT_MAX_DISCOUNT_BPS,
 } from "@/lib/agent/constants";
+import { isAllowedAgentDiscountBps } from "@/lib/agent/discounts";
 import {
   countOpenCashTickets,
   isAgentReferralFrozen,
@@ -50,9 +50,9 @@ export async function POST(request: Request) {
 
   const discountBps = Math.max(0, Math.round(Number(body?.discount_bps ?? 0)));
 
-  if (discountBps > agent.discountCapBps || discountBps > AGENT_MAX_DISCOUNT_BPS) {
+  if (!isAllowedAgentDiscountBps(discountBps, agent.discountCapBps)) {
     return NextResponse.json(
-      { error: "Discount exceeds this agent's cap." },
+      { error: "Choose a valid discount percentage within your cap." },
       { status: 400 }
     );
   }
