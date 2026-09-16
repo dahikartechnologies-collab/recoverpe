@@ -461,6 +461,12 @@ export async function processInboundWhatsAppMessage(
   messageText: string,
   options: ProcessInboundOptions = {}
 ): Promise<void> {
+  const incomingText = messageText.trim();
+
+  if (!incomingText) {
+    return;
+  }
+
   const supabase = createAdminSupabaseClient();
   const appUrl = getInboundAppUrl();
   const contacts = await fetchContactsByPhone(supabase, rawFrom);
@@ -482,7 +488,7 @@ export async function processInboundWhatsAppMessage(
         direction: "inbound",
         status: "delivered",
         externalMessageId: options.externalMessageId ?? null,
-        summary: summariseInboundMessage(messageText),
+        summary: summariseInboundMessage(incomingText),
       })
     )
   );
@@ -496,7 +502,7 @@ export async function processInboundWhatsAppMessage(
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
   const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes);
   const aiResponse = await generateInboundAiReply(
-    messageText,
+    incomingText,
     ledgerSummaryData,
     appUrl
   );

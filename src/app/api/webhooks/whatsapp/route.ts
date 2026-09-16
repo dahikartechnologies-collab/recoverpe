@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
-import {
-  MetaStatusUpdate,
-  applyWhatsAppDeliveryStatuses,
-} from "@/lib/communication-logs";
 import { captureHandledError } from "@/lib/observability";
-import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { processInboundWhatsAppMessage } from "@/lib/whatsapp/inbound-payment-responder";
-import { processInboundPaymentProof } from "@/lib/whatsapp/payment-proof";
+import { claimWhatsAppWamid } from "@/lib/whatsapp/wamid-idempotency";
+import {
+  MetaInboundTextMessage,
+  MetaWebhookBody,
+  applyInboundDeliveryStatuses,
+  deferWhatsAppWebhookWork,
+  executeInboundWhatsAppMessage,
+  getWhatsAppWebhookValue,
+  inboundMessageHasWork,
+  isStatusOnlyWebhook,
+  isSupportedInboundMessageType,
+} from "@/lib/whatsapp/webhook-inbound";
 import {
   readMetaSignatureHeader,
   verifyMetaWebhookSignature,
@@ -16,30 +21,6 @@ export const dynamic = "force-dynamic";
 // Image intake downloads media from Meta and then runs vision inference, which
 // comfortably exceeds the default function ceiling.
 export const maxDuration = 60;
-
-interface MetaInboundTextMessage {
-  id?: string;
-  from: string;
-  type: string;
-  text?: {
-    body?: string;
-  };
-  image?: {
-    id?: string;
-    mime_type?: string;
-  };
-}
-
-interface MetaWebhookBody {
-  entry?: Array<{
-    changes?: Array<{
-      value?: {
-        messages?: MetaInboundTextMessage[];
-        statuses?: MetaStatusUpdate[];
-      };
-    }>;
-  }>;
-}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -82,77 +63,80 @@ export async function POST(request: Request) {
 
   try {
     const body = JSON.parse(rawBody) as MetaWebhookBody;
-
-    const value = body?.entry?.[0]?.changes?.[0]?.value;
+    const value = getWhatsAppWebhookValue(body);
 
     if (!value) {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+      return NextResponse.json({ status: "ok" }, { status: 200 });
+    }
+
+    // Delivery receipts must never reach Gemini. Ack Meta immediately; ledger
+    // status writes continue in the background.
+    if (isStatusOnlyWebhook(value)) {
+      deferWhatsAppWebhookWork(applyInboundDeliveryStatuses(value.statuses ?? []));
+      return NextResponse.json({ status: "ok" }, { status: 200 });
     }
 
     if (value.statuses?.length) {
-      const supabase = createAdminSupabaseClient();
-      const updated = await applyWhatsAppDeliveryStatuses(
-        supabase,
-        value.statuses
-      );
+      deferWhatsAppWebhookWork(applyInboundDeliveryStatuses(value.statuses));
+    }
 
-      console.log("[WHATSAPP WEBHOOK STATUS]:", {
-        received: value.statuses.length,
-        updated,
+    const messages = value.messages ?? [];
+    const claimedMessages: MetaInboundTextMessage[] = [];
+    let sawDuplicate = false;
+
+    for (const message of messages) {
+      if (!isSupportedInboundMessageType(message.type)) {
+        continue;
+      }
+
+      if (!inboundMessageHasWork(message)) {
+        continue;
+      }
+
+      const wamid = message.id?.trim();
+
+      if (!wamid) {
+        continue;
+      }
+
+      // Identifier and type only. The rest of the Meta payload carries the
+      // customer's phone number, profile name and message body.
+      console.log("[WHATSAPP WEBHOOK INCOMING]:", {
+        message_id: wamid,
+        type: message.type,
       });
 
-      if (!value.messages?.length) {
-        return new NextResponse("EVENT_RECEIVED", { status: 200 });
+      const exists = await claimWhatsAppWamid(wamid);
+
+      if (!exists) {
+        sawDuplicate = true;
+        continue;
       }
+
+      claimedMessages.push(message);
     }
 
-    const message = value.messages?.[0];
-
-    if (!message) {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
-    }
-
-    // Identifier and type only. The rest of the Meta payload carries the
-    // customer's phone number, profile name and message body.
-    console.log("[WHATSAPP WEBHOOK INCOMING]:", {
-      message_id: message.id,
-      type: message.type,
-    });
-
-    const rawFrom = message.from;
-
-    if (!rawFrom) {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
-    }
-
-    if (message.type === "image") {
-      const mediaId = message.image?.id;
-
-      if (mediaId) {
-        await processInboundPaymentProof(
-          rawFrom,
-          mediaId,
-          message.id ?? null
+    if (claimedMessages.length === 0) {
+      if (sawDuplicate) {
+        return NextResponse.json(
+          { status: "already_processed" },
+          { status: 200 }
         );
       }
 
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
+      return NextResponse.json({ status: "ok" }, { status: 200 });
     }
 
-    if (message.type !== "text") {
-      return new NextResponse("EVENT_RECEIVED", { status: 200 });
-    }
-
-    const messageText = message.text?.body?.trim() ?? "";
-
-    await processInboundWhatsAppMessage(rawFrom, messageText, {
-      externalMessageId: message.id ?? null,
-    });
+    deferWhatsAppWebhookWork(
+      Promise.all(
+        claimedMessages.map((message) => executeInboundWhatsAppMessage(message))
+      )
+    );
   } catch (error) {
     // Meta retries non-200 responses, which would re-run inference and re-reply
     // to the customer, so the failure is absorbed and reported instead.
     captureHandledError("whatsapp.webhook", error);
   }
 
-  return new NextResponse("EVENT_RECEIVED", { status: 200 });
+  return NextResponse.json({ status: "ok" }, { status: 200 });
 }
