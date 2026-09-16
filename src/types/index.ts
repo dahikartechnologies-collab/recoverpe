@@ -150,6 +150,8 @@ export interface Contact {
   risk_score?: number;
   predicted_pay_date?: string | null;
   payment_reliability_tier?: PaymentReliabilityTier;
+  bot_paused?: boolean;
+  debtor_health_score?: number | null;
   virtual_account_id?: string | null;
   virtual_upi_id?: string | null;
   virtual_bank_account_number?: string | null;

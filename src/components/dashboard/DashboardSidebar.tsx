@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   Import,
+  MessageSquare,
   Receipt,
   ScanLine,
   Settings,
@@ -22,6 +23,7 @@ import { useWorkspaceStore } from "@/store/workspace-store";
 
 const SIDEBAR_LINKS = [
   { href: "/dashboard", label: "Home", icon: Home, exact: true },
+  { href: "/dashboard/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/dashboard/vendors", label: "Vendors", icon: Users, highlight: true },
   { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
   {

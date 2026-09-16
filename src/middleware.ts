@@ -4,6 +4,7 @@ import {
   APP_ROLE_COOKIE,
   AUTH_SESSION_COOKIE,
 } from "@/lib/auth-cookies";
+import { getActiveContextFromCookieHeader } from "@/lib/active-context";
 import { isPartnerContextFromCookies } from "@/lib/partner-context";
 import { shouldSkipGlobalApiRateLimit } from "@/lib/api-rate-limit-policy";
 import {
@@ -18,11 +19,44 @@ function redirectTo(request: NextRequest, pathname: string): NextResponse {
   return NextResponse.redirect(url);
 }
 
-/**
- * Route guards use recoverpe_app_role, which WorkspaceSwitcher keeps in sync
- * with the selected workspace via completeWorkspaceSwitch().
- * recoverpe_auth_session is set client-side when Firebase restores a session.
- */
+function applyActiveContextGuards(request: NextRequest): NextResponse | null {
+  const pathname = request.nextUrl.pathname;
+  const hasSession = request.cookies.get(AUTH_SESSION_COOKIE)?.value === "1";
+  const context = getActiveContextFromCookieHeader(
+    request.headers.get("cookie")
+  );
+
+  if (!hasSession) {
+    return null;
+  }
+
+  const isAgentApp =
+    pathname === "/agent-dashboard" ||
+    pathname.startsWith("/agent-dashboard/") ||
+    pathname.startsWith("/api/agent/");
+  const isMerchantApp =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") ||
+    pathname === "/kiosk" ||
+    pathname.startsWith("/kiosk/");
+
+  if (isAgentApp && context !== "agent") {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Switch to agent context to continue." },
+        { status: 403 }
+      );
+    }
+
+    return redirectTo(request, "/choose-context");
+  }
+
+  if (isMerchantApp && context === "agent") {
+    return redirectTo(request, "/agent-dashboard");
+  }
+
+  return null;
+}
 function applyRoleRouteGuards(request: NextRequest): NextResponse | null {
   const pathname = request.nextUrl.pathname;
   const hasSession = request.cookies.get(AUTH_SESSION_COOKIE)?.value === "1";
@@ -115,6 +149,12 @@ function serviceUnavailableResponse(): NextResponse {
 
 export async function middleware(request: NextRequest) {
   try {
+    const contextGuardResponse = applyActiveContextGuards(request);
+
+    if (contextGuardResponse) {
+      return contextGuardResponse;
+    }
+
     const roleGuardResponse = applyRoleRouteGuards(request);
 
     if (roleGuardResponse) {
@@ -182,6 +222,9 @@ export const config = {
     "/dashboard/:path*",
     "/kiosk",
     "/kiosk/:path*",
+    "/choose-context",
+    "/agent-dashboard",
+    "/agent-dashboard/:path*",
     "/pay/:path*",
     "/portal/:path*",
     "/q/:path*",

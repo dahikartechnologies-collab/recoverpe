@@ -5,6 +5,7 @@ import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { DashboardAnalyticsSection } from "@/components/dashboard/analytics/DashboardAnalyticsSection";
 import { DashboardLedgersSection } from "@/components/dashboard/DashboardLedgersSection";
 import { KhataOnboardQueue } from "@/components/dashboard/KhataOnboardQueue";
+import { MorningBriefingCard } from "@/components/dashboard/MorningBriefingCard";
 import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -81,6 +82,8 @@ export function BusinessDashboardView() {
       </div>
 
       <ActivityFeed items={items} isLoading={isLoading} />
+
+      <MorningBriefingCard />
 
       <DashboardAnalyticsSection
         workspaceMode="business"

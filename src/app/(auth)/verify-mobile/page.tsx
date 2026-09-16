@@ -19,6 +19,12 @@ import {
   userNeedsMobileVerification,
   verifyPhoneOtp,
 } from "@/lib/auth";
+import { setActorUserCookie } from "@/lib/auth-cookies";
+import {
+  fetchWorkspaceRole,
+  setAppRoleCookie,
+} from "@/lib/kiosk-client";
+import { resolvePostAuthPath } from "@/lib/post-auth-navigation";
 
 export default function VerifyMobilePage() {
   const router = useRouter();
@@ -43,7 +49,9 @@ export default function VerifyMobilePage() {
       if (!userNeedsMobileVerification(user)) {
         try {
           await syncUserToSupabase(user);
-          router.replace("/dashboard");
+          const roleContext = await fetchWorkspaceRole();
+          setAppRoleCookie(roleContext.role);
+          router.replace(await resolvePostAuthPath(roleContext.role));
         } catch (syncError) {
           setError(getFirebaseAuthErrorMessage(syncError));
           setIsCheckingAuth(false);
@@ -111,8 +119,11 @@ export default function VerifyMobilePage() {
         otpCode.trim()
       );
 
-      await syncUserToSupabase(credential.user);
-      router.push("/dashboard");
+      const syncedUser = await syncUserToSupabase(credential.user);
+      setActorUserCookie(syncedUser.id);
+      const roleContext = await fetchWorkspaceRole();
+      setAppRoleCookie(roleContext.role);
+      router.push(await resolvePostAuthPath(roleContext.role));
     } catch (verifyError) {
       setError(getFirebaseAuthErrorMessage(verifyError));
     } finally {

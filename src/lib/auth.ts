@@ -22,6 +22,7 @@ import {
 } from "@/lib/auth-cookies";
 import { resetFirebaseAuthReadyState } from "@/lib/auth-session";
 import { clearWorkspaceCookies } from "@/lib/workspace-context";
+import { clearActiveContextCookie } from "@/lib/active-context";
 
 export { getFirebaseAuth };
 
@@ -94,6 +95,7 @@ export async function logout(): Promise<void> {
   clearAppRoleCookie();
   clearActorUserCookie();
   clearWorkspaceCookies();
+  clearActiveContextCookie();
   resetFirebaseAuthReadyState();
 }
 

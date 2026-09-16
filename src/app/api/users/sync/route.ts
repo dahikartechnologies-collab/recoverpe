@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { applyPendingAgentPremiumOnSync } from "@/lib/agent/cash-protocol";
 import { getAdminAuth, verifyFirebaseIdToken } from "@/lib/firebase-admin";
+import { captureHandledError } from "@/lib/observability";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { RecoverpeUser } from "@/types";
 
@@ -62,6 +64,16 @@ export async function POST(request: Request) {
         { error: error.message || "Failed to sync user profile." },
         { status: 500 }
       );
+    }
+
+    try {
+      await applyPendingAgentPremiumOnSync(
+        supabase,
+        data.id as string,
+        firebaseUser.phoneNumber
+      );
+    } catch (premiumError) {
+      captureHandledError("agent.premium_sync", premiumError);
     }
 
     return NextResponse.json({ user: data as RecoverpeUser });

@@ -1,3 +1,4 @@
+import { tryConsumeMerchantOtpFromInbound } from "@/lib/agent/inbound-otp";
 import { getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
@@ -27,6 +28,7 @@ interface ContactRow {
   user_id: string;
   name: string;
   phone_number: string;
+  bot_paused?: boolean;
 }
 
 interface UnpaidLedgerRow {
@@ -158,7 +160,7 @@ async function fetchContactsByPhone(
 
   const { data, error } = await supabase
     .from("contacts")
-    .select("id, user_id, name, phone_number")
+    .select("id, user_id, name, phone_number, bot_paused")
     .in("phone_number", phoneCandidates);
 
   if (error) {
@@ -468,6 +470,11 @@ export async function processInboundWhatsAppMessage(
   }
 
   const supabase = createAdminSupabaseClient();
+
+  if (await tryConsumeMerchantOtpFromInbound(supabase, rawFrom, incomingText)) {
+    return;
+  }
+
   const appUrl = getInboundAppUrl();
   const contacts = await fetchContactsByPhone(supabase, rawFrom);
 
@@ -492,6 +499,10 @@ export async function processInboundWhatsAppMessage(
       })
     )
   );
+
+  if (contacts.every((contact) => contact.bot_paused)) {
+    return;
+  }
 
   if (!(await isWhatsAppAiInferenceAllowed(rawFrom, "text"))) {
     console.warn("[WHATSAPP AI] Inference budget exhausted for inbound text.");

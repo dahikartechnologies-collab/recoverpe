@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { generateDailyBriefings } from "@/lib/briefing";
 import { verifyCronSecret } from "@/lib/cron/daily-runner";
 import { runAutopilotCadenceJob } from "@/lib/cron/autopilot-runner";
 import {
   runDpdpAutoPurgeForCandidates,
 } from "@/lib/cron/dpdp-purge";
+import { refreshDebtorHealthScores } from "@/lib/debtor-health-refresh";
 import { fetchDpdpPurgeCandidates } from "@/lib/dpdp-erasure";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
@@ -92,7 +94,7 @@ export async function GET(request: Request) {
     try {
       autopilotRun = await runAutopilotCadenceJob(supabase, {
         batchSize: 40,
-        timeBudgetMs: 50_000,
+        timeBudgetMs: 38_000,
       });
 
       logPhase(
@@ -109,6 +111,40 @@ export async function GET(request: Request) {
 
       logPhase(runLog, "autopilot_dispatch", "error", message);
       throw autopilotError;
+    }
+
+    let briefingCount = 0;
+    try {
+      briefingCount = await generateDailyBriefings(supabase);
+      logPhase(
+        runLog,
+        "briefing_generate",
+        "ok",
+        `Wrote ${briefingCount} morning briefing(s).`
+      );
+    } catch (briefingError) {
+      const message =
+        briefingError instanceof Error
+          ? briefingError.message
+          : "Morning briefing failed.";
+      logPhase(runLog, "briefing_generate", "error", message);
+    }
+
+    let dhsCount = 0;
+    try {
+      dhsCount = await refreshDebtorHealthScores(supabase, 250);
+      logPhase(
+        runLog,
+        "debtor_health",
+        "ok",
+        `Updated DHS for ${dhsCount} contact(s).`
+      );
+    } catch (dhsError) {
+      const message =
+        dhsError instanceof Error
+          ? dhsError.message
+          : "Debtor health refresh failed.";
+      logPhase(runLog, "debtor_health", "error", message);
     }
 
     const sentCount = autopilotRun.results.filter(
@@ -185,6 +221,8 @@ export async function GET(request: Request) {
       skipped_curfew_count: skippedCurfewCount,
       halted_count: haltedCount,
       failed_count: failedCount,
+      briefing_count: briefingCount,
+      dhs_updated_count: dhsCount,
       autopilot_errors: autopilotErrors,
       run_log: runLog,
       results: autopilotRun.results,

@@ -509,6 +509,22 @@ export async function processAutopilotRun(
     };
   }
 
+  const { data: contactPause } = await supabase
+    .from("contacts")
+    .select("bot_paused")
+    .eq("id", ledger.contact_id)
+    .maybeSingle();
+
+  if (contactPause?.bot_paused) {
+    return {
+      cadence_run_id: cadenceRun.id,
+      ledger_id: ledger.id,
+      step_index: cadenceRun.step_index,
+      status: "skipped_idempotent",
+      message: "Skipped — owner paused the WhatsApp bot for this contact.",
+    };
+  }
+
   if (isTraiCurfewActive()) {
     return {
       cadence_run_id: cadenceRun.id,

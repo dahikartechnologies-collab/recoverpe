@@ -16,9 +16,9 @@ import {
 import { setActorUserCookie } from "@/lib/auth-cookies";
 import {
   fetchWorkspaceRole,
-  getPostLoginRoute,
   setAppRoleCookie,
 } from "@/lib/kiosk-client";
+import { resolvePostAuthPath } from "@/lib/post-auth-navigation";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function LoginPage() {
       setActorUserCookie(syncedUser.id);
       const roleContext = await fetchWorkspaceRole();
       setAppRoleCookie(roleContext.role);
-      router.push(getPostLoginRoute(roleContext.role));
+      router.push(await resolvePostAuthPath(roleContext.role));
     } catch (submitError) {
       setError(getFirebaseAuthErrorMessage(submitError));
     } finally {
