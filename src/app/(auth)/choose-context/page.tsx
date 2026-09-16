@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
-import { persistActiveContext } from "@/lib/post-auth-navigation";
-import { merchantHomePath } from "@/lib/active-context";
+import { setAppRoleCookie } from "@/lib/auth-cookies";
 import { fetchWorkspaceRole } from "@/lib/kiosk-client";
+import { persistActiveContext, merchantHomePath } from "@/lib/post-auth-navigation";
 
 export default function ChooseContextPage() {
   const router = useRouter();
@@ -26,6 +26,7 @@ export default function ChooseContextPage() {
       }
 
       const role = await fetchWorkspaceRole();
+      setAppRoleCookie(role.role);
       router.push(merchantHomePath(role.role));
     } catch (chooseError) {
       setError(

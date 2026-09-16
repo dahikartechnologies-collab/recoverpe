@@ -35,6 +35,7 @@ import {
   setWorkspaceCookies,
 } from "@/lib/workspace-context";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
+import { isAgentContextActive } from "@/lib/post-auth-navigation";
 import { AccountPendingPurgeError, AccountSuspendedError } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/Button";
@@ -340,12 +341,22 @@ export function DashboardShell({
   ]);
 
   useEffect(() => {
+    if (isAgentContextActive()) {
+      router.replace("/agent-dashboard");
+    }
+  }, [router]);
+
+  useEffect(() => {
     if (!isAuthReady) {
       return;
     }
 
     if (!user) {
       router.replace("/login");
+      return;
+    }
+
+    if (isAgentContextActive()) {
       return;
     }
 

@@ -26,14 +26,14 @@ export const POST = withWorkspaceMutation(
       );
     }
 
-    await sendOwnerInboxReply(createAdminSupabaseClient(), {
+    const message = await sendOwnerInboxReply(createAdminSupabaseClient(), {
       workspaceUserId: auth.effectiveUserId,
       businessId: auth.workspaceBusinessId,
       contactId,
       body: text,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, message });
   },
   { permission: "send_reminders" }
 );

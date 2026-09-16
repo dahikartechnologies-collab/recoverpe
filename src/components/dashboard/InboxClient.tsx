@@ -26,6 +26,36 @@ function dhsLabel(score: number | null): string {
   return `DHS ${score} · ${labels[tier]}`;
 }
 
+function formatMessageStatus(status: string): string {
+  switch (status) {
+    case "read":
+      return "Read";
+    case "delivered":
+      return "Delivered";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    default:
+      return status;
+  }
+}
+
+function statusIndicator(status: string): string {
+  switch (status) {
+    case "read":
+      return "✓✓";
+    case "delivered":
+      return "✓✓";
+    case "sent":
+      return "✓";
+    case "failed":
+      return "!";
+    default:
+      return "·";
+  }
+}
+
 export function InboxClient() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const [threads, setThreads] = useState<InboxThreadRow[]>([]);
@@ -118,8 +148,23 @@ export function InboxClient() {
       return;
     }
 
+    const trimmedReply = reply.trim();
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticMessage: InboxMessageRow = {
+      id: optimisticId,
+      direction: "outbound",
+      summary: trimmedReply,
+      status: "sent",
+      executed_at: new Date().toISOString(),
+      external_message_id: null,
+      proof_url: null,
+      proof_status: null,
+    };
+
     setIsSending(true);
     setError("");
+    setReply("");
+    setMessages((current) => [...current, optimisticMessage]);
 
     try {
       const headers = await getAuthHeaders();
@@ -128,14 +173,25 @@ export function InboxClient() {
         {
           method: "POST",
           headers,
-          body: JSON.stringify({ body: reply.trim() }),
+          body: JSON.stringify({ body: trimmedReply }),
         }
       );
-      await parseApiJsonResponse(response);
-      setReply("");
-      await loadThread(selected.contact_id);
+      const body = await parseApiJsonResponse<{
+        ok: boolean;
+        message: InboxMessageRow;
+      }>(response);
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === optimisticId ? body.message : message
+        )
+      );
       await loadThreads();
     } catch (sendError) {
+      setMessages((current) =>
+        current.filter((message) => message.id !== optimisticId)
+      );
+      setReply(trimmedReply);
       setError(
         sendError instanceof Error ? sendError.message : "Failed to send reply."
       );
@@ -225,7 +281,8 @@ export function InboxClient() {
                       }`}
                     >
                       <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-                        {message.direction} · {message.status}
+                        {message.direction} · {statusIndicator(message.status)}{" "}
+                        {formatMessageStatus(message.status)}
                       </p>
                       <p className="mt-1 text-recoverpe-black">
                         {message.summary || "—"}

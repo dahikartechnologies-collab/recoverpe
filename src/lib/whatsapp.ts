@@ -456,17 +456,20 @@ export async function sendWhatsAppMessage(
   }
 }
 
-export async function sendWhatsAppTextMessage(
+export async function sendWhatsAppTextMessageDetailed(
   to: string,
   messageBody: string
-): Promise<boolean> {
+): Promise<{ ok: boolean; externalMessageId: string | null }> {
   const cleanPhone = sanitizeMetaWhatsAppRecipient(to);
   const forceReal = process.env.TEST_REAL_WHATSAPP_LOCALLY === "true";
   const isDev = process.env.APP_ENV === "development";
 
   if (isDev && !forceReal) {
     console.log("[WHATSAPP TEXT] Mock reply to", cleanPhone, messageBody);
-    return true;
+    return {
+      ok: true,
+      externalMessageId: `wamid_dev_${Date.now()}`,
+    };
   }
 
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
@@ -474,7 +477,7 @@ export async function sendWhatsAppTextMessage(
 
   if (!phoneNumberId || !accessToken) {
     console.error("[WHATSAPP] Missing Meta credentials for text dispatch");
-    return false;
+    return { ok: false, externalMessageId: null };
   }
 
   const payload = {
@@ -507,12 +510,27 @@ export async function sendWhatsAppTextMessage(
         error?: { message?: string };
       };
       console.error("[WHATSAPP TEXT ERROR]", JSON.stringify(err, null, 2));
-      return false;
+      return { ok: false, externalMessageId: null };
     }
 
-    return true;
+    const data = (await res.json()) as {
+      messages?: Array<{ id?: string }>;
+    };
+
+    return {
+      ok: true,
+      externalMessageId: data.messages?.[0]?.id ?? null,
+    };
   } catch (error) {
     console.error("[WHATSAPP TEXT NETWORK ERROR]:", error);
-    return false;
+    return { ok: false, externalMessageId: null };
   }
+}
+
+export async function sendWhatsAppTextMessage(
+  to: string,
+  messageBody: string
+): Promise<boolean> {
+  const result = await sendWhatsAppTextMessageDetailed(to, messageBody);
+  return result.ok;
 }

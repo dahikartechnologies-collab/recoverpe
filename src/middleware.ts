@@ -39,6 +39,43 @@ function applyActiveContextGuards(request: NextRequest): NextResponse | null {
     pathname.startsWith("/dashboard/") ||
     pathname === "/kiosk" ||
     pathname.startsWith("/kiosk/");
+  const isContextChooser =
+    pathname === "/choose-context" || pathname.startsWith("/choose-context/");
+  const isSessionApi =
+    pathname.startsWith("/api/session/") ||
+    pathname === "/api/users/sync" ||
+    pathname === "/api/users/me";
+  const isMerchantHydrationApi =
+    pathname === "/api/users/workspace-role" ||
+    pathname.startsWith("/api/dashboard/");
+
+  if (context === "agent") {
+    if (isMerchantHydrationApi) {
+      return NextResponse.json(
+        { error: "Merchant workspace APIs are unavailable in agent context." },
+        { status: 403 }
+      );
+    }
+
+    if (
+      !isAgentApp &&
+      !isContextChooser &&
+      !isSessionApi &&
+      !pathname.startsWith("/admin") &&
+      !pathname.startsWith("/api/admin/")
+    ) {
+      if (isMerchantApp) {
+        return redirectTo(request, "/agent-dashboard");
+      }
+
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Switch to merchant context to continue." },
+          { status: 403 }
+        );
+      }
+    }
+  }
 
   if (isAgentApp && context !== "agent") {
     if (pathname.startsWith("/api/")) {

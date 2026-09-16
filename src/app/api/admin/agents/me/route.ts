@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return authResult.error;
     }
 
-    const body = (await request.json()) as {
+    const body = (await request.json().catch(() => ({}))) as {
       display_name?: string;
       discount_cap_bps?: number;
     };

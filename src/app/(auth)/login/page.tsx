@@ -14,10 +14,6 @@ import {
   userNeedsMobileVerification,
 } from "@/lib/auth";
 import { setActorUserCookie } from "@/lib/auth-cookies";
-import {
-  fetchWorkspaceRole,
-  setAppRoleCookie,
-} from "@/lib/kiosk-client";
 import { resolvePostAuthPath } from "@/lib/post-auth-navigation";
 
 export default function LoginPage() {
@@ -42,9 +38,7 @@ export default function LoginPage() {
 
       const syncedUser = await syncUserToSupabase(credential.user);
       setActorUserCookie(syncedUser.id);
-      const roleContext = await fetchWorkspaceRole();
-      setAppRoleCookie(roleContext.role);
-      router.push(await resolvePostAuthPath(roleContext.role));
+      router.push(await resolvePostAuthPath());
     } catch (submitError) {
       setError(getFirebaseAuthErrorMessage(submitError));
     } finally {

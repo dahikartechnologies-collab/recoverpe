@@ -4,7 +4,7 @@ import {
   InboxMessageRow,
   InboxThreadRow,
 } from "@/lib/inbox-types";
-import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTextMessageDetailed } from "@/lib/whatsapp";
 
 export type { InboxMessageRow, InboxThreadRow };
 
@@ -189,7 +189,7 @@ export async function sendOwnerInboxReply(
     contactId: string;
     body: string;
   }
-): Promise<void> {
+): Promise<InboxMessageRow> {
   const { data: contact, error } = await supabase
     .from("contacts")
     .select("id, phone_number")
@@ -201,16 +201,20 @@ export async function sendOwnerInboxReply(
     throw new Error(error?.message || "Contact not found.");
   }
 
-  const sent = await sendWhatsAppTextMessage(
+  const sent = await sendWhatsAppTextMessageDetailed(
     contact.phone_number as string,
     input.body
   );
 
-  if (!sent) {
+  if (!sent.ok) {
     throw new Error("Failed to send WhatsApp reply.");
   }
 
-  await recordCommunicationSafely(supabase, {
+  const executedAt = new Date().toISOString();
+  const summary =
+    input.body.length > 120 ? `${input.body.slice(0, 117)}...` : input.body;
+
+  const logId = await recordCommunicationSafely(supabase, {
     userId: input.workspaceUserId,
     businessId: input.businessId,
     contactId: input.contactId,
@@ -218,6 +222,18 @@ export async function sendOwnerInboxReply(
     channel: "whatsapp",
     direction: "outbound",
     status: "sent",
-    summary: "Owner reply",
+    externalMessageId: sent.externalMessageId,
+    summary,
   });
+
+  return {
+    id: logId ?? `pending-${executedAt}`,
+    direction: "outbound",
+    summary,
+    status: "sent",
+    executed_at: executedAt,
+    external_message_id: sent.externalMessageId,
+    proof_url: null,
+    proof_status: null,
+  };
 }

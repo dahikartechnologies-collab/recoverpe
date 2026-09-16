@@ -1,13 +1,19 @@
 import { getAuthHeaders } from "@/lib/auth-headers";
 import {
   ActiveContext,
+  getActiveContextFromDocument,
   IdentitySurfaces,
   merchantHomePath,
   resolveLandingPath,
   setActiveContextCookie,
 } from "@/lib/active-context";
+import { setAppRoleCookie } from "@/lib/auth-cookies";
+import { fetchWorkspaceRole } from "@/lib/kiosk-client";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
-import { AppRole } from "@/types";
+
+export function isAgentContextActive(): boolean {
+  return getActiveContextFromDocument() === "agent";
+}
 
 export async function fetchIdentitySurfaces(): Promise<{
   surfaces: IdentitySurfaces;
@@ -29,11 +35,24 @@ export async function persistActiveContext(context: ActiveContext): Promise<void
   await parseApiJsonResponse(response);
 }
 
-export async function resolvePostAuthPath(role: AppRole): Promise<string> {
+/**
+ * Resolves the first screen after auth. Skips merchant workspace hydration when
+ * the active context cookie is already "agent".
+ */
+export async function resolvePostAuthPath(): Promise<string> {
   const { surfaces, active_context } = await fetchIdentitySurfaces();
+
+  if (active_context === "agent" && surfaces.has_agent) {
+    await persistActiveContext("agent");
+    return "/agent-dashboard";
+  }
+
+  const roleContext = await fetchWorkspaceRole();
+  setAppRoleCookie(roleContext.role);
+
   const path = resolveLandingPath({
     surfaces,
-    role,
+    role: roleContext.role,
     activeContext: active_context,
     preferChooserWhenBoth: true,
   });

@@ -69,15 +69,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "ok" }, { status: 200 });
     }
 
-    // Delivery receipts must never reach Gemini. Ack Meta immediately; ledger
-    // status writes continue in the background.
-    if (isStatusOnlyWebhook(value)) {
-      deferWhatsAppWebhookWork(applyInboundDeliveryStatuses(value.statuses ?? []));
-      return NextResponse.json({ status: "ok" }, { status: 200 });
+    // Delivery receipts must never reach Gemini. Apply synchronously, then ack.
+    if (value.statuses?.length) {
+      await applyInboundDeliveryStatuses(value.statuses ?? []);
     }
 
-    if (value.statuses?.length) {
-      deferWhatsAppWebhookWork(applyInboundDeliveryStatuses(value.statuses));
+    if (isStatusOnlyWebhook(value)) {
+      return NextResponse.json({ status: "ok" }, { status: 200 });
     }
 
     const messages = value.messages ?? [];

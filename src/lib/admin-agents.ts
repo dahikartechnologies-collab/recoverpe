@@ -81,9 +81,36 @@ async function insertAgentWithUniqueReferralCode(
       return data as AdminAgentRow;
     }
 
-    if (error?.code !== "23505") {
-      throw new Error(error?.message || "Failed to create agent row.");
+    if (error?.code === "23505") {
+      const { data: existing, error: existingError } = await supabase
+        .from("agents")
+        .select("id, user_id, display_name, status, referral_code, discount_cap_bps, created_at")
+        .eq("user_id", input.userId)
+        .maybeSingle();
+
+      if (!existingError && existing) {
+        if (existing.status !== "active") {
+          const { data: reactivated, error: reactivateError } = await supabase
+            .from("agents")
+            .update({ status: "active" })
+            .eq("id", existing.id)
+            .select("id, user_id, display_name, status, referral_code, discount_cap_bps, created_at")
+            .single();
+
+          if (reactivateError || !reactivated) {
+            throw new Error(reactivateError?.message || "Failed to reactivate agent.");
+          }
+
+          return reactivated as AdminAgentRow;
+        }
+
+        return existing as AdminAgentRow;
+      }
+
+      continue;
     }
+
+    throw new Error(error?.message || "Failed to create agent row.");
   }
 
   throw new Error("Could not allocate a unique referral code.");
