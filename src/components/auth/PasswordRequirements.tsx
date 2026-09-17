@@ -1,14 +1,31 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { evaluatePasswordRequirements } from "@/lib/password-policy";
+import {
+  evaluatePasswordRequirements,
+  evaluateResetPasswordRequirements,
+  type PasswordRequirement,
+} from "@/lib/password-policy";
 
 interface PasswordRequirementsProps {
   password: string;
+  mode?: "register" | "reset";
+  requirements?: PasswordRequirement[];
 }
 
-export function PasswordRequirements({ password }: PasswordRequirementsProps) {
-  const requirements = evaluatePasswordRequirements(password);
+export function PasswordRequirements({
+  password,
+  mode = "register",
+  requirements,
+}: PasswordRequirementsProps) {
+  const evaluatedRequirements = requirements
+    ? requirements.map((requirement) => ({
+        ...requirement,
+        met: requirement.test(password),
+      }))
+    : mode === "reset"
+      ? evaluateResetPasswordRequirements(password)
+      : evaluatePasswordRequirements(password);
 
   return (
     <ul
@@ -16,7 +33,7 @@ export function PasswordRequirements({ password }: PasswordRequirementsProps) {
       aria-live="polite"
       aria-label="Password requirements"
     >
-      {requirements.map((requirement) => (
+      {evaluatedRequirements.map((requirement) => (
         <li
           key={requirement.id}
           className={`flex items-center gap-2 text-xs transition-colors ${

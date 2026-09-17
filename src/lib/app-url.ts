@@ -22,3 +22,7 @@ export function getPayPageUrl(ledgerId: string): string {
 export function getDebtorPortalUrl(sessionId: string): string {
   return `${getAppBaseUrl()}/portal/${sessionId}`;
 }
+
+export function getResetPasswordUrl(): string {
+  return `${getAppBaseUrl()}/reset-password`;
+}

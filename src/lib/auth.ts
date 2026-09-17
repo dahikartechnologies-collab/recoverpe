@@ -2,6 +2,7 @@
 
 import {
   ConfirmationResult,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   linkWithPhoneNumber,
   RecaptchaVerifier,
@@ -13,6 +14,7 @@ import {
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { RecoverpeUser } from "@/types";
+import { getResetPasswordUrl } from "@/lib/app-url";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { getFirebaseAuth } from "@/lib/firebase";
 import {
@@ -59,6 +61,10 @@ export function getFirebaseAuthErrorMessage(error: unknown): string {
         return "Invalid OTP. Please check the 6-digit code and try again.";
       case "auth/code-expired":
         return "OTP expired. Please request a new code.";
+      case "auth/expired-action-code":
+        return "This reset link has expired. Request a new password reset email.";
+      case "auth/invalid-action-code":
+        return "This reset link is invalid or has already been used.";
       case "auth/invalid-phone-number":
         return "Please enter a valid 10-digit mobile number.";
       case "auth/credential-already-in-use":
@@ -111,7 +117,17 @@ export async function sendPasswordReset(email: string): Promise<void> {
     throw new Error("Please enter your email address.");
   }
 
-  await sendPasswordResetEmail(getFirebaseAuth(), email.trim());
+  await sendPasswordResetEmail(getFirebaseAuth(), email.trim(), {
+    url: getResetPasswordUrl(),
+    handleCodeInApp: true,
+  });
+}
+
+export async function completePasswordReset(
+  oobCode: string,
+  newPassword: string
+): Promise<void> {
+  await confirmPasswordReset(getFirebaseAuth(), oobCode, newPassword);
 }
 
 export const RECAPTCHA_CONTAINER_ID = "recaptcha-container";
