@@ -29,6 +29,7 @@ import { WorkspaceMember } from "@/types";
 export function TeamSettingsView() {
   const { hasEntitlement } = useActiveBusinessEntitlements();
   const canUseAgentNetwork = hasEntitlement("field_agent_network");
+  const canManageTeamMembers = hasEntitlement("team_management");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [canManageTeam, setCanManageTeam] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -147,12 +148,21 @@ export function TeamSettingsView() {
             Manage admins, recovery agents, accountants, and field staff.
           </p>
         </div>
-        {isOwner ? (
+        {isOwner && canManageTeamMembers ? (
           <Button type="button" onClick={() => setIsInviteOpen(true)}>
             Invite Member
           </Button>
         ) : null}
       </div>
+
+      {!canManageTeamMembers ? (
+        <PremiumUpgradeLock
+          eyebrow="Business feature"
+          ctaLabel="View plans"
+          title="Team management"
+          description="Invite admins, recovery agents, accountants, and field staff on Business or Premium plans."
+        />
+      ) : null}
 
       {successMessage ? (
         <p className="text-sm text-recoverpe-success">{successMessage}</p>
@@ -196,7 +206,11 @@ export function TeamSettingsView() {
           </h2>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {isLoading ? (
+          {!canManageTeamMembers ? (
+            <p className="text-sm text-recoverpe-grey-medium">
+              Upgrade to Business to invite and manage workspace members.
+            </p>
+          ) : isLoading ? (
             <p className="text-sm text-recoverpe-grey-medium">Loading team...</p>
           ) : members.length === 0 ? (
             <EmptyState

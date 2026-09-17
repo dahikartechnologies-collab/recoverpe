@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Receipt } from "lucide-react";
 import { AccountingExportCard } from "@/components/dashboard/AccountingExportCard";
 import { AddExpenseModal } from "@/components/dashboard/AddExpenseModal";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency } from "@/lib/gst";
 import {
   EXPENSE_CATEGORY_LABELS,
@@ -105,14 +107,20 @@ export function ExpensesClient() {
       {isLoading ? (
         <p className="text-sm text-recoverpe-grey-medium">Loading expenses...</p>
       ) : expenses.length === 0 ? (
-        <div className="rounded-md border border-dashed border-recoverpe-grey-light px-5 py-10 text-center">
-          <p className="text-sm font-medium text-recoverpe-black">
-            No expenses recorded yet
-          </p>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Record what you pay out to see net cashflow against your receivables.
-          </p>
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={<Receipt className="h-5 w-5" aria-hidden />}
+              title="No expenses recorded yet"
+              description="Record what you pay out to see net cashflow against your receivables."
+              action={
+                <Button type="button" onClick={() => setIsModalOpen(true)}>
+                  Record expense
+                </Button>
+              }
+            />
+          </CardContent>
+        </Card>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-recoverpe-grey-light">
           <table className="min-w-full text-left text-sm">

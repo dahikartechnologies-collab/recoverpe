@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Handshake } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Toast } from "@/components/ui/Toast";
 import {
   fetchPaymentPromises,
@@ -134,9 +136,11 @@ export function PromiseRegisterCard({ businessId }: PromiseRegisterCardProps) {
         {isLoading ? (
           <p className="text-sm text-recoverpe-grey-medium">Loading promises...</p>
         ) : promises.length === 0 ? (
-          <p className="text-sm text-recoverpe-grey-medium">
-            No {TAB_LABELS[activeTab].toLowerCase()} promises for this business yet.
-          </p>
+          <EmptyState
+            icon={<Handshake className="h-5 w-5" aria-hidden />}
+            title={`No ${TAB_LABELS[activeTab].toLowerCase()} promises yet`}
+            description="When debtors promise a pay date on WhatsApp, RecoverPe logs it here for follow-up."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">

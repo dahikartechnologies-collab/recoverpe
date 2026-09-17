@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Bell, Settings, Users } from "lucide-react";
+import { Building2, Bell, Settings, Users, Wallet } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import {
   canAccessAccountSettings,
@@ -43,6 +43,13 @@ const SETTINGS_LINKS: Array<{
     href: "/dashboard/settings/profile",
     label: "Business Profile",
     icon: Building2,
+    exact: false,
+    visible: (role, permissions) => canEditBusinessSettings(role, permissions),
+  },
+  {
+    href: "/dashboard/settings/payouts",
+    label: "Payouts",
+    icon: Wallet,
     exact: false,
     visible: (role, permissions) => canEditBusinessSettings(role, permissions),
   },

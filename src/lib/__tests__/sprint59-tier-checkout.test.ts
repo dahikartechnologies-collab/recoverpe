@@ -15,7 +15,13 @@ describe("entitlements", () => {
       hasEntitlement({ subscription_tier: "business" }, "zero_mdr_checkout")
     ).toBe(true);
     expect(
+      hasEntitlement({ subscription_tier: "business" }, "team_management")
+    ).toBe(true);
+    expect(
       hasEntitlement({ subscription_tier: "starter" }, "zero_mdr_checkout")
+    ).toBe(false);
+    expect(
+      hasEntitlement({ subscription_tier: "free" }, "team_management")
     ).toBe(false);
   });
 

@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Users } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import {
@@ -91,6 +93,26 @@ export function AgentDashboardView() {
         loadError instanceof Error ? loadError.message : "Failed to load agent desk."
       );
     });
+  }, []);
+
+  useEffect(() => {
+    function syncTabFromHash() {
+      const hash = window.location.hash.replace("#", "");
+
+      if (hash === "kyc") {
+        setActiveTab("profile");
+        return;
+      }
+
+      if (hash === "leads") {
+        setActiveTab("crm");
+      }
+    }
+
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
   }, []);
 
   const discountOptions = useMemo(
@@ -285,7 +307,7 @@ export function AgentDashboardView() {
         </div>
       </div>
 
-      <Card>
+      <Card id="agent-performance">
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
@@ -361,9 +383,12 @@ export function AgentDashboardView() {
               ? "border-b-2 border-recoverpe-black text-recoverpe-black"
               : "text-recoverpe-grey-medium"
           }`}
-          onClick={() => setActiveTab("crm")}
+          onClick={() => {
+            setActiveTab("crm");
+            window.location.hash = "leads";
+          }}
         >
-          My merchants
+          Leads
         </button>
         <button
           type="button"
@@ -372,9 +397,12 @@ export function AgentDashboardView() {
               ? "border-b-2 border-recoverpe-black text-recoverpe-black"
               : "text-recoverpe-grey-medium"
           }`}
-          onClick={() => setActiveTab("profile")}
+          onClick={() => {
+            setActiveTab("profile");
+            window.location.hash = "kyc";
+          }}
         >
-          Profile & KYC
+          KYC
         </button>
       </div>
 
@@ -452,9 +480,11 @@ export function AgentDashboardView() {
             </CardHeader>
             <CardContent className="overflow-x-auto">
               {referrals.length === 0 ? (
-                <p className="text-sm text-recoverpe-grey-medium">
-                  No referrals yet.
-                </p>
+                <EmptyState
+                  icon={<Users className="h-5 w-5" aria-hidden />}
+                  title="No leads yet"
+                  description="Refer a merchant above. Once they confirm the OTP, the lead appears here with remittance status."
+                />
               ) : (
                 <table className="min-w-full text-left text-sm">
                   <thead>

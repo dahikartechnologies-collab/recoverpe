@@ -10,6 +10,7 @@ import {
   Receipt,
   ScanLine,
   Settings,
+  Shield,
   Users,
   Wallet,
 } from "lucide-react";
@@ -45,6 +46,7 @@ export function DashboardSidebar() {
   );
   const workspaceRole = useWorkspaceStore((state) => state.workspaceRole);
   const customPermissions = useWorkspaceStore((state) => state.customPermissions);
+  const isSuperAdmin = useWorkspaceStore((state) => state.isSuperAdmin);
   const navContext = {
     isOwnWorkspaceContext,
     role: workspaceRole,
@@ -64,6 +66,19 @@ export function DashboardSidebar() {
 
         <div className="mb-8">
           <WorkspaceSwitcher />
+          {isSuperAdmin ? (
+            <Link
+              href="/admin"
+              className={`focus-ring mt-3 flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium uppercase tracking-wide transition-colors ${
+                pathname.startsWith("/admin")
+                  ? "bg-recoverpe-black text-recoverpe-white"
+                  : "text-recoverpe-grey-medium hover:bg-recoverpe-grey-light/60 hover:text-recoverpe-black"
+              }`}
+            >
+              <Shield className="h-3.5 w-3.5" aria-hidden />
+              Admin Console
+            </Link>
+          ) : null}
         </div>
 
         <nav className="space-y-1.5">

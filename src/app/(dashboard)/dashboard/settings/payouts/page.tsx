@@ -1,26 +1,27 @@
 "use client";
 
-import { BusinessProfileView } from "@/components/settings/BusinessProfileView";
-import { DangerZone } from "@/components/settings/DangerZone";
+import { PayoutDetailsCard } from "@/components/settings/PayoutDetailsCard";
 import { PermissionWorkspaceGuard } from "@/components/dashboard/OwnerWorkspaceGuard";
 import { canEditBusinessSettings } from "@/lib/workspace-permissions";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
-export default function BusinessProfileSettingsPage() {
+export default function PayoutSettingsPage() {
   const workspaceRole = useWorkspaceStore((state) => state.workspaceRole);
   const customPermissions = useWorkspaceStore((state) => state.customPermissions);
-  const isOwnWorkspaceContext = useWorkspaceStore(
-    (state) => state.isOwnWorkspaceContext
-  );
-  const showDangerZone = workspaceRole === "owner" && isOwnWorkspaceContext;
 
   return (
     <PermissionWorkspaceGuard
       canAccess={canEditBusinessSettings(workspaceRole, customPermissions)}
     >
-      <div className="space-y-8">
-        <BusinessProfileView />
-        {showDangerZone ? <DangerZone /> : null}
+      <div className="space-y-6">
+        <div>
+          <h1 className="type-page-title">Payouts</h1>
+          <p className="type-data-secondary mt-3 text-sm leading-relaxed">
+            Configure Razorpay Route bank details so Smart Collect settlements
+            reach your account with zero MDR.
+          </p>
+        </div>
+        <PayoutDetailsCard />
       </div>
     </PermissionWorkspaceGuard>
   );

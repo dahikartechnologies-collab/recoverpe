@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
 import { withWorkspaceAuth } from "@/lib/auth-gateway";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
+import { workspaceHasTeamManagementEntitlement } from "@/lib/workspace-team-entitlement";
 import { resolveWorkspaceAccess } from "@/lib/workspace-rbac";
 import {
   assertNonOwnerRoleEscalationBlocked,
@@ -95,6 +96,22 @@ export async function GET(request: Request) {
 }
 
 export const POST = withWorkspaceAuth(async (request, auth) => {
+    const supabase = createAdminSupabaseClient();
+    const hasTeamEntitlement = await workspaceHasTeamManagementEntitlement(
+      supabase,
+      auth.workspaceUserId
+    );
+
+    if (!hasTeamEntitlement) {
+      return NextResponse.json(
+        {
+          error:
+            "Team management requires a Business or Premium plan. Upgrade in Billing.",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = (await request.json()) as InviteWorkspaceMemberPayload;
     const email = body.email?.trim().toLowerCase();
     const inviteeName = body.invitee_name?.trim();
@@ -134,7 +151,6 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       );
     }
 
-    const supabase = createAdminSupabaseClient();
     const { data: invitedUser, error: userError } = await supabase
       .from("users")
       .select("id, email")
