@@ -1,57 +1,150 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import {
+  AGENT_ONBOARD_PAYOUT_INR,
+  AGENT_TRAIL_PAYOUT_INR,
+} from "@/lib/agent/constants";
+import { PREMIUM_LIST_PRICE_INR } from "@/lib/agent/discounts";
+
+export interface AgentFinancials {
+  total_commission_earned_inr: number;
+  available_balance_inr: number;
+  pending_remittance_inr: number;
+  commission_tier_label: string;
+}
+
+export interface AgentDiscountStats {
+  total_discounts_granted_inr: number;
+  average_discount_percent: number;
+  cap_remaining_bps: number;
+}
+
+export interface AgentPayoutRecord {
+  id: string;
+  amount_inr: number;
+  kind: string;
+  status: string;
+  created_at: string;
+  period_ym: string | null;
+}
 
 export interface AgentAnalytics {
   leads_generated: number;
   sales_closed: number;
   total_earnings_inr: number;
   pending_remittance_inr: number;
+  financials: AgentFinancials;
+  discount_stats: AgentDiscountStats;
+  payout_history: AgentPayoutRecord[];
 }
 
 const EARNINGS_STATUSES = ["accrued", "approved", "paid"] as const;
 
+function roundInr(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export async function computeAgentAnalytics(
   supabase: SupabaseClient,
   agentId: string,
-  walletLiabilityInr: number
+  walletLiabilityInr: number,
+  discountCapBps: number
 ): Promise<AgentAnalytics> {
-  const { count: leadsGenerated, error: leadsError } = await supabase
-    .from("agent_referrals")
-    .select("id", { count: "exact", head: true })
-    .eq("agent_id", agentId);
+  const [
+    { count: leadsGenerated, error: leadsError },
+    { count: salesClosed, error: salesError },
+    { data: referralRows, error: referralError },
+    { data: allPayouts, error: payoutError },
+  ] = await Promise.all([
+    supabase
+      .from("agent_referrals")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_id", agentId),
+    supabase
+      .from("agent_referrals")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_id", agentId)
+      .eq("status", "activated"),
+    supabase
+      .from("agent_referrals")
+      .select("discount_bps")
+      .eq("agent_id", agentId),
+    supabase
+      .from("agent_payouts")
+      .select("id, amount_inr, kind, status, created_at, period_ym")
+      .eq("agent_id", agentId)
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (leadsError) {
     throw new Error(leadsError.message || "Failed to count agent referrals.");
   }
 
-  const { count: salesClosed, error: salesError } = await supabase
-    .from("agent_referrals")
-    .select("id", { count: "exact", head: true })
-    .eq("agent_id", agentId)
-    .eq("status", "activated");
-
   if (salesError) {
     throw new Error(salesError.message || "Failed to count closed sales.");
   }
 
-  const { data: payouts, error: payoutError } = await supabase
-    .from("agent_payouts")
-    .select("amount_inr, status")
-    .eq("agent_id", agentId)
-    .in("status", [...EARNINGS_STATUSES]);
+  if (referralError) {
+    throw new Error(referralError.message || "Failed to load referral discounts.");
+  }
 
   if (payoutError) {
     throw new Error(payoutError.message || "Failed to load agent payouts.");
   }
 
-  const totalEarnings = (payouts ?? []).reduce(
+  const referrals = referralRows ?? [];
+  const payouts = allPayouts ?? [];
+  const earningsPayouts = payouts.filter((row) =>
+    EARNINGS_STATUSES.includes(row.status as (typeof EARNINGS_STATUSES)[number])
+  );
+  const paidPayouts = payouts.filter((row) => row.status === "paid");
+
+  const totalEarnings = earningsPayouts.reduce(
     (sum, row) => sum + Number(row.amount_inr ?? 0),
+    0
+  );
+  const availableBalance = paidPayouts.reduce(
+    (sum, row) => sum + Number(row.amount_inr ?? 0),
+    0
+  );
+
+  const totalDiscountsGranted = referrals.reduce(
+    (sum, row) =>
+      sum + PREMIUM_LIST_PRICE_INR * (Number(row.discount_bps ?? 0) / 10_000),
+    0
+  );
+  const averageDiscountBps =
+    referrals.length > 0
+      ? referrals.reduce((sum, row) => sum + Number(row.discount_bps ?? 0), 0) /
+        referrals.length
+      : 0;
+  const maxDiscountUsedBps = referrals.reduce(
+    (max, row) => Math.max(max, Number(row.discount_bps ?? 0)),
     0
   );
 
   return {
     leads_generated: leadsGenerated ?? 0,
     sales_closed: salesClosed ?? 0,
-    total_earnings_inr: Math.round((totalEarnings + Number.EPSILON) * 100) / 100,
+    total_earnings_inr: roundInr(totalEarnings),
     pending_remittance_inr: walletLiabilityInr,
+    financials: {
+      total_commission_earned_inr: roundInr(totalEarnings),
+      available_balance_inr: roundInr(availableBalance),
+      pending_remittance_inr: walletLiabilityInr,
+      commission_tier_label: `₹${AGENT_ONBOARD_PAYOUT_INR} onboard · ₹${AGENT_TRAIL_PAYOUT_INR}/mo trail`,
+    },
+    discount_stats: {
+      total_discounts_granted_inr: roundInr(totalDiscountsGranted),
+      average_discount_percent: roundInr(averageDiscountBps / 100),
+      cap_remaining_bps: Math.max(0, discountCapBps - maxDiscountUsedBps),
+    },
+    payout_history: paidPayouts.map((row) => ({
+      id: row.id as string,
+      amount_inr: Number(row.amount_inr ?? 0),
+      kind: row.kind as string,
+      status: row.status as string,
+      created_at: row.created_at as string,
+      period_ym: (row.period_ym as string | null) ?? null,
+    })),
   };
 }

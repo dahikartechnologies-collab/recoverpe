@@ -1,6 +1,12 @@
 import { getAuthHeaders, getAuthHeadersForUpload } from "@/lib/auth-headers";
-import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import { readApiJsonBody } from "@/lib/parse-api-response";
 import { AgentKycDocuments } from "@/lib/agent/kyc-storage";
+import type {
+  AgentAnalytics,
+  AgentDiscountStats,
+  AgentFinancials,
+  AgentPayoutRecord,
+} from "@/lib/agent/analytics";
 
 export interface AgentReferralRecord {
   id: string;
@@ -12,12 +18,7 @@ export interface AgentReferralRecord {
   created_at: string;
 }
 
-export interface AgentAnalytics {
-  leads_generated: number;
-  sales_closed: number;
-  total_earnings_inr: number;
-  pending_remittance_inr: number;
-}
+export type { AgentAnalytics, AgentDiscountStats, AgentFinancials, AgentPayoutRecord };
 
 export interface AgentMeResponse {
   agent: {
@@ -38,11 +39,92 @@ export interface AgentMeResponse {
   referrals: AgentReferralRecord[];
 }
 
+export interface CreateReferralConflictOwned {
+  error: "DUPLICATE_OWNED";
+  referralId: string;
+}
+
+export interface CreateReferralConflictGlobal {
+  error: "DUPLICATE_GLOBAL";
+  message: string;
+}
+
+export type CreateReferralResult =
+  | { ok: true; referral_id: string; status: string; otp_sent: boolean }
+  | CreateReferralConflictOwned
+  | CreateReferralConflictGlobal
+  | { ok: false; message: string };
+
+async function parseApiJsonResponse<T>(response: Response): Promise<T> {
+  const body = await readApiJsonBody<T & { error?: string }>(response);
+
+  if (!response.ok) {
+    throw new Error(body.error || `Request failed (${response.status}).`);
+  }
+
+  return body as T;
+}
+
 export async function fetchAgentMe(): Promise<AgentMeResponse> {
   const headers = await getAuthHeaders();
   const response = await fetch("/api/agent/me", { headers });
 
   return parseApiJsonResponse<AgentMeResponse>(response);
+}
+
+export async function createAgentReferral(body: {
+  merchant_phone: string;
+  business_name?: string;
+  discount_bps: number;
+}): Promise<CreateReferralResult> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/agent/referrals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  const payload = await readApiJsonBody<
+    | { referral_id: string; status: string; otp_sent: boolean }
+    | CreateReferralConflictOwned
+    | CreateReferralConflictGlobal
+    | { error?: string }
+  >(response);
+
+  if (response.status === 409) {
+    if ("error" in payload && payload.error === "DUPLICATE_OWNED" && "referralId" in payload) {
+      return payload;
+    }
+
+    if ("error" in payload && payload.error === "DUPLICATE_GLOBAL" && "message" in payload) {
+      return {
+        error: "DUPLICATE_GLOBAL",
+        message: payload.message,
+      };
+    }
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      message:
+        ("error" in payload && payload.error) ||
+        `Request failed (${response.status}).`,
+    };
+  }
+
+  const success = payload as {
+    referral_id: string;
+    status: string;
+    otp_sent: boolean;
+  };
+
+  return {
+    ok: true,
+    referral_id: success.referral_id,
+    status: success.status,
+    otp_sent: Boolean(success.otp_sent),
+  };
 }
 
 export async function patchAgentReferral(
@@ -59,6 +141,16 @@ export async function patchAgentReferral(
   const payload = await parseApiJsonResponse<{ referral: AgentReferralRecord }>(response);
 
   return payload.referral;
+}
+
+export async function resendAgentReferralOtp(referralId: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`/api/agent/referrals/${referralId}/resend-otp`, {
+    method: "POST",
+    headers,
+  });
+
+  await parseApiJsonResponse(response);
 }
 
 export async function patchAgentBankProfile(body: {

@@ -3,20 +3,41 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BarChart3, FileCheck2, Users } from "lucide-react";
+import { parseAgentTab, type AgentTab } from "@/lib/agent/tab-state";
 
-const AGENT_LINKS = [
-  { href: "/agent-dashboard#performance", hash: "performance", label: "Performance", icon: BarChart3 },
-  { href: "/agent-dashboard#leads", hash: "leads", label: "Leads", icon: Users },
-  { href: "/agent-dashboard#kyc", hash: "kyc", label: "KYC", icon: FileCheck2 },
+const AGENT_LINKS: Array<{
+  href: string;
+  hash: AgentTab;
+  label: string;
+  icon: typeof BarChart3;
+}> = [
+  {
+    href: "/agent-dashboard#performance",
+    hash: "performance",
+    label: "Performance",
+    icon: BarChart3,
+  },
+  {
+    href: "/agent-dashboard#leads",
+    hash: "leads",
+    label: "Leads",
+    icon: Users,
+  },
+  {
+    href: "/agent-dashboard#kyc",
+    hash: "kyc",
+    label: "KYC",
+    icon: FileCheck2,
+  },
 ];
 
 export function AgentNav() {
-  const [activeHash, setActiveHash] = useState("performance");
+  const [activeTab, setActiveTab] = useState<AgentTab>("performance");
 
   useEffect(() => {
     function syncHash() {
-      const hash = window.location.hash.replace("#", "") || "performance";
-      setActiveHash(hash);
+      const hash = window.location.hash.replace("#", "");
+      setActiveTab(parseAgentTab(hash || "performance"));
     }
 
     syncHash();
@@ -30,9 +51,7 @@ export function AgentNav() {
       <div className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-6">
         {AGENT_LINKS.map((link) => {
           const Icon = link.icon;
-          const isActive =
-            activeHash === link.hash ||
-            (link.hash === "performance" && !["leads", "kyc"].includes(activeHash));
+          const isActive = activeTab === link.hash;
 
           return (
             <Link

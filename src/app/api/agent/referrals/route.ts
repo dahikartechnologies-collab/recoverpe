@@ -95,8 +95,25 @@ export async function POST(request: Request) {
 
   if (error || !referral) {
     if (error?.code === "23505") {
+      const { data: existing } = await supabase
+        .from("agent_referrals")
+        .select("id, agent_id")
+        .eq("merchant_phone", merchantPhone)
+        .in("status", ["draft", "awaiting_merchant_otp", "cash_held"])
+        .maybeSingle();
+
+      if (existing?.agent_id === agent.agentId) {
+        return NextResponse.json(
+          { error: "DUPLICATE_OWNED", referralId: existing.id },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
-        { error: "An open referral already exists for this merchant phone." },
+        {
+          error: "DUPLICATE_GLOBAL",
+          message: "This merchant is already in progress with another agent.",
+        },
         { status: 409 }
       );
     }

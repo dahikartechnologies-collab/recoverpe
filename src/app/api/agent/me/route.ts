@@ -40,7 +40,12 @@ export async function GET(request: Request) {
         )
         .eq("id", agent.agentId)
         .single(),
-      computeAgentAnalytics(supabase, agent.agentId, agent.walletLiabilityInr),
+      computeAgentAnalytics(
+        supabase,
+        agent.agentId,
+        agent.walletLiabilityInr,
+        agent.discountCapBps
+      ),
     ]);
 
   if (error) {

@@ -55,3 +55,32 @@ export function referralStatusLabel(status: string): string {
       return status.replace(/_/g, " ");
   }
 }
+
+export function referralOnboardingStatus(status: string): string {
+  switch (status) {
+    case "draft":
+      return "draft";
+    case "awaiting_merchant_otp":
+      return "awaiting_otp";
+    case "activated":
+    case "cash_held":
+      return "active";
+    case "cancelled":
+      return "cancelled";
+    case "clawback":
+      return "clawback";
+    default:
+      return status;
+  }
+}
+
+export function payoutKindLabel(kind: string): string {
+  switch (kind) {
+    case "onboard_100":
+      return "Onboard commission";
+    case "trail_50":
+      return "Monthly trail";
+    default:
+      return kind.replace(/_/g, " ");
+  }
+}
