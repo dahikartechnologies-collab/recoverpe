@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast } from "@/components/ui/Toast";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
+  FREE_PLAN_LEDGER_LIMIT,
   getPremiumAmountLabel,
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
@@ -119,13 +120,27 @@ export function BillingView({ user }: BillingViewProps) {
   const tierCards: Array<{
     key: string;
     name: string;
-    monthly: SubscriptionPurchaseType;
-    annual: SubscriptionPurchaseType;
+    monthly?: SubscriptionPurchaseType;
+    annual?: SubscriptionPurchaseType;
     monthlyPrice: string;
     annualPrice: string;
     features: string[];
     highlight?: boolean;
+    isFree?: boolean;
   }> = [
+    {
+      key: "free",
+      name: "Free",
+      monthlyPrice: "₹0",
+      annualPrice: "₹0",
+      isFree: true,
+      features: [
+        `Core Khata with up to ${FREE_PLAN_LEDGER_LIMIT} invoices`,
+        "Contact directory and vendor statements",
+        "Manual ledger entry and CSV export",
+        "Payment links for open invoices",
+      ],
+    },
     {
       key: "starter",
       name: "Starter",
@@ -178,7 +193,7 @@ export function BillingView({ user }: BillingViewProps) {
         description="Choose a RecoverPe plan for your business workspace and recharge AI voice credits."
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {tierCards.map((tier) => {
           const isCurrent = activeTier === tier.key;
 
@@ -190,7 +205,11 @@ export function BillingView({ user }: BillingViewProps) {
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <p className="type-eyebrow">
-                    {tier.highlight ? "Recommended" : "Plan"}
+                    {tier.isFree
+                      ? "Included today"
+                      : tier.highlight
+                        ? "Recommended"
+                        : "Plan"}
                   </p>
                   {isCurrent ? <Badge tone="success">Current</Badge> : null}
                 </div>
@@ -204,7 +223,9 @@ export function BillingView({ user }: BillingViewProps) {
                     {tier.monthlyPrice}
                   </p>
                   <p className="mt-1 text-sm text-recoverpe-muted">
-                    or {tier.annualPrice} billed annually
+                    {tier.isFree
+                      ? "No subscription required"
+                      : `or ${tier.annualPrice} billed annually`}
                   </p>
                 </div>
                 <ul className="space-y-2 text-sm text-recoverpe-muted">
@@ -222,11 +243,17 @@ export function BillingView({ user }: BillingViewProps) {
                   <div className="rounded-xl border border-recoverpe-success-line bg-recoverpe-success-fill px-3 py-2 text-sm text-recoverpe-success-ink">
                     Current plan on {activeBusiness?.business_name ?? "this workspace"}
                   </div>
+                ) : tier.isFree ? (
+                  <div className="rounded-xl border border-recoverpe-line bg-recoverpe-fill px-3 py-2 text-sm text-recoverpe-muted">
+                    Upgrade anytime to unlock WhatsApp inbox, Smart Checkout, and AI recovery.
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-2">
                     <Button
                       type="button"
-                      onClick={() => void handleSubscriptionPurchase(tier.monthly)}
+                      onClick={() =>
+                        void handleSubscriptionPurchase(tier.monthly!)
+                      }
                       disabled={processingPurchase === tier.monthly}
                     >
                       {processingPurchase === tier.monthly
@@ -236,12 +263,12 @@ export function BillingView({ user }: BillingViewProps) {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => void handleSubscriptionPurchase(tier.annual)}
+                      onClick={() => void handleSubscriptionPurchase(tier.annual!)}
                       disabled={processingPurchase === tier.annual}
                     >
                       {processingPurchase === tier.annual
                         ? "Processing..."
-                        : `Subscribe Annually`}
+                        : "Subscribe Annually"}
                     </Button>
                   </div>
                 )}

@@ -53,6 +53,12 @@ export async function POST(request: Request) {
   );
 
   if (!signature.ok) {
+    if (signature.reason === "not_configured") {
+      console.error(
+        "[WHATSAPP WEBHOOK] Configure META_APP_SECRET in Vercel before accepting signed payloads."
+      );
+    }
+
     console.error("[WHATSAPP WEBHOOK] Rejected payload:", signature.reason);
 
     return NextResponse.json(

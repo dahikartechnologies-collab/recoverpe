@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Shield } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Briefcase, Shield } from "lucide-react";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
+import { Button } from "@/components/ui/Button";
+import { persistActiveContext } from "@/lib/post-auth-navigation";
 import { filterNavLinksForContext } from "@/lib/workspace-nav-policy";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
@@ -22,6 +24,7 @@ const MOBILE_NAV_LINKS = [
 
 export function MobileDashboardNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const isOwnWorkspaceContext = useWorkspaceStore(
     (state) => state.isOwnWorkspaceContext
   );
@@ -52,6 +55,20 @@ export function MobileDashboardNav() {
             Admin Console
           </Link>
         ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
+          onClick={() => {
+            void persistActiveContext("agent").then(() =>
+              router.push("/agent-dashboard")
+            );
+          }}
+        >
+          <Briefcase className="h-4 w-4" aria-hidden />
+          Switch to Agent Desk
+        </Button>
       </div>
       <DashboardLogoutButton variant="mobile" />
       <div

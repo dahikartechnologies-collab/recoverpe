@@ -347,8 +347,8 @@ export function AgentDashboardView() {
         description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
         actions={
           <>
-            <Button variant="secondary" onClick={() => void switchToMerchant()}>
-              Open merchant shop
+            <Button variant="ghost" size="sm" onClick={() => void switchToMerchant()}>
+              Switch to Merchant Dashboard
             </Button>
             <DashboardLogoutButton variant="header" />
           </>

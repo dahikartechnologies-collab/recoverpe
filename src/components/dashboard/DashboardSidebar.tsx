@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  Briefcase,
   Home,
   BarChart3,
   Import,
@@ -17,6 +18,8 @@ import {
 import { RecoverpeLogo } from "@/components/brand/RecoverpeLogo";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import { WorkspaceSwitcher } from "@/components/dashboard/WorkspaceSwitcher";
+import { Button } from "@/components/ui/Button";
+import { persistActiveContext } from "@/lib/post-auth-navigation";
 import {
   canAccessDashboardHome,
   filterNavLinksForContext,
@@ -41,6 +44,7 @@ const SIDEBAR_LINKS = [
 
 export function DashboardSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const isOwnWorkspaceContext = useWorkspaceStore(
     (state) => state.isOwnWorkspaceContext
   );
@@ -107,7 +111,21 @@ export function DashboardSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto border-t border-recoverpe-line pt-6">
+        <div className="mt-auto space-y-3 border-t border-recoverpe-line pt-6">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2"
+            onClick={() => {
+              void persistActiveContext("agent").then(() =>
+                router.push("/agent-dashboard")
+              );
+            }}
+          >
+            <Briefcase className="h-4 w-4" aria-hidden />
+            Switch to Agent Desk
+          </Button>
           <DashboardLogoutButton />
         </div>
       </div>

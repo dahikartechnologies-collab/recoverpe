@@ -4,6 +4,11 @@ import {
   APP_ROLE_COOKIE,
   AUTH_SESSION_COOKIE,
 } from "@/lib/auth-cookies";
+import {
+  hasAuthSession,
+  isAuthorizedAdmin,
+  resolveAdminActorUserId,
+} from "@/lib/admin-access";
 import { getActiveContextFromCookieHeader } from "@/lib/active-context";
 import { isPartnerContextFromCookies } from "@/lib/partner-context";
 import { shouldSkipGlobalApiRateLimit } from "@/lib/api-rate-limit-policy";
@@ -140,6 +145,51 @@ function applyPartnerWorkspaceRouteGuards(request: NextRequest): NextResponse | 
   return null;
 }
 
+async function applyAdminRouteGuards(
+  request: NextRequest
+): Promise<NextResponse | null> {
+  const pathname = request.nextUrl.pathname;
+  const isAdminPage =
+    pathname === "/admin" || pathname.startsWith("/admin/");
+  const isAdminApi = pathname.startsWith("/api/admin/");
+
+  if (!isAdminPage && !isAdminApi) {
+    return null;
+  }
+
+  const cookieHeader = request.headers.get("cookie");
+
+  if (!hasAuthSession(cookieHeader)) {
+    if (isAdminApi) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    return redirectTo(request, "/login");
+  }
+
+  const actorUserId = resolveAdminActorUserId(cookieHeader);
+
+  if (!actorUserId) {
+    if (isAdminApi) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    return redirectTo(request, "/login");
+  }
+
+  const allowed = await isAuthorizedAdmin(actorUserId);
+
+  if (!allowed) {
+    if (isAdminApi) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    return redirectTo(request, "/dashboard");
+  }
+
+  return null;
+}
+
 function applyPartnerApiGuards(request: NextRequest): NextResponse | null {
   const pathname = request.nextUrl.pathname;
   const method = request.method;
@@ -185,6 +235,12 @@ function serviceUnavailableResponse(): NextResponse {
 
 export async function middleware(request: NextRequest) {
   try {
+    const adminGuardResponse = await applyAdminRouteGuards(request);
+
+    if (adminGuardResponse) {
+      return adminGuardResponse;
+    }
+
     const contextGuardResponse = applyActiveContextGuards(request);
 
     if (contextGuardResponse) {
@@ -254,6 +310,8 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/api/:path*",
+    "/admin",
+    "/admin/:path*",
     "/dashboard",
     "/dashboard/:path*",
     "/kiosk",

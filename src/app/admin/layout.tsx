@@ -1,11 +1,16 @@
 import { ReactNode } from "react";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { enforceAdminRouteAccess } from "@/lib/server/admin-route-guard";
 
-export default function AdminLayout({
+export const dynamic = "force-dynamic";
+
+export default async function AdminLayout({
   children,
 }: Readonly<{
   children: ReactNode;
 }>) {
+  await enforceAdminRouteAccess();
+
   return (
     <div className="min-h-screen bg-recoverpe-canvas">
       <header className="border-b border-recoverpe-line bg-recoverpe-white px-4 py-4 sm:px-6">

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { logCryptoVerificationFailure } from "@/lib/crypto-env";
 
 const SIGNATURE_HEADER = "x-hub-signature-256";
 const SIGNATURE_PREFIX = "sha256=";
@@ -19,6 +20,9 @@ export function verifyMetaWebhookSignature(
   const appSecret = process.env.META_APP_SECRET?.trim();
 
   if (!appSecret) {
+    console.error(
+      "[Recoverpe Crypto] Missing environment variable: META_APP_SECRET"
+    );
     return { ok: false, reason: "not_configured" };
   }
 
@@ -26,22 +30,31 @@ export function verifyMetaWebhookSignature(
     return { ok: false, reason: "missing_signature" };
   }
 
-  const expected = Buffer.from(
-    createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex"),
-    "utf8"
-  );
-  const received = Buffer.from(
-    signatureHeader.slice(SIGNATURE_PREFIX.length).trim(),
-    "utf8"
-  );
+  try {
+    const expected = Buffer.from(
+      createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex"),
+      "utf8"
+    );
+    const received = Buffer.from(
+      signatureHeader.slice(SIGNATURE_PREFIX.length).trim(),
+      "utf8"
+    );
 
-  if (expected.length !== received.length) {
+    if (expected.length !== received.length) {
+      return { ok: false, reason: "mismatch" };
+    }
+
+    return timingSafeEqual(expected, received)
+      ? { ok: true }
+      : { ok: false, reason: "mismatch" };
+  } catch (error) {
+    logCryptoVerificationFailure(
+      "Meta WhatsApp webhook signature",
+      error,
+      "META_APP_SECRET"
+    );
     return { ok: false, reason: "mismatch" };
   }
-
-  return timingSafeEqual(expected, received)
-    ? { ok: true }
-    : { ok: false, reason: "mismatch" };
 }
 
 export function readMetaSignatureHeader(request: Request): string | null {

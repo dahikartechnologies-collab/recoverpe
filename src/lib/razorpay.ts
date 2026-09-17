@@ -1,5 +1,9 @@
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { isDevelopmentAppEnv } from "@/lib/app-env";
+import {
+  CryptoVerificationResult,
+  logCryptoVerificationFailure,
+} from "@/lib/crypto-env";
 import { emitGa4PurchaseEvent } from "@/lib/ga4-measurement";
 import {
   activateBusinessAddon,
@@ -443,25 +447,54 @@ export async function createRazorpaySubscriptionRecord(
 export function verifyRazorpayWebhookSignature(
   rawBody: string,
   signature: string | null
-): boolean {
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+): CryptoVerificationResult {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
 
-  if (!webhookSecret || !signature) {
-    return false;
+  if (!webhookSecret) {
+    console.error(
+      "[Recoverpe Crypto] Missing environment variable: RAZORPAY_WEBHOOK_SECRET"
+    );
+    return {
+      ok: false,
+      reason: "Webhook secret not configured.",
+      missingEnv: "RAZORPAY_WEBHOOK_SECRET",
+    };
   }
 
-  const expectedSignature = createHmac("sha256", webhookSecret)
-    .update(rawBody)
-    .digest("hex");
-
-  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
-  const receivedBuffer = Buffer.from(signature, "utf8");
-
-  if (expectedBuffer.length !== receivedBuffer.length) {
-    return false;
+  if (!signature) {
+    return {
+      ok: false,
+      reason: "Missing x-razorpay-signature header.",
+    };
   }
 
-  return timingSafeEqual(expectedBuffer, receivedBuffer);
+  try {
+    const expectedSignature = createHmac("sha256", webhookSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+    const receivedBuffer = Buffer.from(signature, "utf8");
+
+    if (expectedBuffer.length !== receivedBuffer.length) {
+      return { ok: false, reason: "Invalid webhook signature." };
+    }
+
+    return timingSafeEqual(expectedBuffer, receivedBuffer)
+      ? { ok: true }
+      : { ok: false, reason: "Invalid webhook signature." };
+  } catch (error) {
+    logCryptoVerificationFailure(
+      "Razorpay webhook signature",
+      error,
+      "RAZORPAY_WEBHOOK_SECRET"
+    );
+    return {
+      ok: false,
+      reason: "Webhook signature verification failed.",
+      missingEnv: "RAZORPAY_WEBHOOK_SECRET",
+    };
+  }
 }
 
 export async function fulfillRazorpayOrder(

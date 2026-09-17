@@ -5,7 +5,7 @@ export function Table({
   ...props
 }: HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full min-w-0 overflow-x-auto">
       <table
         className={`min-w-full text-left text-sm ${className}`}
         {...props}

@@ -224,8 +224,8 @@ export function InboxClient() {
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
-      <div className="grid min-h-[640px] overflow-hidden rounded-xl border border-recoverpe-line bg-recoverpe-white lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="border-b border-recoverpe-line lg:border-b-0 lg:border-r">
+      <div className="grid min-h-[640px] min-w-0 overflow-hidden rounded-xl border border-recoverpe-line bg-recoverpe-white lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="min-w-0 border-b border-recoverpe-line lg:border-b-0 lg:border-r">
           {isLoadingThreads ? (
             <div className="space-y-3 p-4">
               <Skeleton className="h-14 w-full" />
@@ -284,7 +284,7 @@ export function InboxClient() {
           )}
         </div>
 
-        <div className="flex min-h-[420px] flex-col">
+        <div className="flex min-h-[420px] min-w-0 flex-col">
           {selected ? (
             <>
               <div className="flex items-start justify-between gap-3 border-b border-recoverpe-line px-5 py-4">

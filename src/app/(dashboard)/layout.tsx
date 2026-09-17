@@ -4,6 +4,8 @@ import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { AUTH_SESSION_COOKIE } from "@/lib/cookie-constants";
 
+export const dynamic = "force-dynamic";
+
 export default function DashboardLayout({
   children,
 }: Readonly<{

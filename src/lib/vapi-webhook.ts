@@ -1,5 +1,9 @@
 import { timingSafeEqual } from "crypto";
 import {
+  CryptoVerificationResult,
+  logCryptoVerificationFailure,
+} from "@/lib/crypto-env";
+import {
   analyzeVapiTranscript,
   calculateVapiCreditCost,
   sentimentEmoji,
@@ -15,11 +19,18 @@ export interface ParsedVapiEndOfCallReport {
   summary: string | null;
 }
 
-export function verifyVapiWebhookSecret(request: Request): boolean {
+export function verifyVapiWebhookSecret(request: Request): CryptoVerificationResult {
   const configuredSecret = process.env.VAPI_WEBHOOK_SECRET?.trim();
 
   if (!configuredSecret) {
-    return false;
+    console.error(
+      "[Recoverpe Crypto] Missing environment variable: VAPI_WEBHOOK_SECRET"
+    );
+    return {
+      ok: false,
+      reason: "Webhook secret not configured.",
+      missingEnv: "VAPI_WEBHOOK_SECRET",
+    };
   }
 
   const headerSecret =
@@ -28,17 +39,35 @@ export function verifyVapiWebhookSecret(request: Request): boolean {
     null;
 
   if (!headerSecret) {
-    return false;
+    return {
+      ok: false,
+      reason: "Missing VAPI webhook secret header.",
+    };
   }
 
-  const expected = Buffer.from(configuredSecret, "utf8");
-  const received = Buffer.from(headerSecret, "utf8");
+  try {
+    const expected = Buffer.from(configuredSecret, "utf8");
+    const received = Buffer.from(headerSecret, "utf8");
 
-  if (expected.length !== received.length) {
-    return false;
+    if (expected.length !== received.length) {
+      return { ok: false, reason: "Invalid webhook secret." };
+    }
+
+    return timingSafeEqual(expected, received)
+      ? { ok: true }
+      : { ok: false, reason: "Invalid webhook secret." };
+  } catch (error) {
+    logCryptoVerificationFailure(
+      "VAPI webhook secret",
+      error,
+      "VAPI_WEBHOOK_SECRET"
+    );
+    return {
+      ok: false,
+      reason: "Webhook secret verification failed.",
+      missingEnv: "VAPI_WEBHOOK_SECRET",
+    };
   }
-
-  return timingSafeEqual(expected, received);
 }
 
 function readString(value: unknown): string | null {

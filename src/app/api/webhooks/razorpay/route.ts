@@ -19,9 +19,19 @@ export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
     const signature = request.headers.get("x-razorpay-signature");
+    const verification = verifyRazorpayWebhookSignature(rawBody, signature);
 
-    if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
-      return NextResponse.json({ error: "Invalid webhook signature." }, { status: 401 });
+    if (!verification.ok) {
+      if (verification.missingEnv) {
+        console.error(
+          `[Recoverpe Razorpay Webhook] Configure ${verification.missingEnv} in Vercel.`
+        );
+      }
+
+      return NextResponse.json(
+        { error: verification.reason },
+        { status: verification.missingEnv ? 503 : 401 }
+      );
     }
 
     const payload = JSON.parse(rawBody) as {

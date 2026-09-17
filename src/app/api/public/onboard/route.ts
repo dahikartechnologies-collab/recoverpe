@@ -156,6 +156,15 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "Failed to submit onboarding request.";
 
+    console.error("[Recoverpe Khata Onboard] Auto-approve or queue failed:", {
+      message,
+      likelyEnv:
+        message.toLowerCase().includes("key") ||
+        message.toLowerCase().includes("secret")
+          ? "Check SUPABASE_SERVICE_ROLE_KEY, FIREBASE_ADMIN_PRIVATE_KEY, and META_APP_SECRET in Vercel."
+          : undefined,
+    });
+
     const status = message.includes("Free plan") ? 402 : 500;
 
     return NextResponse.json({ error: message }, { status });

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import {
   BusinessEntitlementRow,
   EntitlementKey,
-  hasEntitlement,
+  hasEntitlement as checkEntitlement,
   isPremiumTierBusiness,
   isZeroMdrCheckoutEligible,
 } from "@/lib/entitlements";
@@ -13,6 +13,7 @@ import { useWorkspaceStore } from "@/store/workspace-store";
 export function useActiveBusinessEntitlements() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const businesses = useWorkspaceStore((state) => state.businesses);
+  const isSuperAdmin = useWorkspaceStore((state) => state.isSuperAdmin);
 
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
@@ -29,8 +30,10 @@ export function useActiveBusinessEntitlements() {
     activeBusiness,
     entitlementRow,
     hasEntitlement: (key: EntitlementKey) =>
-      hasEntitlement(entitlementRow, key),
-    isPremium: isPremiumTierBusiness(entitlementRow),
-    isZeroMdrEligible: isZeroMdrCheckoutEligible(entitlementRow),
+      isSuperAdmin || checkEntitlement(entitlementRow, key),
+    isPremium: isSuperAdmin || isPremiumTierBusiness(entitlementRow),
+    isZeroMdrEligible:
+      isSuperAdmin || isZeroMdrCheckoutEligible(entitlementRow),
+    isSuperAdmin,
   };
 }

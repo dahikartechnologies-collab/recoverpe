@@ -13,8 +13,19 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    if (!verifyVapiWebhookSecret(request)) {
-      return NextResponse.json({ error: "Invalid webhook secret." }, { status: 401 });
+    const verification = verifyVapiWebhookSecret(request);
+
+    if (!verification.ok) {
+      if (verification.missingEnv) {
+        console.error(
+          `[Recoverpe VAPI Webhook] Configure ${verification.missingEnv} in Vercel.`
+        );
+      }
+
+      return NextResponse.json(
+        { error: verification.reason },
+        { status: verification.missingEnv ? 503 : 401 }
+      );
     }
 
     const payload = await request.json();
