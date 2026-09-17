@@ -1,7 +1,16 @@
 "use client";
 
+import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import type { AgentMeResponse } from "@/lib/agent-client";
 import { payoutKindLabel } from "@/lib/agent/discounts";
 import { Wallet } from "lucide-react";
@@ -34,46 +43,45 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Financials & Commission
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Financials & Commission</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Accrued commissions, settled payouts, and cash you still owe RecoverPe.
           </p>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-recoverpe-grey-light p-4">
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Total commission earned
-            </p>
-            <p className="mt-1 text-2xl font-semibold text-recoverpe-success">
+        <CardContent className="grid p-0 sm:grid-cols-2 sm:divide-x divide-y sm:divide-y-0 divide-recoverpe-line">
+          <div className="p-6">
+            <p className="type-eyebrow">Total commission earned</p>
+            <p className="type-stat mt-3">
               {formatInr(financials.total_commission_earned_inr)}
             </p>
-          </div>
-          <div className="rounded-xl border border-recoverpe-grey-light p-4">
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Available balance
+            <p className="mt-2 text-xs text-recoverpe-muted">
+              Accrued, approved, and paid
             </p>
-            <p className="mt-1 text-2xl font-semibold text-recoverpe-black">
+          </div>
+          <div className="p-6">
+            <p className="type-eyebrow">Available balance</p>
+            <p className="type-stat mt-3">
               {formatInr(financials.available_balance_inr)}
             </p>
-          </div>
-          <div className="rounded-xl border border-recoverpe-grey-light p-4">
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Pending remittance
+            <p className="mt-2 text-xs text-recoverpe-success-ink">
+              Settled to your bank
             </p>
-            <p className="mt-1 text-2xl font-semibold text-recoverpe-black">
+          </div>
+          <div className="p-6">
+            <p className="type-eyebrow">Pending remittance</p>
+            <p className="type-stat mt-3">
               {formatInr(financials.pending_remittance_inr)}
             </p>
-          </div>
-          <div className="rounded-xl border border-recoverpe-grey-light p-4">
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Commission tier
+            <p className="mt-2 text-xs text-recoverpe-muted">
+              Cash still owed to RecoverPe
             </p>
-            <p className="mt-1 text-sm font-medium text-recoverpe-black">
+          </div>
+          <div className="p-6">
+            <p className="type-eyebrow">Commission tier</p>
+            <p className="mt-3 text-sm font-medium tracking-tight text-recoverpe-black">
               {financials.commission_tier_label}
             </p>
-            <p className="mt-2 text-xs text-recoverpe-grey-medium">
+            <p className="mt-2 text-xs text-recoverpe-muted">
               Discount cap {agent.discount_cap_bps / 100}% · {agent.open_cash_tickets}/5
               open tickets
             </p>
@@ -83,51 +91,54 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
 
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Discounts & Pricing Quotas
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Discounts & Pricing Quotas</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             How much you have discounted Premium for merchants in your pipeline.
           </p>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Total discounts granted
-            </p>
-            <p className="mt-1 text-xl font-semibold text-recoverpe-black">
+        <CardContent className="grid p-0 sm:grid-cols-3 sm:divide-x divide-y sm:divide-y-0 divide-recoverpe-line">
+          <div className="p-6">
+            <p className="type-eyebrow">Total discounts granted</p>
+            <p className="mt-3 text-xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
               {formatInr(discount_stats.total_discounts_granted_inr)}
             </p>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Average discount
-            </p>
-            <p className="mt-1 text-xl font-semibold text-recoverpe-black">
+          <div className="p-6">
+            <p className="type-eyebrow">Average discount</p>
+            <p className="mt-3 text-xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
               {discount_stats.average_discount_percent}%
             </p>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Cap remaining
-            </p>
-            <p className="mt-1 text-xl font-semibold text-recoverpe-black">
+          <div className="p-6">
+            <p className="type-eyebrow">Cap remaining</p>
+            <p className="mt-3 text-xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
               {discount_stats.cap_remaining_bps / 100}%
             </p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-recoverpe-fill">
+              <div
+                className="h-full rounded-full bg-recoverpe-black transition-all duration-150"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    (discount_stats.cap_remaining_bps /
+                      Math.max(agent.discount_cap_bps, 1)) *
+                      100
+                  )}%`,
+                }}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Settlement & payout history
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Settlement & payout history</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Commissions paid to your linked bank account.
           </p>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="p-0">
           {payout_history.length === 0 ? (
             <EmptyState
               icon={<Wallet className="h-5 w-5" aria-hidden />}
@@ -135,60 +146,53 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
               description="Closed merchant onboardings and trail commissions appear here once settled."
             />
           ) : (
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-recoverpe-grey-light text-recoverpe-grey-medium">
-                  <th className="px-3 py-2 font-medium">Date</th>
-                  <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Period</th>
-                  <th className="px-3 py-2 font-medium">Amount</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {payout_history.map((payout) => (
-                  <tr
-                    key={payout.id}
-                    className="border-b border-recoverpe-grey-light"
-                  >
-                    <td className="px-3 py-3 text-recoverpe-black">
+                  <TableRow key={payout.id}>
+                    <TableCell className="text-recoverpe-black">
                       {formatDate(payout.created_at)}
-                    </td>
-                    <td className="px-3 py-3 text-recoverpe-black">
+                    </TableCell>
+                    <TableCell className="text-recoverpe-black">
                       {payoutKindLabel(payout.kind)}
-                    </td>
-                    <td className="px-3 py-3 text-recoverpe-grey-medium">
+                    </TableCell>
+                    <TableCell className="text-recoverpe-muted">
                       {payout.period_ym ?? "—"}
-                    </td>
-                    <td className="px-3 py-3 font-medium text-recoverpe-success">
+                    </TableCell>
+                    <TableCell className="text-right type-data-primary">
                       {formatInr(payout.amount_inr)}
-                    </td>
-                    <td className="px-3 py-3 capitalize text-recoverpe-black">
-                      {payout.status}
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone="success">{payout.status}</Badge>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="grid gap-6 p-6 sm:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Leads generated
-            </p>
-            <p className="mt-1 text-lg font-semibold text-recoverpe-black">
+            <p className="type-eyebrow">Leads generated</p>
+            <p className="mt-2 text-lg font-semibold tabular-nums text-recoverpe-black">
               {analytics.leads_generated}
             </p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-recoverpe-grey-medium">
-              Sales closed
-            </p>
-            <p className="mt-1 text-lg font-semibold text-recoverpe-black">
+            <p className="type-eyebrow">Sales closed</p>
+            <p className="mt-2 text-lg font-semibold tabular-nums text-recoverpe-black">
               {analytics.sales_closed}
             </p>
           </div>

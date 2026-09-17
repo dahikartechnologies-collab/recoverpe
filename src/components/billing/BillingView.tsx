@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast } from "@/components/ui/Toast";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
@@ -170,13 +173,10 @@ export function BillingView({ user }: BillingViewProps) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-recoverpe-black">Billing</h1>
-        <p className="mt-2 text-sm text-recoverpe-grey-medium">
-          Choose a RecoverPe plan for your business workspace and recharge AI voice
-          credits.
-        </p>
-      </div>
+      <PageHeader
+        title="Billing"
+        description="Choose a RecoverPe plan for your business workspace and recharge AI voice credits."
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {tierCards.map((tier) => {
@@ -188,29 +188,38 @@ export function BillingView({ user }: BillingViewProps) {
               className={tier.highlight || isCurrent ? "border-recoverpe-black" : ""}
             >
               <CardHeader>
-                <p className="text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-                  {tier.highlight ? "Hero tier" : "Plan"}
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-recoverpe-black">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="type-eyebrow">
+                    {tier.highlight ? "Recommended" : "Plan"}
+                  </p>
+                  {isCurrent ? <Badge tone="success">Current</Badge> : null}
+                </div>
+                <h2 className="mt-2 text-lg font-semibold tracking-tight text-recoverpe-black">
                   {tier.name}
                 </h2>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-3xl font-semibold text-recoverpe-black">
+                  <p className="text-3xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
                     {tier.monthlyPrice}
                   </p>
-                  <p className="mt-1 text-sm text-recoverpe-grey-medium">
+                  <p className="mt-1 text-sm text-recoverpe-muted">
                     or {tier.annualPrice} billed annually
                   </p>
                 </div>
-                <ul className="space-y-2 text-sm text-recoverpe-grey-medium">
+                <ul className="space-y-2 text-sm text-recoverpe-muted">
                   {tier.features.map((feature) => (
-                    <li key={feature}>{feature}</li>
+                    <li key={feature} className="flex items-start gap-2">
+                      <Check
+                        className="mt-0.5 h-4 w-4 shrink-0 text-recoverpe-success-ink"
+                        aria-hidden
+                      />
+                      <span>{feature}</span>
+                    </li>
                   ))}
                 </ul>
                 {isCurrent ? (
-                  <div className="rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm text-recoverpe-success">
+                  <div className="rounded-xl border border-recoverpe-success-line bg-recoverpe-success-fill px-3 py-2 text-sm text-recoverpe-success-ink">
                     Current plan on {activeBusiness?.business_name ?? "this workspace"}
                   </div>
                 ) : (
@@ -264,7 +273,7 @@ export function BillingView({ user }: BillingViewProps) {
                   {PURCHASE_PRODUCTS.vapi_recharge_100.description}
                 </p>
               </div>
-              <p className="text-2xl font-semibold text-recoverpe-black">
+              <p className="text-2xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
                 {PURCHASE_PRODUCTS.vapi_recharge_100.amountLabel}
               </p>
               <Button

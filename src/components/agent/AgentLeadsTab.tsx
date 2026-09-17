@@ -3,18 +3,17 @@
 import { FormEvent } from "react";
 import { Users } from "lucide-react";
 import { AgentLeadCard } from "@/components/agent/AgentLeadCard";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import type { AgentMeResponse, AgentReferralRecord } from "@/lib/agent-client";
 import {
   formatExpectedCashCollection,
   getAgentDiscountOptionsForCap,
 } from "@/lib/agent/discounts";
-
-const selectClassName =
-  "w-full rounded-md border border-recoverpe-grey-light bg-recoverpe-white px-3 py-2 text-sm text-recoverpe-black";
 
 interface AgentLeadsTabProps {
   payload: AgentMeResponse;
@@ -88,38 +87,36 @@ export function AgentLeadsTab({
   return (
     <div className="space-y-6">
       {duplicateOwnedMessage ? (
-        <div className="rounded-xl border border-recoverpe-black bg-recoverpe-grey-light/40 px-4 py-3 text-sm text-recoverpe-black">
-          {duplicateOwnedMessage}
-        </div>
+        <Alert tone="neutral">{duplicateOwnedMessage}</Alert>
       ) : null}
 
       {duplicateGlobalMessage ? (
-        <div className="rounded-xl border border-recoverpe-error/30 bg-recoverpe-error/5 px-4 py-3 text-sm">
-          <p className="font-medium text-recoverpe-black">
-            This merchant phone is already in another agent&apos;s pipeline.
-          </p>
-          <p className="mt-1 text-recoverpe-grey-medium">{duplicateGlobalMessage}</p>
-          <p className="mt-2 text-recoverpe-grey-medium">
+        <Alert
+          tone="danger"
+          title="This merchant phone is already in another agent's pipeline."
+          action={
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setDuplicateGlobalMessage("")}
+            >
+              Dismiss
+            </Button>
+          }
+        >
+          <p>{duplicateGlobalMessage}</p>
+          <p className="mt-2">
             Double-check the mobile number or ask the merchant which RecoverPe agent
             is onboarding them.
           </p>
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-3"
-            onClick={() => setDuplicateGlobalMessage("")}
-          >
-            Dismiss
-          </Button>
-        </div>
+        </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Refer a merchant
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Refer a merchant</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             We WhatsApp a 6-digit OTP to the merchant. Collect the discounted Premium
             cash, then confirm their OTP on the lead card below.
           </p>
@@ -141,8 +138,8 @@ export function AgentLeadsTab({
               <span className="font-medium text-recoverpe-black">
                 Discount (Premium list ₹1,999/mo)
               </span>
-              <select
-                className={`${selectClassName} mt-1`}
+              <Select
+                className="mt-1"
                 value={discountBps}
                 onChange={(event) => setDiscountBps(event.target.value)}
               >
@@ -151,13 +148,11 @@ export function AgentLeadsTab({
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
-            <div className="rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm sm:col-span-2">
-              <span className="text-recoverpe-grey-medium">Collect from merchant: </span>
-              <span className="font-semibold text-recoverpe-black">
-                {expectedCollection}
-              </span>
+            <div className="rounded-xl border border-recoverpe-line bg-recoverpe-canvas px-3 py-2.5 text-sm sm:col-span-2">
+              <span className="text-recoverpe-muted">Collect from merchant: </span>
+              <span className="type-data-primary">{expectedCollection}</span>
             </div>
             <Button
               type="submit"
@@ -172,20 +167,20 @@ export function AgentLeadsTab({
 
       <div className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            My merchants
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">My merchants</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Lead cards for every merchant you referred, with quote and onboarding status.
           </p>
         </div>
 
         {referrals.length === 0 ? (
-          <EmptyState
-            icon={<Users className="h-5 w-5" aria-hidden />}
-            title="No leads yet"
-            description="Refer a merchant above. Once they confirm the OTP, the lead appears here with remittance status."
-          />
+          <Card>
+            <EmptyState
+              icon={<Users className="h-5 w-5" aria-hidden />}
+              title="No leads yet"
+              description="Refer a merchant above. Once they confirm the OTP, the lead appears here with remittance status."
+            />
+          </Card>
         ) : (
           referrals.map((referral) => (
             <AgentLeadCard

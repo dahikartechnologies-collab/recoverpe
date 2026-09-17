@@ -40,4 +40,4 @@ export const CHART_AXIS_STYLE = {
 export const CHART_GRID_STROKE = FINTECH_PALETTE.grid;
 
 export const CHART_TOOLTIP_CLASSNAME =
-  "rounded-lg border border-slate-200/80 bg-white px-3 py-2.5 shadow-md";
+  "rounded-xl border border-recoverpe-line bg-recoverpe-white px-3 py-2.5";

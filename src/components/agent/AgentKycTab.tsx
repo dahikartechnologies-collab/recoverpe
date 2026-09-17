@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -51,10 +52,8 @@ export function AgentKycTab({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Bank account & payout details
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Bank account & payout details</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Commissions settle to this bank account. UPI payouts are routed through
             the linked account on file.
           </p>
@@ -75,7 +74,7 @@ export function AgentKycTab({
             <label className="block text-sm">
               <span className="font-medium text-recoverpe-black">Account number</span>
               <Input
-                className="mt-1"
+                className="mt-1 font-mono tracking-wide"
                 value={bankAccountNumber}
                 onChange={(event) => setBankAccountNumber(event.target.value)}
                 required
@@ -84,15 +83,15 @@ export function AgentKycTab({
             <label className="block text-sm">
               <span className="font-medium text-recoverpe-black">IFSC</span>
               <Input
-                className="mt-1 uppercase"
+                className="mt-1 font-mono uppercase tracking-wide"
                 value={bankIfsc}
                 onChange={(event) => setBankIfsc(event.target.value.toUpperCase())}
                 required
               />
             </label>
-            <div className="rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm sm:col-span-2">
-              <span className="text-recoverpe-grey-medium">Saved account: </span>
-              <span className="font-medium text-recoverpe-black">
+            <div className="rounded-xl border border-recoverpe-line bg-recoverpe-canvas px-3 py-2.5 text-sm sm:col-span-2">
+              <span className="text-recoverpe-muted">Saved account: </span>
+              <span className="font-mono font-medium tracking-wide text-recoverpe-black">
                 {maskAccountNumber(agent.bank_account_number)}
               </span>
             </div>
@@ -109,10 +108,8 @@ export function AgentKycTab({
 
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-recoverpe-black">
-            Document verification
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Document verification</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Upload PAN and government ID to activate your field agent profile.
           </p>
         </CardHeader>
@@ -121,47 +118,44 @@ export function AgentKycTab({
             const uploaded = Boolean(agent.kyc_documents[side]);
 
             return (
-              <div
+              <label
                 key={side}
-                className="rounded-xl border border-recoverpe-grey-light p-4 text-sm"
+                className="rp-interactive block cursor-pointer rounded-xl border border-dashed border-recoverpe-line-strong bg-recoverpe-canvas p-4 text-sm hover:border-recoverpe-black hover:bg-recoverpe-white"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="font-medium capitalize text-recoverpe-black">
                       {side} of Aadhar/PAN
                     </span>
-                    <p className="mt-1 text-recoverpe-grey-medium">
-                      {uploaded ? "Verified upload on file" : "Required for KYC review"}
+                    <p className="mt-1 text-recoverpe-muted">
+                      {uploaded
+                        ? "Verified upload on file"
+                        : "JPG, PNG, or PDF · max 4MB"}
                     </p>
                   </div>
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      uploaded
-                        ? "bg-recoverpe-success/10 text-recoverpe-success"
-                        : "bg-recoverpe-grey-light text-recoverpe-grey-medium"
-                    }`}
-                  >
+                  <Badge tone={uploaded ? "success" : "neutral"}>
                     {uploaded ? "Uploaded" : "Pending"}
-                  </span>
+                  </Badge>
                 </div>
-                <label className="mt-4 block">
-                  <span className="sr-only">Upload {side} document</span>
-                  <input
-                    className="block w-full text-sm"
-                    type="file"
-                    accept="image/jpeg,image/png,application/pdf"
-                    disabled={uploadingKycSide === side}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      onKycUpload(side, file);
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-                {uploadingKycSide === side ? (
-                  <p className="mt-2 text-xs text-recoverpe-grey-medium">Uploading…</p>
-                ) : null}
-              </div>
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="image/jpeg,image/png,application/pdf"
+                  disabled={uploadingKycSide === side}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    onKycUpload(side, file);
+                    event.target.value = "";
+                  }}
+                />
+                <p className="mt-4 text-xs font-medium text-recoverpe-black">
+                  {uploadingKycSide === side
+                    ? "Uploading…"
+                    : uploaded
+                      ? "Replace document"
+                      : "Choose file"}
+                </p>
+              </label>
             );
           })}
         </CardContent>

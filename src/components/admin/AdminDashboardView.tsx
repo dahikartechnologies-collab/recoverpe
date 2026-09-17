@@ -3,8 +3,20 @@
 import Link from "next/link";
 import { AdminDiagnosticsPanel } from "@/components/admin/AdminDiagnosticsPanel";
 import { AdminMetricCard } from "@/components/admin/AdminMetricCard";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { AdminMetricsResponse } from "@/types";
+import { Users } from "lucide-react";
 
 interface AdminDashboardViewProps {
   data: AdminMetricsResponse;
@@ -18,26 +30,16 @@ function formatRegisteredAt(value: string): string {
   }).format(new Date(value));
 }
 
-function planLabel(plan: string): string {
-  return plan === "premium" ? "Premium" : "Free";
-}
-
 export function AdminDashboardView({ data }: AdminDashboardViewProps) {
   const { metrics, recent_users } = data;
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-          Recoverpe Control Room
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold text-recoverpe-black">
-          Super Admin
-        </h1>
-        <p className="mt-2 text-sm text-recoverpe-grey-medium">
-          Global platform growth and system health overview.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Recoverpe Control Room"
+        title="Super Admin"
+        description="Global platform growth and system health overview."
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <AdminMetricCard
@@ -63,79 +65,74 @@ export function AdminDashboardView({ data }: AdminDashboardViewProps) {
       </div>
 
       <Card>
+        <CardHeader>
+          <p className="type-section-title">Recently Registered Users</p>
+          <p className="mt-1 text-sm text-recoverpe-muted">
+            Latest 10 accounts by signup date.
+          </p>
+        </CardHeader>
         <CardContent className="p-0">
-          <div className="border-b border-recoverpe-grey-light px-4 py-3">
-            <p className="text-sm font-medium text-recoverpe-black">
-              Recently Registered Users
-            </p>
-            <p className="mt-1 text-sm text-recoverpe-grey-medium">
-              Latest 10 accounts by signup date.
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light">
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Name</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Email</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">
-                    Plan Status
-                  </th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">
-                    Registered
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent_users.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-6 text-sm text-recoverpe-grey-medium"
-                    >
-                      No users registered yet.
-                    </td>
-                  </tr>
-                ) : (
-                  recent_users.map((user) => (
-                    <tr
-                      key={user.id}
-                      className="border-b border-recoverpe-grey-light last:border-b-0"
-                    >
-                      <td className="px-4 py-3 font-medium text-recoverpe-black">
-                        {user.name}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">{user.email}</td>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {planLabel(user.subscription_plan)}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-recoverpe-grey-medium">
-                        {formatRegisteredAt(user.created_at)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {recent_users.length === 0 ? (
+            <EmptyState
+              icon={<Users className="h-5 w-5" aria-hidden />}
+              title="No users registered yet"
+              description="New RecoverPe accounts will appear here as they sign up."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Plan Status</TableHead>
+                  <TableHead>Registered</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recent_users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium text-recoverpe-black">
+                      {user.name}
+                    </TableCell>
+                    <TableCell className="text-recoverpe-black">
+                      {user.email}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        tone={
+                          user.subscription_plan === "premium"
+                            ? "info"
+                            : "neutral"
+                        }
+                      >
+                        {user.subscription_plan === "premium"
+                          ? "Premium"
+                          : "Free"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="tabular-nums text-recoverpe-muted">
+                      {formatRegisteredAt(user.created_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <AdminDiagnosticsPanel />
 
-      <div>
+      <div className="flex flex-wrap gap-4">
         <Link
           href="/admin/users"
-          className="inline-block text-sm font-medium text-recoverpe-black underline underline-offset-4"
+          className="rp-interactive text-sm font-medium text-recoverpe-black underline underline-offset-4"
         >
           Manage all users
         </Link>
-      </div>
-
-      <div>
         <Link
           href="/dashboard"
-          className="text-sm font-medium text-recoverpe-black underline underline-offset-4"
+          className="rp-interactive text-sm font-medium text-recoverpe-black underline underline-offset-4"
         >
           Back to dashboard
         </Link>

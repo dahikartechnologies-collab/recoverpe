@@ -25,10 +25,10 @@ export function AdminNav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+            className={`rp-interactive rounded-md border px-3 py-2 text-sm font-medium ${
               isActive
                 ? "border-recoverpe-black bg-recoverpe-black text-recoverpe-white"
-                : "border-recoverpe-grey-light bg-recoverpe-white text-recoverpe-black hover:bg-recoverpe-grey-light"
+                : "border-recoverpe-line bg-recoverpe-white text-recoverpe-black hover:bg-recoverpe-fill"
             }`}
           >
             {link.label}

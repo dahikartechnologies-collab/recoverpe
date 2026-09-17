@@ -134,18 +134,18 @@ export function PayPageClient({ data }: PayPageClientProps) {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-4 py-8">
+    <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center bg-recoverpe-canvas px-4 py-8">
       <Card>
         <CardContent className="space-y-6 pt-6">
           <div className="space-y-2 text-center">
-            <p className="text-xs font-medium uppercase tracking-widest text-recoverpe-grey-medium">
+            <p className="type-eyebrow">
               Recoverpe Secure Payment
             </p>
-            <h1 className="text-2xl font-semibold text-recoverpe-black">
-              Pay {formatCurrency(data.balance_due)}
+            <h1 className="text-4xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
+              {formatCurrency(data.balance_due)}
             </h1>
-            <p className="text-sm text-recoverpe-grey-medium">
-              For {data.contact_name}
+            <p className="text-sm text-recoverpe-muted">
+              Pay for {data.contact_name}
               {data.business_name ? ` · ${data.business_name}` : ""}
             </p>
             {data.invoice_number ? (
@@ -173,7 +173,7 @@ export function PayPageClient({ data }: PayPageClientProps) {
           />
 
           {!autoReconcileEligible ? (
-            <div className="border-t border-recoverpe-grey-light pt-4 space-y-3">
+            <div className="border-t border-recoverpe-line pt-4 space-y-3">
               <p className="text-sm font-medium text-recoverpe-black">
                 Already paid? Upload payment screenshot
               </p>
@@ -183,14 +183,14 @@ export function PayPageClient({ data }: PayPageClientProps) {
               />
             </div>
           ) : (
-            <p className="border-t border-recoverpe-grey-light pt-4 text-center text-xs text-recoverpe-grey-medium">
+            <p className="border-t border-recoverpe-line pt-4 text-center text-xs text-recoverpe-muted">
               Waiting for your bank transfer? This page will update automatically once
               payment is received.
             </p>
           )}
 
           {data.pdf_url ? (
-            <div className="border-t border-recoverpe-grey-light pt-4 text-center">
+            <div className="border-t border-recoverpe-line pt-4 text-center">
               <a
                 href={data.pdf_url}
                 target="_blank"

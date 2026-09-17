@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Toast } from "@/components/ui/Toast";
 import type { Gstr3bSummary } from "@/lib/accounting-export";
@@ -42,10 +43,10 @@ function SummaryRow({
   return (
     <div
       className={`flex justify-between py-1 ${
-        emphasis ? "border-t border-recoverpe-grey-light pt-2 font-medium" : ""
+        emphasis ? "border-t border-recoverpe-line pt-2 font-medium" : ""
       }`}
     >
-      <dt className={emphasis ? "text-recoverpe-black" : "text-recoverpe-grey-medium"}>
+      <dt className={emphasis ? "text-recoverpe-black" : "text-recoverpe-muted"}>
         {label}
       </dt>
       <dd className="tabular-nums text-recoverpe-black">{value}</dd>
@@ -111,16 +112,15 @@ export function AccountingExportCard() {
 
   return (
     <Card>
-      <CardContent className="p-6">
-        <h2 className="text-lg font-semibold text-recoverpe-black">
-          Books &amp; GST summary
-        </h2>
-        <p className="mt-1 text-sm text-recoverpe-grey-medium">
+      <CardHeader>
+        <h2 className="type-section-title">Books &amp; GST summary</h2>
+        <p className="mt-1 text-sm text-recoverpe-muted">
           Export sales, receipts, and purchase vouchers for your CA, or import
           them straight into Tally Prime.
         </p>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="export-from" className={LABEL_CLASS}>
               From
@@ -146,18 +146,16 @@ export function AccountingExportCard() {
         </div>
 
         {error ? (
-          <p className="mt-3 text-sm text-recoverpe-error">{error}</p>
+          <Alert tone="danger" className="mt-4">
+            {error}
+          </Alert>
         ) : null}
 
         {isLoading ? (
-          <p className="mt-4 text-sm text-recoverpe-grey-medium">
-            Calculating...
-          </p>
+          <p className="mt-4 text-sm text-recoverpe-muted">Calculating...</p>
         ) : summary ? (
-          <dl className="mt-4 rounded-md border border-recoverpe-grey-light p-4 text-sm">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-              GSTR-3B summary
-            </p>
+          <dl className="mt-4 rounded-xl border border-recoverpe-line p-4 text-sm">
+            <p className="type-eyebrow mb-2">GSTR-3B summary</p>
             <SummaryRow
               label="Outward taxable supplies"
               value={formatCurrency(summary.outwardTaxableValue)}
@@ -208,7 +206,7 @@ export function AccountingExportCard() {
           </Button>
         </div>
 
-        <p className="mt-3 text-xs text-recoverpe-grey-medium">
+        <p className="mt-3 text-xs text-recoverpe-muted">
           Figures are indicative and derived from the data you have recorded.
           Have your CA verify them before filing.
         </p>

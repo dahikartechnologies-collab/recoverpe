@@ -64,10 +64,10 @@ export function AiVoiceCallButton({
     <>
       <Button
         type="button"
-        variant={compact ? "secondary" : "secondary"}
+        variant="secondary"
+        size={compact ? "sm" : "md"}
         disabled={disabled || isCalling}
         onClick={() => void handleCall()}
-        className={compact ? "inline-flex items-center gap-2 px-3 py-2" : undefined}
       >
         <Phone className="h-4 w-4" aria-hidden />
         {isCalling ? "Calling…" : "AI Voice Call"}

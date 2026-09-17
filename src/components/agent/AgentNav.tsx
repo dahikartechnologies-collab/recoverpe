@@ -47,8 +47,8 @@ export function AgentNav() {
   }, []);
 
   return (
-    <nav className="border-b border-recoverpe-grey-light bg-recoverpe-white">
-      <div className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-6">
+    <nav className="border-b border-recoverpe-line bg-recoverpe-white">
+      <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-6">
         {AGENT_LINKS.map((link) => {
           const Icon = link.icon;
           const isActive = activeTab === link.hash;
@@ -57,10 +57,10 @@ export function AgentNav() {
             <Link
               key={link.href}
               href={link.href}
-              className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+              className={`rp-interactive inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${
                 isActive
                   ? "border-recoverpe-black text-recoverpe-black"
-                  : "border-transparent text-recoverpe-grey-medium hover:text-recoverpe-black"
+                  : "border-transparent text-recoverpe-muted hover:text-recoverpe-black"
               }`}
             >
               <Icon className="h-4 w-4" aria-hidden />

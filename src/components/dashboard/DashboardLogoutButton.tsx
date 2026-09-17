@@ -8,7 +8,7 @@ import { clearAppRoleCookie } from "@/lib/auth-cookies";
 import { clearWorkspaceCookies } from "@/lib/workspace-context";
 
 interface DashboardLogoutButtonProps {
-  variant?: "sidebar" | "mobile";
+  variant?: "sidebar" | "mobile" | "header";
 }
 
 export function DashboardLogoutButton({
@@ -28,6 +28,20 @@ export function DashboardLogoutButton({
     } catch {
       setIsLoggingOut(false);
     }
+  }
+
+  if (variant === "header") {
+    return (
+      <button
+        type="button"
+        onClick={() => void handleLogout()}
+        disabled={isLoggingOut}
+        className="rp-interactive rp-press inline-flex h-10 items-center gap-2 rounded-md border border-recoverpe-line-strong bg-recoverpe-white px-3 text-sm font-medium text-recoverpe-black hover:bg-recoverpe-fill disabled:opacity-60"
+      >
+        <LogOut className="h-4 w-4" />
+        {isLoggingOut ? "Logging out..." : "Log Out"}
+      </button>
+    );
   }
 
   if (variant === "mobile") {

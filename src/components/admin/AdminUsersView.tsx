@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { Badge, BadgeTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import { manageAdminUser } from "@/lib/admin-client";
 import {
@@ -10,6 +22,7 @@ import {
   AdminUserManageAction,
   SubscriptionPlan,
 } from "@/types";
+import { Users } from "lucide-react";
 
 interface AdminUsersViewProps {
   initialUsers: AdminManagedUser[];
@@ -36,14 +49,15 @@ function statusLabel(status: AdminManagedUser["account_status"]): string {
   return status.replace(/_/g, " ");
 }
 
-function statusClassName(status: AdminManagedUser["account_status"]): string {
+function statusTone(status: AdminManagedUser["account_status"]): BadgeTone {
   switch (status) {
     case "suspended":
-      return "text-recoverpe-error";
     case "pending_purge":
-      return "text-recoverpe-error";
+      return "danger";
+    case "active":
+      return "success";
     default:
-      return "text-recoverpe-black";
+      return "neutral";
   }
 }
 
@@ -83,126 +97,146 @@ export function AdminUsersView({ initialUsers }: AdminUsersViewProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-          Recoverpe Control Room
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold text-recoverpe-black">
-          User Management
-        </h1>
-        <p className="mt-2 text-sm text-recoverpe-grey-medium">
-          Suspend accounts, grant upsell discounts, and prepare ghost-mode
-          impersonation hooks.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Recoverpe Control Room"
+        title="User Management"
+        description="Suspend accounts, grant upsell discounts, and prepare ghost-mode impersonation hooks."
+      />
 
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light">
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Name</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Email</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Plan</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Status</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Discount</th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">
-                    Registered
-                  </th>
-                  <th className="px-4 py-3 font-medium text-recoverpe-black">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+          {users.length === 0 ? (
+            <EmptyState
+              icon={<Users className="h-5 w-5" aria-hidden />}
+              title="No users yet"
+              description="Registered RecoverPe accounts will appear here for support actions."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Discount</TableHead>
+                  <TableHead>Registered</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {users.map((user) => {
                   const isPending = pendingUserId === user.id;
                   const isSuspended = user.account_status === "suspended";
 
                   return (
-                    <tr
-                      key={user.id}
-                      className="border-b border-recoverpe-grey-light last:border-b-0"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-recoverpe-black">{user.name}</p>
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <p className="font-medium text-recoverpe-black">
+                          {user.name}
+                        </p>
                         {user.is_super_admin ? (
-                          <p className="text-xs text-recoverpe-grey-medium">Super Admin</p>
+                          <Badge tone="info" className="mt-1">
+                            Super Admin
+                          </Badge>
                         ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">{user.email}</td>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {planLabel(user.subscription_plan)}
-                      </td>
-                      <td
-                        className={`px-4 py-3 capitalize ${statusClassName(user.account_status)}`}
-                      >
-                        {statusLabel(user.account_status)}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {user.eligible_for_discount ? "50% eligible" : "—"}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-recoverpe-grey-medium">
+                      </TableCell>
+                      <TableCell className="text-recoverpe-black">
+                        {user.email}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          tone={
+                            user.subscription_plan === "premium"
+                              ? "info"
+                              : "neutral"
+                          }
+                        >
+                          {planLabel(user.subscription_plan)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={statusTone(user.account_status)}>
+                          {statusLabel(user.account_status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {user.eligible_for_discount ? (
+                          <Badge tone="success">50% eligible</Badge>
+                        ) : (
+                          <span className="text-recoverpe-muted">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-recoverpe-muted">
                         {formatRegisteredAt(user.created_at)}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell>
                         <details className="relative">
-                          <summary className="cursor-pointer list-none rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm font-medium text-recoverpe-black hover:bg-recoverpe-grey-light">
-                            Actions
+                          <summary className="focus-ring rp-press inline-flex h-8 cursor-pointer list-none items-center justify-center rounded-md border border-recoverpe-line-strong bg-recoverpe-white px-3 text-xs font-medium text-recoverpe-black hover:bg-recoverpe-fill">
+                            {isPending ? "Working..." : "Actions"}
                           </summary>
-                          <div className="absolute right-0 z-10 mt-2 min-w-[14rem] rounded-md border border-recoverpe-grey-light bg-recoverpe-white p-2 shadow-none">
+                          <div className="absolute right-0 z-10 mt-2 min-w-[14rem] rounded-xl border border-recoverpe-line bg-recoverpe-white p-1">
                             {!isSuspended && !user.is_super_admin ? (
-                              <button
+                              <Button
                                 type="button"
+                                variant="danger"
+                                size="sm"
                                 disabled={isPending}
                                 onClick={() => void runAction(user.id, "suspend")}
-                                className="block w-full rounded px-3 py-2 text-left text-sm text-recoverpe-black hover:bg-recoverpe-grey-light disabled:opacity-50"
+                                className="w-full justify-start"
                               >
                                 Suspend User
-                              </button>
+                              </Button>
                             ) : null}
                             {isSuspended ? (
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 disabled={isPending}
-                                onClick={() => void runAction(user.id, "unsuspend")}
-                                className="block w-full rounded px-3 py-2 text-left text-sm text-recoverpe-black hover:bg-recoverpe-grey-light disabled:opacity-50"
+                                onClick={() =>
+                                  void runAction(user.id, "unsuspend")
+                                }
+                                className="w-full justify-start"
                               >
                                 Unsuspend User
-                              </button>
+                              </Button>
                             ) : null}
                             {!user.eligible_for_discount ? (
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 disabled={isPending}
                                 onClick={() =>
                                   void runAction(user.id, "grant_discount")
                                 }
-                                className="block w-full rounded px-3 py-2 text-left text-sm text-recoverpe-black hover:bg-recoverpe-grey-light disabled:opacity-50"
+                                className="w-full justify-start"
                               >
                                 Grant 50% Upsell Discount
-                              </button>
+                              </Button>
                             ) : null}
                             <Link
                               href={`/dashboard?impersonate=${user.id}`}
-                              className="block rounded px-3 py-2 text-sm text-recoverpe-black hover:bg-recoverpe-grey-light"
+                              className="rp-interactive flex h-8 items-center rounded-md px-3 text-xs font-medium text-recoverpe-grey-medium hover:bg-recoverpe-fill hover:text-recoverpe-black"
                             >
                               View as Ghost
                             </Link>
                           </div>
                         </details>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <Link
         href="/admin"
-        className="inline-block text-sm font-medium text-recoverpe-black underline underline-offset-4"
+        className="rp-interactive inline-block text-sm font-medium text-recoverpe-black underline underline-offset-4"
       >
         Back to overview
       </Link>

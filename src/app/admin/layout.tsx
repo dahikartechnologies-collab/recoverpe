@@ -7,8 +7,8 @@ export default function AdminLayout({
   children: ReactNode;
 }>) {
   return (
-    <div className="min-h-screen bg-recoverpe-white">
-      <header className="border-b border-recoverpe-grey-light px-4 py-4 sm:px-6">
+    <div className="min-h-screen bg-recoverpe-canvas">
+      <header className="border-b border-recoverpe-line bg-recoverpe-white px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-4">
           <p className="text-sm font-semibold text-recoverpe-black">Recoverpe Admin</p>
           <AdminNav />

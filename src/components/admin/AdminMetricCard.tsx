@@ -14,11 +14,9 @@ export function AdminMetricCard({ label, description, value }: AdminMetricCardPr
   return (
     <Card>
       <CardContent>
-        <p className="text-sm font-medium text-recoverpe-grey-medium">{label}</p>
-        <p className="mt-3 text-3xl font-semibold tabular-nums text-recoverpe-black">
-          {formatCount(value)}
-        </p>
-        <p className="mt-2 text-xs text-recoverpe-grey-medium">{description}</p>
+        <p className="type-eyebrow">{label}</p>
+        <p className="type-stat mt-3">{formatCount(value)}</p>
+        <p className="type-data-secondary mt-2">{description}</p>
       </CardContent>
     </Card>
   );

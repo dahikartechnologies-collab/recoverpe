@@ -1,8 +1,20 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import {
   AdminAccessDeniedError,
@@ -11,6 +23,7 @@ import {
   fetchAdminAgents,
 } from "@/lib/admin-client";
 import { AdminAgentRecord } from "@/types";
+import { UserPlus } from "lucide-react";
 
 interface AdminAgentsViewProps {
   initialAgents: AdminAgentRecord[];
@@ -19,6 +32,23 @@ interface AdminAgentsViewProps {
 interface ToastState {
   message: string;
   variant: "success" | "error";
+}
+
+function agentStatusTone(status: string): BadgeTone {
+  switch (status) {
+    case "active":
+      return "success";
+    case "suspended":
+    case "rejected":
+    case "inactive":
+      return "danger";
+    case "pending":
+    case "pending_kyc":
+    case "kyc_pending":
+      return "warning";
+    default:
+      return "neutral";
+  }
 }
 
 export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
@@ -87,52 +117,41 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-          Recoverpe Control Room
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold text-recoverpe-black">
-          Field Agent Management
-        </h1>
-        <p className="mt-2 text-sm text-recoverpe-grey-medium">
-          Promote users to the agent network so they can access the Identity
-          Switcher without manual Supabase edits.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Recoverpe Control Room"
+        title="Field Agent Management"
+        description="Promote users to the agent network so they can access the Identity Switcher without manual Supabase edits."
+      />
 
       <Card>
-        <CardContent className="space-y-4 p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-recoverpe-black">
-                Founder test shortcut
-              </h2>
-              <p className="mt-1 text-sm text-recoverpe-grey-medium">
-                Instantly assigns an active agent row to your logged-in account.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void handleMakeMeAgent()}
-              disabled={pendingAction === "me"}
-            >
-              {pendingAction === "me" ? "Assigning..." : "Make Me An Agent (Test)"}
-            </Button>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="type-section-title">Founder test shortcut</h2>
+            <p className="mt-1 text-sm text-recoverpe-muted">
+              Instantly assigns an active agent row to your logged-in account.
+            </p>
           </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handleMakeMeAgent()}
+            disabled={pendingAction === "me"}
+          >
+            {pendingAction === "me" ? "Assigning..." : "Make Me An Agent (Test)"}
+          </Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent className="space-y-4 p-6">
-          <h2 className="text-lg font-semibold text-recoverpe-black">
-            Create agent by phone
-          </h2>
+        <CardHeader>
+          <h2 className="type-section-title">Create agent by phone</h2>
+        </CardHeader>
+        <CardContent>
           <form className="grid gap-4 md:grid-cols-3" onSubmit={handleCreateByPhone}>
             <label className="block text-sm">
               <span className="font-medium text-recoverpe-black">Phone number</span>
-              <input
-                className="mt-1 w-full rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm"
+              <Input
+                className="mt-1"
                 placeholder="+919876543210"
                 value={phoneNumber}
                 onChange={(event) => setPhoneNumber(event.target.value)}
@@ -141,8 +160,8 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
             </label>
             <label className="block text-sm">
               <span className="font-medium text-recoverpe-black">Display name</span>
-              <input
-                className="mt-1 w-full rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm"
+              <Input
+                className="mt-1"
                 placeholder="Optional"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
@@ -152,8 +171,8 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
               <span className="font-medium text-recoverpe-black">
                 Discount cap (bps)
               </span>
-              <input
-                className="mt-1 w-full rounded-md border border-recoverpe-grey-light px-3 py-2 text-sm"
+              <Input
+                className="mt-1"
                 inputMode="numeric"
                 value={discountCapBps}
                 onChange={(event) => setDiscountCapBps(event.target.value)}
@@ -169,65 +188,59 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
       </Card>
 
       <Card>
+        <CardHeader>
+          <h2 className="type-section-title">
+            Recent agents ({agents.length})
+          </h2>
+        </CardHeader>
         <CardContent className="p-0">
-          <div className="border-b border-recoverpe-grey-light px-4 py-3">
-            <h2 className="text-sm font-semibold text-recoverpe-black">
-              Recent agents ({agents.length})
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light/40">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Agent</th>
-                  <th className="px-4 py-3 font-medium">Phone</th>
-                  <th className="px-4 py-3 font-medium">Referral code</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Cap (bps)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agents.length === 0 ? (
-                  <tr>
-                    <td
-                      className="px-4 py-6 text-recoverpe-grey-medium"
-                      colSpan={5}
-                    >
-                      No agents yet. Use the form above to create one.
-                    </td>
-                  </tr>
-                ) : (
-                  agents.map((agent) => (
-                    <tr
-                      key={agent.id}
-                      className="border-b border-recoverpe-grey-light last:border-b-0"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-recoverpe-black">
-                          {agent.display_name}
-                        </p>
-                        <p className="text-xs text-recoverpe-grey-medium">
-                          {agent.user_email ?? agent.user_id}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-grey-medium">
-                        {agent.user_phone ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-recoverpe-black">
-                        {agent.referral_code}
-                      </td>
-                      <td className="px-4 py-3 capitalize text-recoverpe-black">
+          {agents.length === 0 ? (
+            <EmptyState
+              icon={<UserPlus className="h-5 w-5" aria-hidden />}
+              title="No agents yet"
+              description="Use the form above to create an active field agent."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Referral code</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Cap (bps)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {agents.map((agent) => (
+                  <TableRow key={agent.id}>
+                    <TableCell>
+                      <p className="font-medium text-recoverpe-black">
+                        {agent.display_name}
+                      </p>
+                      <p className="type-data-secondary mt-0.5">
+                        {agent.user_email ?? agent.user_id}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-recoverpe-muted">
+                      {agent.user_phone ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-recoverpe-black">
+                      {agent.referral_code}
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={agentStatusTone(agent.status)}>
                         {agent.status.replace(/_/g, " ")}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {agent.discount_cap_bps}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="tabular-nums text-recoverpe-black">
+                      {agent.discount_cap_bps}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

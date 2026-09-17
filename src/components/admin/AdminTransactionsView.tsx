@@ -1,11 +1,24 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Alert } from "@/components/ui/Alert";
+import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { fetchAdminOrders } from "@/lib/admin-client";
 import { AdminRazorpayOrder } from "@/types";
+import { Search } from "lucide-react";
 
 function formatAmountPaise(amountPaise: number): string {
   return new Intl.NumberFormat("en-IN", {
@@ -30,14 +43,14 @@ function formatTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
-function statusClassName(status: AdminRazorpayOrder["status"]): string {
+function statusTone(status: AdminRazorpayOrder["status"]): BadgeTone {
   switch (status) {
     case "paid":
-      return "text-recoverpe-success";
+      return "success";
     case "failed":
-      return "text-recoverpe-error";
+      return "danger";
     default:
-      return "text-recoverpe-black";
+      return "warning";
   }
 }
 
@@ -75,25 +88,18 @@ export function AdminTransactionsView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-          Operations
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold text-recoverpe-black">
-          Transactions &amp; Support
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-recoverpe-grey-medium">
-          Look up Razorpay checkout orders by order ID or user ID to verify
-          payment status without opening the Razorpay dashboard.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Transactions & Support"
+        description="Look up Razorpay checkout orders by order ID or user ID to verify payment status without opening the Razorpay dashboard."
+      />
 
       <Card>
         <CardContent>
           <form onSubmit={(event) => void handleSearch(event)} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
+                <label className="type-eyebrow mb-1.5 block">
                   Razorpay Order ID
                 </label>
                 <Input
@@ -103,9 +109,7 @@ export function AdminTransactionsView() {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-                  User ID
-                </label>
+                <label className="type-eyebrow mb-1.5 block">User ID</label>
                 <Input
                   placeholder="UUID"
                   value={userId}
@@ -120,89 +124,72 @@ export function AdminTransactionsView() {
         </CardContent>
       </Card>
 
-      {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
 
       {hasSearched && !error ? (
         <Card>
           <CardContent className="p-0">
             {orders.length === 0 ? (
-              <p className="p-4 text-sm text-recoverpe-grey-medium">
-                No matching orders found.
-              </p>
+              <EmptyState
+                icon={<Search className="h-5 w-5" aria-hidden />}
+                title="No matching orders found"
+                description="Try a different Razorpay order ID or user ID."
+              />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light">
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Order ID
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        User
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Purchase
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Amount
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Status
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Created
-                      </th>
-                      <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-recoverpe-grey-medium">
-                        Paid At
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((order) => (
-                      <tr
-                        key={order.id}
-                        className="border-b border-recoverpe-grey-light last:border-b-0"
-                      >
-                        <td className="px-4 py-3 align-top font-mono text-xs text-recoverpe-black">
-                          {order.razorpay_order_id}
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <p className="font-mono text-xs text-recoverpe-black">
-                            {order.user_id}
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Order ID</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Purchase</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Paid At</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-mono text-xs text-recoverpe-black">
+                        {order.razorpay_order_id}
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-mono text-xs text-recoverpe-black">
+                          {order.user_id}
+                        </p>
+                        {order.user_email ? (
+                          <p className="type-data-secondary mt-1">
+                            {order.user_email}
                           </p>
-                          {order.user_email ? (
-                            <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                              {order.user_email}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 align-top text-recoverpe-black">
-                          {order.purchase_type}
-                          {order.ledger_id ? (
-                            <p className="mt-1 font-mono text-xs text-recoverpe-grey-medium">
-                              Ledger {order.ledger_id}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 align-top tabular-nums text-recoverpe-black">
-                          {formatAmountPaise(order.amount_paise)}
-                        </td>
-                        <td
-                          className={`px-4 py-3 align-top text-sm font-medium capitalize ${statusClassName(order.status)}`}
-                        >
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-recoverpe-black">
+                        {order.purchase_type}
+                        {order.ledger_id ? (
+                          <p className="mt-1 font-mono text-xs text-recoverpe-muted">
+                            Ledger {order.ledger_id}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="type-data-primary">
+                        {formatAmountPaise(order.amount_paise)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={statusTone(order.status)}>
                           {order.status}
-                        </td>
-                        <td className="px-4 py-3 align-top text-xs text-recoverpe-grey-medium">
-                          {formatTimestamp(order.created_at)}
-                        </td>
-                        <td className="px-4 py-3 align-top text-xs text-recoverpe-grey-medium">
-                          {formatTimestamp(order.paid_at)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-recoverpe-muted">
+                        {formatTimestamp(order.created_at)}
+                      </TableCell>
+                      <TableCell className="text-xs text-recoverpe-muted">
+                        {formatTimestamp(order.paid_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>

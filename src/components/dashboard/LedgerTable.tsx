@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -9,7 +10,6 @@ import { LedgerQuickReachActions } from "@/components/dashboard/LedgerQuickReach
 import { formatCurrency } from "@/lib/gst";
 import { downloadLedgersCsv } from "@/lib/ledger-export";
 import {
-  displayStatusClassName,
   displayStatusLabel,
   getDisplayLedgerStatus,
 } from "@/lib/ledger-status";
@@ -58,15 +58,10 @@ function formatDueDate(value: string): string {
 }
 
 function StatusBadge({ status }: { status: ReturnType<typeof getDisplayLedgerStatus> }) {
-  const toneClass = displayStatusClassName(status);
+  const tone: BadgeTone =
+    status === "paid" ? "success" : status === "overdue" ? "danger" : "neutral";
 
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border border-recoverpe-grey-light px-2 py-0.5 text-xs font-medium capitalize ${toneClass}`}
-    >
-      {displayStatusLabel(status)}
-    </span>
-  );
+  return <Badge tone={tone}>{displayStatusLabel(status)}</Badge>;
 }
 
 interface LedgerActionsProps {

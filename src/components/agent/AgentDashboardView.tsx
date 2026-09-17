@@ -6,6 +6,9 @@ import { AgentKycTab } from "@/components/agent/AgentKycTab";
 import { AgentLeadsTab } from "@/components/agent/AgentLeadsTab";
 import { AgentPerformanceTab } from "@/components/agent/AgentPerformanceTab";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { Card, CardContent } from "@/components/ui/Card";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import {
   createAgentReferral,
@@ -303,9 +306,34 @@ export function AgentDashboardView() {
 
   if (!payload) {
     return (
-      <p className="text-sm text-recoverpe-grey-medium">
-        {error || "Loading agent desk…"}
-      </p>
+      <div className="space-y-6">
+        {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </div>
+        <Card>
+          <CardContent className="grid gap-6 sm:grid-cols-2">
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-8 w-36" />
+            </div>
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-8 w-36" />
+            </div>
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-8 w-36" />
+            </div>
+            <div className="space-y-3">
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-8 w-40" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -313,23 +341,19 @@ export function AgentDashboardView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="type-eyebrow">Field agent</p>
-          <h1 className="type-page-title mt-2">{agent.display_name}</h1>
-          <p className="mt-2 text-sm text-recoverpe-grey-medium">
-            Code {agent.referral_code} · cap {agent.discount_cap_bps / 100}% ·
-            status {agent.status}
-            {agent.referrals_frozen ? " · referrals frozen" : ""}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <Button variant="secondary" onClick={() => void switchToMerchant()}>
-            Open merchant shop
-          </Button>
-          <DashboardLogoutButton />
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Field agent"
+        title={agent.display_name}
+        description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => void switchToMerchant()}>
+              Open merchant shop
+            </Button>
+            <DashboardLogoutButton variant="header" />
+          </>
+        }
+      />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 

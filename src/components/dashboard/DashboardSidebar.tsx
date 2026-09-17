@@ -58,7 +58,7 @@ export function DashboardSidebar() {
     : "/dashboard/vendors";
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r border-recoverpe-grey-light bg-recoverpe-white lg:block">
+    <aside className="hidden w-60 shrink-0 border-r border-recoverpe-line bg-recoverpe-white lg:block">
       <div className="sticky top-0 flex h-screen flex-col px-5 py-8">
         <div className="mb-4 px-1">
           <RecoverpeLogo size="sm" href={homeHref} priority />
@@ -92,7 +92,7 @@ export function DashboardSidebar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`focus-ring flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out ${
+                className={`focus-ring rp-interactive flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium ${
                   isActive
                     ? "bg-recoverpe-black text-recoverpe-white"
                     : link.highlight
@@ -107,7 +107,7 @@ export function DashboardSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto border-t border-recoverpe-grey-light pt-6">
+        <div className="mt-auto border-t border-recoverpe-line pt-6">
           <DashboardLogoutButton />
         </div>
       </div>

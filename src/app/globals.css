@@ -4,13 +4,38 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --rp-bg: #ffffff;
+  --rp-canvas: #fafafa;
+  --rp-ink: #0a0a0a;
+  --rp-muted: #6b7280;
+  --rp-subtle: #9ca3af;
+  --rp-line: #e5e7eb;
+  --rp-line-strong: #d1d5db;
+  --rp-fill: #f3f4f6;
+  --rp-success: #10b981;
+  --rp-success-ink: #047857;
+  --rp-success-fill: #ecfdf5;
+  --rp-success-line: #a7f3d0;
+  --rp-danger: #ef4444;
+  --rp-danger-ink: #b91c1c;
+  --rp-danger-fill: #fef2f2;
+  --rp-danger-line: #fecaca;
+  --rp-warning-ink: #b45309;
+  --rp-warning-fill: #fffbeb;
+  --rp-warning-line: #fde68a;
+  --rp-radius-sm: 6px;
+  --rp-radius-md: 8px;
+  --rp-radius-lg: 12px;
+}
+
 @layer base {
   html {
-    @apply bg-recoverpe-white text-recoverpe-black;
+    @apply bg-recoverpe-canvas text-recoverpe-black;
   }
 
   body {
-    @apply min-h-screen bg-recoverpe-white font-sans text-recoverpe-black antialiased;
+    @apply min-h-screen bg-recoverpe-canvas font-sans text-recoverpe-black antialiased;
     font-variant-numeric: tabular-nums;
   }
 }
@@ -25,19 +50,23 @@
   }
 
   .focus-ring {
-    @apply outline-none transition-all duration-200 ease-out focus-visible:ring-2 focus-visible:ring-recoverpe-black focus-visible:ring-offset-2 focus-visible:ring-offset-recoverpe-white;
+    @apply outline-none transition-all duration-150 ease-out focus-visible:ring-2 focus-visible:ring-recoverpe-black focus-visible:ring-offset-2 focus-visible:ring-offset-recoverpe-white;
   }
 
   .type-eyebrow {
-    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-recoverpe-grey-medium;
+    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-recoverpe-muted;
   }
 
   .type-page-title {
     @apply text-3xl font-semibold tracking-tight text-recoverpe-black;
   }
 
+  .type-section-title {
+    @apply text-base font-semibold tracking-tight text-recoverpe-black;
+  }
+
   .type-table-header {
-    @apply text-[11px] font-medium uppercase tracking-[0.12em] text-recoverpe-grey-medium;
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-recoverpe-muted;
   }
 
   .type-data-primary {
@@ -45,7 +74,23 @@
   }
 
   .type-data-secondary {
-    @apply text-xs text-recoverpe-grey-medium;
+    @apply text-xs text-recoverpe-muted;
+  }
+
+  .type-stat {
+    @apply text-[28px] font-semibold tracking-tight tabular-nums text-recoverpe-black;
+  }
+
+  .rp-surface {
+    @apply overflow-hidden rounded-xl border border-recoverpe-line bg-recoverpe-white;
+  }
+
+  .rp-interactive {
+    @apply transition-colors duration-150 ease-out;
+  }
+
+  .rp-press {
+    @apply transition-transform duration-150 ease-out active:scale-[0.99];
   }
 
   @keyframes confetti-fall {
@@ -79,8 +124,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .trust-marquee {
+    .trust-marquee,
+    .confetti-piece,
+    .rp-press {
       animation: none;
+      transform: none;
     }
   }
 

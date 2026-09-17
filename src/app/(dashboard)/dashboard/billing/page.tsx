@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BillingView } from "@/components/billing/BillingView";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { AccountPendingPurgeError, AccountSuspendedError, fetchCurrentUser } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
@@ -52,7 +53,15 @@ export default function BillingPage() {
 
   if (isLoading) {
     return (
-      <p className="text-sm text-recoverpe-grey-medium">Loading billing details...</p>
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-4 w-72 max-w-full" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
+        </div>
+      </div>
     );
   }
 

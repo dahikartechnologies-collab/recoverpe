@@ -66,13 +66,13 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-recoverpe-grey-light bg-recoverpe-white transition-all duration-200 ease-out ${
+        className={`relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-recoverpe-line bg-recoverpe-white transition-all duration-150 ease-out ${
           isVisible
             ? "translate-y-0 opacity-100"
             : "translate-y-2 opacity-0"
         }`}
       >
-        <div className="shrink-0 border-b border-recoverpe-grey-light px-6 py-4">
+        <div className="shrink-0 border-b border-recoverpe-line px-6 py-4">
           <h2 id="modal-title" className="text-lg font-semibold text-recoverpe-black">
             {title}
           </h2>

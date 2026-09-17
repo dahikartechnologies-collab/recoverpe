@@ -12,8 +12,8 @@ export default async function DebtorPortalPage({ params }: DebtorPortalPageProps
 
   if (!view) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-recoverpe-white px-4">
-        <div className="w-full max-w-md rounded-lg border border-recoverpe-grey-light px-6 py-8 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-recoverpe-canvas px-4">
+        <div className="w-full max-w-md rounded-xl border border-recoverpe-line bg-recoverpe-white px-6 py-8 text-center">
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-recoverpe-grey-medium">
             Recoverpe Portal
           </p>

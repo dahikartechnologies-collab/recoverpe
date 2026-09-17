@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -71,10 +73,10 @@ export function PayoutDetailsCard() {
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-base font-semibold text-recoverpe-black">
+        <h2 className="type-section-title">
           Payout details
         </h2>
-        <p className="mt-1 text-sm text-recoverpe-grey-medium">
+        <p className="mt-1 text-sm text-recoverpe-muted">
           One-time setup so Smart Collect settlements route directly to your bank
           via Razorpay Route. PAN and bank account only — no net-banking login
           required.
@@ -115,7 +117,7 @@ export function PayoutDetailsCard() {
               Bank account number
             </span>
             <Input
-              className="mt-1"
+              className="mt-1 font-mono tracking-wide"
               value={accountNumber}
               onChange={(event) => setAccountNumber(event.target.value)}
               required
@@ -124,22 +126,34 @@ export function PayoutDetailsCard() {
           <label className="block text-sm">
             <span className="font-medium text-recoverpe-black">IFSC</span>
             <Input
-              className="mt-1 uppercase"
+              className="mt-1 font-mono uppercase tracking-wide"
               value={ifsc}
               onChange={(event) => setIfsc(event.target.value.toUpperCase())}
               required
             />
           </label>
           {activeBusiness?.razorpay_route_status ? (
-            <p className="text-sm text-recoverpe-grey-medium sm:col-span-2">
-              Route status: {activeBusiness.razorpay_route_status}
-            </p>
+            <div className="sm:col-span-2">
+              <Badge
+                tone={
+                  activeBusiness.razorpay_route_status === "active"
+                    ? "success"
+                    : "neutral"
+                }
+              >
+                Route {activeBusiness.razorpay_route_status}
+              </Badge>
+            </div>
           ) : null}
           {error ? (
-            <p className="text-sm text-recoverpe-error sm:col-span-2">{error}</p>
+            <Alert tone="danger" className="sm:col-span-2">
+              {error}
+            </Alert>
           ) : null}
           {message ? (
-            <p className="text-sm text-recoverpe-success sm:col-span-2">{message}</p>
+            <Alert tone="success" className="sm:col-span-2">
+              {message}
+            </Alert>
           ) : null}
           <Button type="submit" className="sm:col-span-2" disabled={isSaving}>
             {isSaving ? "Saving…" : "Save payout details"}

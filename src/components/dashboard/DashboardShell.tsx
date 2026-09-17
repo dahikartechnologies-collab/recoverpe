@@ -420,13 +420,13 @@ export function DashboardShell({
   };
 
   return (
-    <div className="min-h-screen bg-recoverpe-white">
+    <div className="min-h-screen bg-recoverpe-canvas">
       <GhostModeBanner />
       <AssignedPartnerBanner />
       <div className="flex min-h-screen">
         <DashboardSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="border-b border-recoverpe-grey-light px-6 py-5 sm:px-8">
+          <header className="border-b border-recoverpe-line bg-recoverpe-white px-6 py-5 sm:px-8">
             <div className="mx-auto flex max-w-6xl flex-col gap-5">
               <div className="grid grid-cols-1 items-center gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)_minmax(0,1fr)]">
                 <div className="flex items-center gap-3 lg:hidden">

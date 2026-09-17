@@ -4,9 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Receipt } from "lucide-react";
 import { AccountingExportCard } from "@/components/dashboard/AccountingExportCard";
 import { AddExpenseModal } from "@/components/dashboard/AddExpenseModal";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { formatCurrency } from "@/lib/gst";
 import {
   EXPENSE_CATEGORY_LABELS,
@@ -23,6 +34,38 @@ function formatExpenseDate(value: string): string {
     month: "short",
     year: "numeric",
   }).format(new Date(`${value}T00:00:00`));
+}
+
+function ExpensesTableSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Date</TableHead>
+              <TableHead>Voucher</TableHead>
+              <TableHead>Paid to</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Mode</TableHead>
+              <TableHead className="text-right">Taxable</TableHead>
+              <TableHead className="text-right">GST</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <TableRow key={index} className="pointer-events-none">
+                <TableCell colSpan={8}>
+                  <div className="h-4 animate-pulse rounded bg-[var(--rp-fill)]" />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ExpensesClient() {
@@ -63,23 +106,21 @@ export function ExpensesClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-recoverpe-black">Expenses</h1>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Money paid out to suppliers, staff and overheads.
-          </p>
-        </div>
-        <Button type="button" onClick={() => setIsModalOpen(true)}>
-          Record expense
-        </Button>
-      </div>
+      <PageHeader
+        title="Expenses"
+        description="Money paid out to suppliers, staff and overheads."
+        actions={
+          <Button type="button" onClick={() => setIsModalOpen(true)}>
+            Record expense
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="min-w-0 overflow-hidden">
           <CardContent className="min-w-0 p-5">
             <p className="type-eyebrow truncate">Spent This Month</p>
-            <p className="type-data-primary mt-3 truncate text-2xl">
+            <p className="type-stat mt-3 truncate">
               {isLoading ? "—" : formatCurrency(summary.total_this_month)}
             </p>
             <p className="type-data-secondary mt-2 leading-relaxed">
@@ -90,7 +131,7 @@ export function ExpensesClient() {
         <Card className="min-w-0 overflow-hidden">
           <CardContent className="min-w-0 p-5">
             <p className="type-eyebrow truncate">Total Recorded</p>
-            <p className="type-data-primary mt-3 truncate text-2xl">
+            <p className="type-stat mt-3 truncate">
               {isLoading ? "—" : formatCurrency(summary.total_all_time)}
             </p>
             <p className="type-data-secondary mt-2 leading-relaxed">
@@ -102,10 +143,10 @@ export function ExpensesClient() {
 
       <AccountingExportCard />
 
-      {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
 
       {isLoading ? (
-        <p className="text-sm text-recoverpe-grey-medium">Loading expenses...</p>
+        <ExpensesTableSkeleton />
       ) : expenses.length === 0 ? (
         <Card>
           <CardContent className="p-0">
@@ -122,67 +163,67 @@ export function ExpensesClient() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-recoverpe-grey-light">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-recoverpe-grey-light/40">
-              <tr>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Date</th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Voucher</th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Paid to</th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Category</th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">Mode</th>
-                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
-                  Taxable
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
-                  GST
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-recoverpe-grey-light bg-recoverpe-white">
-              {expenses.map((expense) => (
-                <tr key={expense.id}>
-                  <td className="whitespace-nowrap px-4 py-3 text-recoverpe-black">
-                    {formatExpenseDate(expense.expense_date)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-recoverpe-grey-medium">
-                    {expense.voucher_number ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-recoverpe-black">
-                    {expense.payee_name}
-                    {expense.supplier_gstin ? (
-                      <span className="mt-0.5 block font-mono text-xs text-recoverpe-grey-medium">
-                        {expense.supplier_gstin}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
-                    {EXPENSE_CATEGORY_LABELS[expense.category]}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
-                    {EXPENSE_PAYMENT_MODE_LABELS[expense.payment_mode]}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-recoverpe-grey-medium">
-                    {formatCurrency(Number(expense.taxable_value ?? 0))}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-recoverpe-grey-medium">
-                    {formatCurrency(
-                      Number(expense.cgst_amount ?? 0) +
-                        Number(expense.sgst_amount ?? 0) +
-                        Number(expense.igst_amount ?? 0)
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-recoverpe-error">
-                    {formatCurrency(Number(expense.amount))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Date</TableHead>
+                  <TableHead>Voucher</TableHead>
+                  <TableHead>Paid to</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Mode</TableHead>
+                  <TableHead className="text-right">Taxable</TableHead>
+                  <TableHead className="text-right">GST</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {expenses.map((expense) => (
+                  <TableRow key={expense.id}>
+                    <TableCell className="whitespace-nowrap text-recoverpe-black">
+                      {formatExpenseDate(expense.expense_date)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-recoverpe-muted">
+                      {expense.voucher_number ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-recoverpe-black">
+                      {expense.payee_name}
+                      {expense.supplier_gstin ? (
+                        <span className="mt-0.5 block font-mono text-xs text-recoverpe-muted">
+                          {expense.supplier_gstin}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Badge tone="neutral">
+                        {EXPENSE_CATEGORY_LABELS[expense.category]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Badge tone="neutral">
+                        {EXPENSE_PAYMENT_MODE_LABELS[expense.payment_mode]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums text-recoverpe-muted">
+                      {formatCurrency(Number(expense.taxable_value ?? 0))}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums text-recoverpe-muted">
+                      {formatCurrency(
+                        Number(expense.cgst_amount ?? 0) +
+                          Number(expense.sgst_amount ?? 0) +
+                          Number(expense.igst_amount ?? 0)
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right type-data-primary text-recoverpe-danger-ink">
+                      {formatCurrency(Number(expense.amount))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       <AddExpenseModal

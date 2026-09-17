@@ -2,9 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ScanLine } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import { formatCurrency } from "@/lib/gst";
 import {
@@ -33,7 +44,7 @@ function ProofThumbnail({
 }) {
   if (!entry.proof_url) {
     return (
-      <div className="flex h-14 w-14 items-center justify-center rounded-sm border border-dashed border-recoverpe-grey-light text-center text-[10px] leading-tight text-recoverpe-grey-medium">
+      <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-recoverpe-line text-center text-[10px] leading-tight text-recoverpe-muted">
         No image
       </div>
     );
@@ -43,7 +54,7 @@ function ProofThumbnail({
     <button
       type="button"
       onClick={onOpen}
-      className="focus-ring block h-14 w-14 overflow-hidden rounded-sm border border-recoverpe-grey-light transition-all duration-200 ease-out hover:opacity-80"
+      className="focus-ring rp-interactive block h-14 w-14 overflow-hidden rounded-md border border-recoverpe-line hover:opacity-80"
       aria-label={`View payment proof from ${entry.contact_name ?? "customer"}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset */}
@@ -84,10 +95,10 @@ function ProofViewer({
       onClick={onClose}
     >
       <div
-        className="max-h-full w-full max-w-2xl overflow-auto rounded-lg border border-recoverpe-grey-light bg-recoverpe-white"
+        className="max-h-full w-full max-w-2xl overflow-auto rounded-xl border border-recoverpe-line bg-recoverpe-white"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-recoverpe-grey-light px-4 py-3">
+        <div className="flex items-center justify-between border-b border-recoverpe-line px-4 py-3">
           <p className="text-sm font-medium text-recoverpe-black">
             Payment proof — {preview.contactName}
           </p>
@@ -96,16 +107,11 @@ function ProofViewer({
               href={preview.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring rounded-sm text-sm font-medium text-recoverpe-black underline underline-offset-2"
+              className="focus-ring rounded-md text-sm font-medium text-recoverpe-black underline underline-offset-2"
             >
               Open original
             </a>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onClose}
-              className="min-h-9 px-3 py-1.5 text-xs"
-            >
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
               Close
             </Button>
           </div>
@@ -114,7 +120,7 @@ function ProofViewer({
         <img
           src={preview.url}
           alt={`Payment proof from ${preview.contactName}`}
-          className="w-full bg-recoverpe-grey-light/30 object-contain"
+          className="w-full bg-[var(--rp-fill)] object-contain"
         />
       </div>
     </div>
@@ -130,6 +136,37 @@ function formatSubmittedAt(value: string): string {
     minute: "2-digit",
     timeZone: "Asia/Kolkata",
   }).format(new Date(value));
+}
+
+function ReconciliationsTableSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Proof</TableHead>
+              <TableHead>Received</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>UTR</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Suggested invoice</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <TableRow key={index} className="pointer-events-none">
+                <TableCell colSpan={7}>
+                  <div className="h-4 animate-pulse rounded bg-[var(--rp-fill)]" />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ReconciliationsClient() {
@@ -199,20 +236,15 @@ export function ReconciliationsClient() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-recoverpe-black">
-          Payment Proofs
-        </h1>
-        <p className="mt-1 text-sm text-recoverpe-grey-medium">
-          Screenshots customers sent on WhatsApp, read automatically. Nothing is
-          settled until you approve it.
-        </p>
-      </div>
+      <PageHeader
+        title="Payment Proofs"
+        description="Screenshots customers sent on WhatsApp, read automatically. Nothing is settled until you approve it."
+      />
 
-      {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
 
       {isLoading ? (
-        <p className="text-sm text-recoverpe-grey-medium">Loading claims...</p>
+        <ReconciliationsTableSkeleton />
       ) : entries.length === 0 ? (
         <Card>
           <CardContent className="p-0">
@@ -224,125 +256,114 @@ export function ReconciliationsClient() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-recoverpe-grey-light">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-recoverpe-grey-light/40">
-              <tr>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">
-                  Proof
-                </th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">
-                  Received
-                </th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">
-                  Customer
-                </th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">UTR</th>
-                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
-                  Amount
-                </th>
-                <th className="px-4 py-3 font-medium text-recoverpe-black">
-                  Suggested invoice
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-recoverpe-black">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-recoverpe-grey-light bg-recoverpe-white">
-              {entries.map((entry) => {
-                const isBusy = pendingId === entry.id;
-                const canSettle =
-                  Boolean(entry.ledger_id) &&
-                  entry.extracted_amount !== null &&
-                  entry.extracted_amount > 0;
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Proof</TableHead>
+                  <TableHead>Received</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>UTR</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Suggested invoice</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map((entry) => {
+                  const isBusy = pendingId === entry.id;
+                  const canSettle =
+                    Boolean(entry.ledger_id) &&
+                    entry.extracted_amount !== null &&
+                    entry.extracted_amount > 0;
 
-                return (
-                  <tr key={entry.id}>
-                    <td className="px-4 py-3">
-                      <ProofThumbnail
-                        entry={entry}
-                        onOpen={() =>
-                          entry.proof_url &&
-                          setPreview({
-                            url: entry.proof_url,
-                            contactName: entry.contact_name ?? "Unknown",
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-recoverpe-grey-medium">
-                      {formatSubmittedAt(entry.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-recoverpe-black">
-                      {entry.contact_name ?? "Unknown"}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-recoverpe-black">
-                      {entry.extracted_utr ?? (
-                        <span className="font-sans text-recoverpe-grey-medium">
-                          Not detected
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-recoverpe-black">
-                      {entry.extracted_amount !== null ? (
-                        formatCurrency(entry.extracted_amount)
-                      ) : (
-                        <span className="font-normal text-recoverpe-grey-medium">
-                          Not detected
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {entry.suggested_invoice ? (
-                        <>
-                          <p className="text-recoverpe-black">
-                            {entry.suggested_invoice}
-                          </p>
-                          {entry.suggested_invoice_balance !== null ? (
-                            <p className="mt-0.5 text-xs text-recoverpe-grey-medium">
-                              {formatCurrency(entry.suggested_invoice_balance)} due
-                            </p>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-recoverpe-grey-medium">
-                          No open invoice
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          onClick={() => void handleReview(entry, "approve")}
-                          disabled={isBusy || !canSettle}
-                          title={
-                            canSettle
-                              ? undefined
-                              : "Needs a detected amount and an open invoice"
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell>
+                        <ProofThumbnail
+                          entry={entry}
+                          onOpen={() =>
+                            entry.proof_url &&
+                            setPreview({
+                              url: entry.proof_url,
+                              contactName: entry.contact_name ?? "Unknown",
+                            })
                           }
-                          className="min-h-9 px-3 py-1.5 text-xs"
-                        >
-                          {isBusy ? "Working..." : "Approve & Settle"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => void handleReview(entry, "reject")}
-                          disabled={isBusy}
-                          className="min-h-9 px-3 py-1.5 text-xs"
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-recoverpe-muted">
+                        {formatSubmittedAt(entry.created_at)}
+                      </TableCell>
+                      <TableCell className="text-recoverpe-black">
+                        {entry.contact_name ?? "Unknown"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-recoverpe-black">
+                        {entry.extracted_utr ?? (
+                          <span className="font-sans text-recoverpe-muted">
+                            Not detected
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right type-data-primary">
+                        {entry.extracted_amount !== null ? (
+                          formatCurrency(entry.extracted_amount)
+                        ) : (
+                          <span className="font-normal text-recoverpe-muted">
+                            Not detected
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {entry.suggested_invoice ? (
+                          <>
+                            <p className="text-recoverpe-black">
+                              {entry.suggested_invoice}
+                            </p>
+                            {entry.suggested_invoice_balance !== null ? (
+                              <p className="type-data-secondary mt-0.5">
+                                {formatCurrency(entry.suggested_invoice_balance)}{" "}
+                                due
+                              </p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <Badge tone="neutral">No open invoice</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleReview(entry, "approve")}
+                            disabled={isBusy || !canSettle}
+                            title={
+                              canSettle
+                                ? undefined
+                                : "Needs a detected amount and an open invoice"
+                            }
+                          >
+                            {isBusy ? "Working..." : "Approve & Settle"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            onClick={() => void handleReview(entry, "reject")}
+                            disabled={isBusy}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {preview ? (

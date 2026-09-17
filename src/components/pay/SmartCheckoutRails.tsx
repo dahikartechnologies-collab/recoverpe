@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/gst";
 import { resolveSmartCheckout } from "@/lib/payments/smart-checkout-router";
 import { generateUPIIntent, generateUPIQRCodeBase64 } from "@/lib/upi";
@@ -166,36 +167,39 @@ export function SmartCheckoutRails({
               );
             }}
           />
-          <p className="text-xs text-recoverpe-grey-medium">
+          <p className="text-xs text-recoverpe-muted">
             Outstanding balance: {formatCurrency(maxAmount)}
           </p>
         </div>
       ) : null}
 
       {isZeroMdrBank && checkout.bank ? (
-        <div className="space-y-4 rounded-md border border-recoverpe-grey-light px-4 py-5">
+        <div className="space-y-4 rounded-xl border border-recoverpe-line px-4 py-5">
           <div>
-            <p className="text-sm font-semibold text-recoverpe-black">
+            <p className="text-sm font-semibold tracking-tight text-recoverpe-black">
               Pay via IMPS / NEFT / RTGS
             </p>
-            <p className="mt-1 text-xs text-recoverpe-grey-medium">
+            <p className="mt-1 text-xs text-recoverpe-muted">
               Zero UPI MDR for payments above ₹2,000. Your khata updates
               automatically once the transfer is received.
             </p>
           </div>
           <div className="space-y-3 text-sm">
             <div>
-              <p className="text-recoverpe-grey-medium">Beneficiary</p>
+              <p className="text-recoverpe-muted">Beneficiary</p>
               <p className="font-medium">{checkout.bank.beneficiaryName}</p>
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-recoverpe-grey-medium">Account number</p>
-                <p className="font-mono">{checkout.bank.accountNumber}</p>
+                <p className="text-recoverpe-muted">Account number</p>
+                <p className="font-mono text-sm tracking-wide">
+                  {checkout.bank.accountNumber}
+                </p>
               </div>
               <Button
                 type="button"
-                variant="secondary"
+                size="sm"
+                variant="ghost"
                 onClick={() =>
                   void handleCopy(checkout.bank!.accountNumber, "Account number")
                 }
@@ -205,12 +209,13 @@ export function SmartCheckoutRails({
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-recoverpe-grey-medium">IFSC</p>
-                <p className="font-mono">{checkout.bank.ifsc}</p>
+                <p className="text-recoverpe-muted">IFSC</p>
+                <p className="font-mono text-sm tracking-wide">{checkout.bank.ifsc}</p>
               </div>
               <Button
                 type="button"
-                variant="secondary"
+                size="sm"
+                variant="ghost"
                 onClick={() => void handleCopy(checkout.bank!.ifsc, "IFSC")}
               >
                 Copy
@@ -218,12 +223,15 @@ export function SmartCheckoutRails({
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-recoverpe-grey-medium">Payment reference</p>
-                <p className="font-mono">{checkout.paymentReference}</p>
+                <p className="text-recoverpe-muted">Payment reference</p>
+                <p className="font-mono text-sm tracking-wide">
+                  {checkout.paymentReference}
+                </p>
               </div>
               <Button
                 type="button"
-                variant="secondary"
+                size="sm"
+                variant="ghost"
                 onClick={() =>
                   void handleCopy(checkout.paymentReference, "Payment reference")
                 }
@@ -233,7 +241,7 @@ export function SmartCheckoutRails({
             </div>
           </div>
           {copyMessage ? (
-            <p className="text-xs text-recoverpe-success">{copyMessage}</p>
+            <p className="text-xs text-recoverpe-success-ink">{copyMessage}</p>
           ) : null}
         </div>
       ) : (
@@ -246,17 +254,17 @@ export function SmartCheckoutRails({
                 </Button>
               </a>
             ) : null}
-            <p className="mt-2 text-center text-xs text-recoverpe-grey-medium">
+            <p className="mt-2 text-center text-xs text-recoverpe-muted">
               Opens Google Pay, PhonePe, Paytm, or your default UPI app.
             </p>
           </div>
 
           <div className="hidden md:block">
-            <div className="flex flex-col items-center rounded-md border border-recoverpe-grey-light px-4 py-6">
+            <div className="flex flex-col items-center rounded-xl border border-recoverpe-line px-4 py-6">
               <p className="text-sm font-medium text-recoverpe-black">
                 Scan to pay on mobile
               </p>
-              <p className="mt-1 text-xs text-recoverpe-grey-medium">
+              <p className="mt-1 text-xs text-recoverpe-muted">
                 Use any UPI app to scan this QR code.
               </p>
               {qrCodeDataUrl ? (
@@ -264,19 +272,20 @@ export function SmartCheckoutRails({
                 <img
                   src={qrCodeDataUrl}
                   alt="UPI payment QR code"
-                  className="mt-4 h-44 w-44 rounded-md border border-recoverpe-grey-light bg-recoverpe-white p-2"
+                  className="mt-4 h-44 w-44 rounded-xl border border-recoverpe-line bg-recoverpe-white p-2"
                 />
               ) : (
-                <p className="mt-4 text-sm text-recoverpe-grey-medium">
-                  {qrError || "Generating QR code..."}
-                </p>
+                <Skeleton className="mt-4 h-44 w-44 rounded-xl" />
               )}
+              {qrError ? (
+                <p className="mt-2 text-sm text-recoverpe-error">{qrError}</p>
+              ) : null}
             </div>
           </div>
         </div>
       )}
 
-      <p className="text-center text-[11px] text-recoverpe-grey-medium">
+      <p className="text-center text-[11px] text-recoverpe-muted">
         {isZeroMdrBank
           ? "Bank transfers are reconciled automatically via RecoverPe Smart Collect."
           : "Payments go directly to the merchant UPI ID."}

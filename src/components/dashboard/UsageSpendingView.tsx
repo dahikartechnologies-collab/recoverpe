@@ -11,7 +11,9 @@ import {
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Card, CardContent } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { UsageDashboardPayload } from "@/lib/business-usage-metering";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
@@ -60,15 +62,15 @@ function CircularProgress({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percent / 100) * circumference;
   const strokeClass = comingSoon
-    ? "text-recoverpe-grey-medium"
+    ? "text-recoverpe-subtle"
     : percent >= 100
       ? "text-recoverpe-error"
       : percent >= 80
-        ? "text-amber-500"
+        ? "text-recoverpe-warning-ink"
         : "text-recoverpe-success";
 
   return (
-    <div className="relative h-24 w-24">
+    <div className="relative h-24 w-24 shrink-0">
       <svg className="h-24 w-24 -rotate-90" viewBox="0 0 96 96" aria-hidden>
         <circle
           cx="48"
@@ -77,7 +79,7 @@ function CircularProgress({
           fill="none"
           stroke="currentColor"
           strokeWidth="8"
-          className="text-recoverpe-grey-light"
+          className="text-recoverpe-fill"
         />
         <circle
           cx="48"
@@ -89,11 +91,11 @@ function CircularProgress({
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className={strokeClass}
+          className={`transition-[stroke-dashoffset] duration-150 ${strokeClass}`}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-sm font-semibold text-recoverpe-black">
+        <span className="text-sm font-semibold tabular-nums text-recoverpe-black">
           {comingSoon ? "Soon" : `${percent}%`}
         </span>
       </div>
@@ -155,7 +157,7 @@ export function UsageSpendingView() {
     return (
       <Card>
         <CardContent>
-          <p className="text-sm text-recoverpe-grey-medium">
+          <p className="text-sm text-recoverpe-muted">
             Switch to a business workspace to view usage and spending.
           </p>
         </CardContent>
@@ -165,42 +167,43 @@ export function UsageSpendingView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="type-eyebrow">Unit economics</p>
-        <h1 className="type-page-title mt-2">Usage &amp; Spending</h1>
-        <p className="mt-2 max-w-2xl text-sm text-recoverpe-grey-medium">
-          Track Smart Collect settlements, omnichannel alerts, and invoice quotas
-          for {activeBusiness?.business_name ?? "your business"} this billing period.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Unit economics"
+        title="Usage & Spending"
+        description={`Track Smart Collect settlements, omnichannel alerts, and invoice quotas for ${activeBusiness?.business_name ?? "your business"} this billing period.`}
+      />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
       {isLoading ? (
-        <p className="text-sm text-recoverpe-grey-medium">Loading usage data…</p>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <Skeleton className="h-36 rounded-xl" />
+          <Skeleton className="h-36 rounded-xl" />
+          <Skeleton className="h-36 rounded-xl" />
+        </div>
       ) : payload ? (
         <>
-          <div className="rounded-xl border border-recoverpe-success/30 bg-emerald-50/60 p-5 shadow-sm">
+          <div className="rounded-xl border border-recoverpe-success-line bg-recoverpe-success-fill p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-recoverpe-success/15 text-recoverpe-success">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-recoverpe-white text-recoverpe-success-ink">
                   <TrendingUp className="h-5 w-5" aria-hidden />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-recoverpe-black">
-                    Total 0.4% UPI MDR Tax Saved
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold text-recoverpe-black">
+                  <p className="type-eyebrow">MDR saved this period</p>
+                  <p className="type-stat mt-2">
                     {formatInr(payload.mdr_tax_saved_inr)}
                   </p>
-                  <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                    {formatInr(payload.total_volume_collected_inr)} collected ·{" "}
-                    {formatInr(payload.total_gateway_fees_inr)} gateway fees
+                  <p className="mt-1 text-xs text-recoverpe-muted">
+                    0.4% vs UPI acquiring · {formatInr(payload.total_volume_collected_inr)}{" "}
+                    collected · {formatInr(payload.total_gateway_fees_inr)} gateway fees
                   </p>
                 </div>
               </div>
               <Link href="/dashboard/billing">
-                <Button variant="secondary">Manage plan</Button>
+                <Button variant="secondary" size="sm">
+                  Manage plan
+                </Button>
               </Link>
             </div>
           </div>
@@ -216,50 +219,31 @@ export function UsageSpendingView() {
 
               return (
                 <Card key={metric.key}>
-                  <CardHeader className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-recoverpe-grey-medium" aria-hidden />
-                      <p className="text-sm font-medium text-recoverpe-black">
-                        {metric.label}
-                      </p>
-                    </div>
-                    {metric.comingSoon ? (
-                      <p className="text-xs text-recoverpe-grey-medium">
-                        Coming Soon · {metric.overageLabel}
-                      </p>
-                    ) : metric.overageLabel ? (
-                      <p className="text-xs text-recoverpe-grey-medium">
-                        Overage: {metric.overageLabel}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-recoverpe-grey-medium">
-                        Included in all tiers
-                      </p>
-                    )}
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-lg font-semibold text-recoverpe-black">
+                  <CardContent className="flex items-center justify-between gap-4 p-5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          className="h-4 w-4 text-recoverpe-muted"
+                          aria-hidden
+                        />
+                        <p className="text-sm font-medium text-recoverpe-black">
+                          {metric.label}
+                        </p>
+                      </div>
+                      <p className="mt-3 text-lg font-semibold tabular-nums tracking-tight text-recoverpe-black">
                         {formatQuotaLabel(
                           metric.usage,
                           metric.quota,
                           metric.unlimited
                         )}
                       </p>
-                      {!metric.unlimited && metric.quota > 0 ? (
-                        <div className="mt-3 h-2 w-full max-w-[180px] overflow-hidden rounded-full bg-recoverpe-grey-light">
-                          <div
-                            className={`h-full rounded-full ${
-                              percent >= 100
-                                ? "bg-recoverpe-error"
-                                : percent >= 80
-                                  ? "bg-amber-500"
-                                  : "bg-recoverpe-success"
-                            }`}
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      ) : null}
+                      <p className="mt-2 text-xs text-recoverpe-muted">
+                        {metric.comingSoon
+                          ? `Coming soon · ${metric.overageLabel}`
+                          : metric.overageLabel
+                            ? `Overage: ${metric.overageLabel}`
+                            : "Included in all tiers"}
+                      </p>
                     </div>
                     <CircularProgress
                       percent={percent}
@@ -272,7 +256,7 @@ export function UsageSpendingView() {
           </div>
 
           {payload.pass_through_overages ? (
-            <p className="text-xs text-recoverpe-grey-medium">
+            <p className="text-xs text-recoverpe-muted">
               Pass-through overages are enabled. Usage beyond included quotas will
               appear on your next RecoverPe invoice.
             </p>
