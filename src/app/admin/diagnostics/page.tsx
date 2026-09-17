@@ -7,6 +7,7 @@ import { AdminDiagnosticsPanel } from "@/components/admin/AdminDiagnosticsPanel"
 import { AdminEscalationCronCard } from "@/components/admin/AdminEscalationCronCard";
 import { AdminOmnichannelDiagnosticsCard } from "@/components/admin/AdminOmnichannelDiagnosticsCard";
 import { AdminSimulateWebhookCard } from "@/components/admin/AdminSimulateWebhookCard";
+import { WebDialer } from "@/components/vapi/WebDialer";
 import { AdminAccessDeniedError, fetchAdminMetrics } from "@/lib/admin-client";
 import { getFirebaseAuth } from "@/lib/firebase";
 
@@ -68,6 +69,7 @@ export default function AdminDiagnosticsPage() {
 
       <AdminOmnichannelDiagnosticsCard />
       <AdminSimulateWebhookCard />
+      <WebDialer />
       <AdminEscalationCronCard />
       <AdminDiagnosticsPanel />
     </div>

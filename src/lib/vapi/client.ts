@@ -25,6 +25,7 @@ export interface VapiOutboundCallInput {
   debtorName: string;
   debtorPhone: string;
   balanceDue: number;
+  paymentLink: string;
 }
 
 export interface VapiOutboundCallResult {
@@ -57,36 +58,12 @@ function normalizePhoneNumber(phoneNumber: string): string {
   return digits.startsWith("+") ? digits : `+${digits}`;
 }
 
-export function buildRecoveryAssistantSystemPrompt(input: {
-  businessName: string;
-  debtorName: string;
-  balanceDue: number;
-}): string {
-  const balanceLabel = formatCurrency(input.balanceDue);
-
-  return [
-    `You are an AI recovery assistant representing ${input.businessName}.`,
-    `The customer ${input.debtorName} has a pending balance of ${balanceLabel}.`,
-    "Speak in polite, professional Indian Hindi or English (Hinglish). Do not sound robotic.",
-    "If they promise to pay, thank them and mention a payment link is in their WhatsApp.",
-    "Keep responses under 2 sentences.",
-  ].join(" ");
-}
-
 export function buildVapiOutboundCallPayload(
   input: VapiOutboundCallInput
 ): Record<string, unknown> {
   const assistantId = process.env.VAPI_ASSISTANT_ID?.trim() ?? "";
   const phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID?.trim() ?? "";
   const balanceDueLabel = formatCurrency(input.balanceDue);
-  const systemPrompt = buildRecoveryAssistantSystemPrompt({
-    businessName: input.businessName,
-    debtorName: input.debtorName,
-    balanceDue: input.balanceDue,
-  });
-
-  const voiceProvider = process.env.VAPI_VOICE_PROVIDER?.trim() || "deepgram";
-  const voiceId = process.env.VAPI_VOICE_ID?.trim() || "nova";
 
   return {
     assistantId,
@@ -100,19 +77,7 @@ export function buildVapiOutboundCallPayload(
         businessName: input.businessName,
         debtorName: input.debtorName,
         balanceDue: balanceDueLabel,
-      },
-      firstMessage: `Namaste ${input.debtorName}, main ${input.businessName} ki taraf se bol rahi hoon. Aapka ${balanceDueLabel} baaki hai — kya aaj payment arrange ho sakta hai?`,
-      model: {
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-        ],
-      },
-      voice: {
-        provider: voiceProvider,
-        voiceId,
+        paymentLink: input.paymentLink,
       },
     },
     metadata: {
@@ -137,13 +102,14 @@ export async function createVapiOutboundCall(
     console.log("[Recoverpe VAPI Outbound Dev Bypass]", {
       ledger_id: input.ledgerId,
       contact_id: input.contactId,
+      payment_link: input.paymentLink,
       payload,
     });
 
     return {
       success: true,
       simulated: true,
-      message: "AI voice call simulated in development mode.",
+      message: "AI Agent is dialing the customer.",
       vapiCallId: `dev_simulated_${input.ledgerId}`,
       payload,
     };
@@ -165,7 +131,7 @@ export async function createVapiOutboundCall(
     );
   }
 
-  const response = await fetch("https://api.vapi.ai/call", {
+  const response = await fetch("https://api.vapi.ai/call/phone", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -184,7 +150,7 @@ export async function createVapiOutboundCall(
   return {
     success: true,
     simulated: false,
-    message: "AI voice call initiated successfully.",
+    message: "AI Agent is dialing the customer.",
     vapiCallId: result.id ?? null,
     payload,
   };

@@ -21,6 +21,7 @@
     "@types/d3-sankey": "^0.12.5",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
+    "@vapi-ai/web": "^2.7.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/functions": "^3.9.8",
     "@vercel/speed-insights": "^2.0.0",

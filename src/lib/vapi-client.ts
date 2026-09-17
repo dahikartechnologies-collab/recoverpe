@@ -16,9 +16,7 @@ export async function initiateVapiOutboundCall(
     },
     body: JSON.stringify({
       ledgerId: payload.ledger_id,
-      contactId: payload.contact_id,
       ledger_id: payload.ledger_id,
-      contact_id: payload.contact_id,
     }),
   });
 
@@ -47,14 +45,7 @@ export async function initiateVapiOutboundCall(
 
 /** @deprecated Use initiateVapiOutboundCall instead. */
 export async function initiateVapiCall(
-  payload: Pick<InitiateVapiCallPayload, "ledger_id"> & { contact_id?: string }
+  payload: InitiateVapiCallPayload
 ): Promise<InitiateVapiCallResponse> {
-  if (!payload.contact_id) {
-    throw new Error("contact_id is required for AI voice calls.");
-  }
-
-  return initiateVapiOutboundCall({
-    ledger_id: payload.ledger_id,
-    contact_id: payload.contact_id,
-  });
+  return initiateVapiOutboundCall(payload);
 }

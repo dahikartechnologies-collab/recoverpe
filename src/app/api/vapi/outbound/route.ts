@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPayPageUrl } from "@/lib/app-url";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   fetchBusinessUsageMeteringRow,
@@ -11,7 +12,6 @@ import { enforceVapiCallRateLimit } from "@/lib/rate-limit";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import {
-  buildRecoveryAssistantSystemPrompt,
   createVapiOutboundCall,
   TraiCurfewError,
   VapiClientError,
@@ -21,8 +21,6 @@ import { CommunicationLog } from "@/types";
 interface VapiOutboundPayload {
   ledgerId?: string;
   ledger_id?: string;
-  contactId?: string;
-  contact_id?: string;
 }
 
 export const POST = withWorkspaceMutation(async (request, auth) => {
@@ -39,14 +37,9 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
 
     const body = (await request.json()) as VapiOutboundPayload;
     const ledgerId = (body.ledgerId ?? body.ledger_id ?? "").trim();
-    const contactId = (body.contactId ?? body.contact_id ?? "").trim();
 
     if (!ledgerId) {
       return NextResponse.json({ error: "ledgerId is required." }, { status: 400 });
-    }
-
-    if (!contactId) {
-      return NextResponse.json({ error: "contactId is required." }, { status: 400 });
     }
 
     const supabase = createAdminSupabaseClient();
@@ -58,13 +51,6 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
 
     if (!ledger) {
       return NextResponse.json({ error: "Ledger not found." }, { status: 404 });
-    }
-
-    if (ledger.contact_id !== contactId) {
-      return NextResponse.json(
-        { error: "Ledger does not belong to the provided contact." },
-        { status: 400 }
-      );
     }
 
     if (!canInitiateAiCallForLedger(ledger)) {
@@ -136,6 +122,8 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       );
     }
 
+    const paymentLink = getPayPageUrl(ledger.id);
+
     const callResult = await createVapiOutboundCall({
       ledgerId: ledger.id,
       contactId: ledger.contact_id,
@@ -146,6 +134,7 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       debtorName: ledger.contact.name,
       debtorPhone: ledger.contact.phone_number,
       balanceDue: ledger.balance_due,
+      paymentLink,
     });
 
     const { data: communicationLog, error: logError } = await supabase
@@ -182,16 +171,11 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       message: callResult.message,
       vapi_call_id: callResult.vapiCallId,
       communication_log: communicationLog as CommunicationLog,
-      draft: {
-        business_name: business.business_name,
-        debtor_name: ledger.contact.name,
-        balance_due: ledger.balance_due,
-        system_prompt: buildRecoveryAssistantSystemPrompt({
-          businessName:
-            (business.business_name as string | null)?.trim() || "RecoverPe Merchant",
-          debtorName: ledger.contact.name,
-          balanceDue: ledger.balance_due,
-        }),
+      variable_values: {
+        businessName: business.business_name,
+        debtorName: ledger.contact.name,
+        balanceDue: ledger.balance_due,
+        paymentLink,
       },
     });
   } catch (error) {

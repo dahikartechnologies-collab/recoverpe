@@ -650,7 +650,7 @@ export interface UpdateLedgerPayload {
 
 export interface InitiateVapiCallPayload {
   ledger_id: string;
-  contact_id: string;
+  contact_id?: string;
 }
 
 export interface InitiateVapiCallResponse {

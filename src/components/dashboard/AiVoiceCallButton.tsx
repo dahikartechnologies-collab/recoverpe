@@ -40,16 +40,12 @@ export function AiVoiceCallButton({
     setIsCalling(true);
 
     try {
-      const result = await initiateVapiOutboundCall({
+      await initiateVapiOutboundCall({
         ledger_id: ledgerId,
         contact_id: contactId,
       });
 
-      onSuccess?.(
-        result.simulated
-          ? "AI voice call simulated (development mode)."
-          : result.message || "AI voice call initiated."
-      );
+      onSuccess?.("AI Agent is dialing the customer.");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to initiate AI voice call.";
