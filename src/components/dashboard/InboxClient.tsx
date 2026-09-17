@@ -1,8 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
@@ -226,9 +229,16 @@ export function InboxClient() {
         <Card>
           <CardContent className="p-0">
             {threads.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-recoverpe-grey-medium">
-                No WhatsApp threads yet.
-              </p>
+              <EmptyState
+                icon={<MessageSquare className="h-5 w-5" aria-hidden />}
+                title="No WhatsApp threads yet"
+                description="When RecoverPe sends reminders or customers reply, their latest message summary appears here."
+                action={
+                  <Link href="/dashboard/vendors">
+                    <Button>View vendors</Button>
+                  </Link>
+                }
+              />
             ) : (
               <ul>
                 {threads.map((thread) => (

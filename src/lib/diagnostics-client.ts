@@ -19,6 +19,35 @@ export async function fetchDiagnosticsHealth(): Promise<DiagnosticsHealthRespons
   return body;
 }
 
+export async function simulateLiveImpsCredit(payload: {
+  ledger_id: string;
+  amount: number;
+}): Promise<Record<string, unknown>> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/simulate-webhook", {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await parseApiJsonResponse<Record<string, unknown> & { error?: string }>(
+    response
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      typeof body.error === "string"
+        ? body.error
+        : "Failed to simulate live IMPS credit."
+    );
+  }
+
+  return body;
+}
+
 export async function simulateSmartCollectPayment(
   payload: SimulatePaymentPayload
 ): Promise<Record<string, unknown>> {

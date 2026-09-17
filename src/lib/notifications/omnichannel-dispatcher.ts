@@ -1,6 +1,7 @@
 import { differenceInCalendarDays } from "date-fns";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { getPayPageUrl } from "@/lib/app-url";
+import { incrementSmsUsageSafely } from "@/lib/business-usage-metering";
 import {
   BusinessEntitlementRow,
   hasEntitlement,
@@ -198,6 +199,7 @@ export async function dispatchDebtReminder(
         });
 
         result.sms = { success: true, message: smsResult.message };
+        await incrementSmsUsageSafely(supabase, businessId);
       } else {
         const failureSummary =
           smsResult.error ?? smsResult.message ?? "SMS dispatch failed.";
@@ -384,6 +386,7 @@ export async function dispatchPaymentSettlementSms(
         summary: "Payment settlement SMS receipt sent",
         externalMessageId: smsResult.externalMessageId,
       });
+      await incrementSmsUsageSafely(supabase, input.businessId);
       return;
     }
 

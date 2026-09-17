@@ -18,6 +18,7 @@ import { upsertContactForUser } from "@/lib/contact-upsert";
 import { scheduleContactVirtualAccountProvisioning } from "@/lib/payments/provision-contact-virtual-account";
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { revalidateDashboardData } from "@/lib/dashboard-cache";
+import { incrementInvoiceUsageSafely } from "@/lib/business-usage-metering";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { fireUdhaarReceiptMessage } from "@/lib/whatsapp/udhaar-receipt";
 import { Business, Contact, CreateLedgerPayload, Ledger, WorkspaceMode } from "@/types";
@@ -482,6 +483,8 @@ export async function POST(request: Request) {
             next_invoice_sequence: (business.next_invoice_sequence ?? 1) + 1,
           })
           .eq("id", business.id);
+
+        await incrementInvoiceUsageSafely(supabase, business.id);
       }
 
       revalidateDashboardData(contextResult.effectiveUserId);

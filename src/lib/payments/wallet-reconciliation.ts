@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { recordSmartCollectSettlementSafely } from "@/lib/business-usage-metering";
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
 import { dispatchPaymentSettlementSms } from "@/lib/notifications/omnichannel-dispatcher";
@@ -646,6 +647,12 @@ export async function reconcileContactVirtualAccountCredit(
       businessId: (primaryLedger?.business_id as string | null) ?? owner.legacyBusinessId,
       externalPaymentId: credit.externalPaymentId,
       amountPaise: credit.amountPaise,
+    });
+
+    await recordSmartCollectSettlementSafely(supabase, {
+      businessId:
+        (primaryLedger?.business_id as string | null) ?? owner.legacyBusinessId,
+      amountInr: credit.amountRupees,
     });
   }
 

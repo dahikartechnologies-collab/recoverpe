@@ -2,6 +2,7 @@ import { AppRole, CustomPermissions } from "@/types";
 
 export const OWNER_WORKSPACE_ONLY_HREFS = [
   "/dashboard/billing",
+  "/dashboard/usage",
 ] as const;
 
 export interface WorkspaceNavContext {
@@ -96,6 +97,10 @@ export function filterNavLinksForContext<
     }
 
     if (link.href === "/dashboard/billing" || link.href.startsWith("/dashboard/billing")) {
+      return canAccessBillingNav(navContext);
+    }
+
+    if (link.href === "/dashboard/usage" || link.href.startsWith("/dashboard/usage")) {
       return canAccessBillingNav(navContext);
     }
 

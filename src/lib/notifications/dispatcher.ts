@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { getPayPageUrl } from "@/lib/app-url";
+import { incrementWhatsappUsageSafely } from "@/lib/business-usage-metering";
 import { sendBusinessEmail } from "@/lib/email/nodemailer";
 import {
   buildLegalNoticeEmail,
@@ -176,6 +177,10 @@ async function tryWhatsAppDispatch(input: {
         ? "Payment receipt sent on WhatsApp"
         : "Payment reminder sent on WhatsApp",
   });
+
+  if (input.businessId && !sendResult.simulated) {
+    await incrementWhatsappUsageSafely(input.supabase, input.businessId);
+  }
 
   return {
     success: true,

@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Toast } from "@/components/ui/Toast";
 import { formatCurrency } from "@/lib/gst";
 import {
@@ -213,14 +215,12 @@ export function ReconciliationsClient() {
         <p className="text-sm text-recoverpe-grey-medium">Loading claims...</p>
       ) : entries.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-sm font-medium text-recoverpe-black">
-              No payment proofs waiting for review
-            </p>
-            <p className="mt-1 text-sm text-recoverpe-grey-medium">
-              When a customer sends a payment screenshot on WhatsApp, it will
-              appear here for your approval.
-            </p>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={<ScanLine className="h-5 w-5" aria-hidden />}
+              title="No payment proofs waiting for review"
+              description="When a customer sends a payment screenshot on WhatsApp, it will appear here for your approval."
+            />
           </CardContent>
         </Card>
       ) : (

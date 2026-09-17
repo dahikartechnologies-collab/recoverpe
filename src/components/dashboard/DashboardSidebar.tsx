@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home,
+  BarChart3,
   Import,
   MessageSquare,
   Receipt,
@@ -32,6 +33,7 @@ const SIDEBAR_LINKS = [
     icon: ScanLine,
   },
   { href: "/dashboard/import", label: "Import", icon: Import },
+  { href: "/dashboard/usage", label: "Usage", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/billing", label: "Billing", icon: Wallet },
 ];
