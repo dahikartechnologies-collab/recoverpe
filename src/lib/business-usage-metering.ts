@@ -269,9 +269,8 @@ export function buildUsageDashboardPayload(
       label: "AI Voice Calls",
       usage: row.usage_vapi_minutes,
       quota: row.quota_vapi_minutes,
-      unlimited: false,
+      unlimited: isUnlimitedQuota(row.quota_vapi_minutes),
       overageLabel: "₹2 / minute",
-      comingSoon: true,
     },
     {
       key: "invoices",
@@ -304,7 +303,7 @@ export function buildUsageDashboardPayload(
 async function incrementCounter(
   supabase: SupabaseClient,
   businessId: string,
-  field: "usage_sms" | "usage_whatsapp" | "usage_invoices",
+  field: "usage_sms" | "usage_whatsapp" | "usage_invoices" | "usage_vapi_minutes",
   delta = 1
 ): Promise<void> {
   const row = await fetchBusinessUsageMeteringRow(supabase, businessId);
@@ -318,7 +317,9 @@ async function incrementCounter(
       ? row.usage_sms
       : field === "usage_whatsapp"
         ? row.usage_whatsapp
-        : row.usage_invoices;
+        : field === "usage_invoices"
+          ? row.usage_invoices
+          : row.usage_vapi_minutes;
 
   const { error } = await supabase
     .from("businesses")
@@ -349,6 +350,18 @@ export async function incrementInvoiceUsage(
   businessId: string
 ): Promise<void> {
   await incrementCounter(supabase, businessId, "usage_invoices");
+}
+
+export async function incrementVapiMinutesUsage(
+  supabase: SupabaseClient,
+  businessId: string,
+  minutes: number
+): Promise<void> {
+  if (minutes <= 0) {
+    return;
+  }
+
+  await incrementCounter(supabase, businessId, "usage_vapi_minutes", minutes);
 }
 
 export async function recordSmartCollectSettlement(
@@ -424,6 +437,22 @@ export async function incrementInvoiceUsageSafely(
     await incrementInvoiceUsage(supabase, businessId);
   } catch (error) {
     console.error("[usage-metering] Invoice increment failed:", error);
+  }
+}
+
+export async function incrementVapiMinutesUsageSafely(
+  supabase: SupabaseClient,
+  businessId: string | null | undefined,
+  minutes: number
+): Promise<void> {
+  if (!businessId || minutes <= 0) {
+    return;
+  }
+
+  try {
+    await incrementVapiMinutesUsage(supabase, businessId, minutes);
+  } catch (error) {
+    console.error("[usage-metering] VAPI minutes increment failed:", error);
   }
 }
 

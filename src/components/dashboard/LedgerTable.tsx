@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LedgerActionsMenu } from "@/components/dashboard/LedgerActionsMenu";
+import { LedgerQuickReachActions } from "@/components/dashboard/LedgerQuickReachActions";
 import { formatCurrency } from "@/lib/gst";
 import { downloadLedgersCsv } from "@/lib/ledger-export";
 import {
@@ -42,6 +43,7 @@ interface LedgerTableProps {
   canSendReminders?: boolean;
   canSpendFunds?: boolean;
   canViewEvidenceDocket?: boolean;
+  onReachToast?: (message: string, variant: "success" | "error") => void;
   pagination?: LedgerPagination;
   onPreviousPage?: () => void;
   onNextPage?: () => void;
@@ -95,6 +97,7 @@ interface LedgerActionsProps {
   canSendReminders?: boolean;
   canSpendFunds?: boolean;
   canViewEvidenceDocket?: boolean;
+  onReachToast?: (message: string, variant: "success" | "error") => void;
 }
 
 function LedgerRowActions({
@@ -122,9 +125,19 @@ function LedgerRowActions({
   canSendReminders = true,
   canSpendFunds = false,
   canViewEvidenceDocket = false,
+  onReachToast,
 }: LedgerActionsProps) {
   return (
-    <LedgerActionsMenu
+    <div className="flex flex-col items-end gap-2 xl:flex-row xl:items-center">
+      <LedgerQuickReachActions
+        ledger={ledger}
+        readOnly={readOnly}
+        canSendReminders={canSendReminders}
+        onSendReminder={onSendReminder}
+        isSending={sendingLedgerId === ledger.id}
+        onToast={onReachToast}
+      />
+      <LedgerActionsMenu
       ledger={ledger}
       readOnly={readOnly}
       canSendReminders={canSendReminders}
@@ -151,7 +164,8 @@ function LedgerRowActions({
       isDownloadingEvidenceDocket={
         downloadingEvidenceDocketLedgerId === ledger.id
       }
-    />
+      />
+    </div>
   );
 }
 
@@ -223,6 +237,7 @@ export function LedgerTable({
   canSendReminders = true,
   canSpendFunds = false,
   canViewEvidenceDocket = false,
+  onReachToast,
   pagination,
   onPreviousPage,
   onNextPage,
@@ -295,6 +310,7 @@ export function LedgerTable({
     canSendReminders,
     canSpendFunds,
     canViewEvidenceDocket,
+    onReachToast,
   };
 
   if (ledgers.length === 0) {

@@ -64,6 +64,25 @@ export async function listInboxThreads(
     (contacts ?? []).map((contact) => [contact.id as string, contact])
   );
 
+  const { data: openLedgers } = await supabase
+    .from("ledgers")
+    .select("id, contact_id, due_date, balance_due, business_id, communication_paused")
+    .eq("user_id", workspaceUserId)
+    .in("contact_id", contactIds)
+    .gt("balance_due", 0)
+    .not("business_id", "is", null)
+    .order("due_date", { ascending: true });
+
+  const primaryLedgerByContact = new Map<string, string>();
+
+  for (const ledger of openLedgers ?? []) {
+    const contactId = ledger.contact_id as string;
+
+    if (!primaryLedgerByContact.has(contactId)) {
+      primaryLedgerByContact.set(contactId, ledger.id as string);
+    }
+  }
+
   return contactIds.flatMap((contactId) => {
     const contact = contactMap.get(contactId);
     const last = latestByContact.get(contactId);
@@ -86,6 +105,7 @@ export async function listInboxThreads(
           typeof contact.debtor_health_score === "number"
             ? contact.debtor_health_score
             : null,
+        primary_ledger_id: primaryLedgerByContact.get(contactId) ?? null,
       },
     ];
   });
@@ -104,7 +124,7 @@ export async function listInboxThreadMessages(
     )
     .eq("user_id", workspaceUserId)
     .eq("contact_id", contactId)
-    .eq("channel", "whatsapp")
+    .in("channel", ["whatsapp", "voice_ai"])
     .order("executed_at", { ascending: true })
     .limit(100);
 

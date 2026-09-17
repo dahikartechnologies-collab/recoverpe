@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
+import { AiVoiceCallButton } from "@/components/dashboard/AiVoiceCallButton";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -284,9 +285,20 @@ export function InboxClient() {
                       {selected.phone_number} · {dhsLabel(selected.dhs, canViewDhs)}
                     </p>
                   </div>
-                  <Button variant="secondary" onClick={() => void togglePause()}>
-                    {selected.bot_paused ? "Resume bot" : "Pause bot"}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selected.primary_ledger_id ? (
+                      <AiVoiceCallButton
+                        ledgerId={selected.primary_ledger_id}
+                        contactId={selected.contact_id}
+                        compact
+                        onSuccess={() => setError("")}
+                        onError={(message) => setError(message)}
+                      />
+                    ) : null}
+                    <Button variant="secondary" onClick={() => void togglePause()}>
+                      {selected.bot_paused ? "Resume bot" : "Pause bot"}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="max-h-[420px] space-y-3 overflow-y-auto border border-recoverpe-grey-light p-4">

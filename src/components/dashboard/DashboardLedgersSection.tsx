@@ -24,7 +24,7 @@ import { WallOfShameEntry } from "@/lib/dashboard-intelligence-client";
 import { getAuthHeaders } from "@/lib/businesses";
 import { formatCurrency } from "@/lib/gst";
 import { downloadDocumentFromApiRoute } from "@/lib/pdf-download";
-import { initiateVapiCall } from "@/lib/vapi-client";
+import { initiateVapiOutboundCall } from "@/lib/vapi-client";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
 import { sendWhatsAppReminder } from "@/lib/messages";
 import {
@@ -441,7 +441,16 @@ export function DashboardLedgersSection({
     setEscalatingCall(true);
 
     try {
-      const result = await initiateVapiCall({ ledger_id: ledgerId });
+      const ledger = ledgers.find((entry) => entry.id === ledgerId);
+
+      if (!ledger) {
+        throw new Error("Ledger not found for AI voice call.");
+      }
+
+      const result = await initiateVapiOutboundCall({
+        ledger_id: ledgerId,
+        contact_id: ledger.contact_id,
+      });
 
       setToast({
         message: result.simulated
@@ -511,7 +520,10 @@ export function DashboardLedgersSection({
     setCallingLedgerId(ledger.id);
 
     try {
-      const result = await initiateVapiCall({ ledger_id: ledger.id });
+      const result = await initiateVapiOutboundCall({
+        ledger_id: ledger.id,
+        contact_id: ledger.contact_id,
+      });
 
       setToast({
         message: result.simulated
@@ -636,6 +648,7 @@ export function DashboardLedgersSection({
             void handleViewEvidenceDocket(ledger)
           }
           onToggleAutomationPause={handleToggleAutomationPause}
+          onReachToast={(message, variant) => setToast({ message, variant })}
           sendingLedgerId={sendingLedgerId}
           callingLedgerId={callingLedgerId}
           togglingLedgerId={togglingLedgerId}

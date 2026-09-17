@@ -21,7 +21,10 @@ describe("entitlements", () => {
       hasEntitlement({ subscription_tier: "starter" }, "zero_mdr_checkout")
     ).toBe(false);
     expect(
-      hasEntitlement({ subscription_tier: "free" }, "team_management")
+      hasEntitlement({ subscription_tier: "premium" }, "ai_voice_calls")
+    ).toBe(true);
+    expect(
+      hasEntitlement({ subscription_tier: "business" }, "ai_voice_calls")
     ).toBe(false);
   });
 

@@ -14,7 +14,8 @@ export type EntitlementKey =
   | "debtor_health_score"
   | "field_agent_network"
   | "omnichannel_escalation"
-  | "team_management";
+  | "team_management"
+  | "ai_voice_calls";
 
 export interface BusinessEntitlementRow {
   subscription_tier: BusinessSubscriptionTier;
@@ -43,6 +44,7 @@ const ENTITLEMENT_MATRIX: Record<EntitlementKey, BusinessSubscriptionTier> = {
   field_agent_network: "premium",
   omnichannel_escalation: "premium",
   team_management: "business",
+  ai_voice_calls: "premium",
 };
 
 function tierRank(tier: BusinessSubscriptionTier): number {

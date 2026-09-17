@@ -24,7 +24,7 @@ import {
   provisionVendorVirtualAccount,
 } from "@/lib/vendor-client";
 import { sendWhatsAppReminder } from "@/lib/messages";
-import { initiateVapiCall } from "@/lib/vapi-client";
+import { initiateVapiOutboundCall } from "@/lib/vapi-client";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
 import {
   loadSamadhaanFulfillment,
@@ -272,7 +272,10 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
     setCallingLedgerId(ledger.id);
 
     try {
-      await initiateVapiCall({ ledger_id: ledger.id });
+      await initiateVapiOutboundCall({
+        ledger_id: ledger.id,
+        contact_id: ledger.contact_id,
+      });
       showToast("AI voice call initiated.", "success");
       bumpLedgerRefresh();
     } catch (callError) {
@@ -585,6 +588,7 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
         onToggleAutomationPause={(ledger, paused) =>
           void handleToggleAutomationPause(ledger, paused)
         }
+        onReachToast={(message, variant) => showToast(message, variant)}
         sendingLedgerId={sendingLedgerId}
         callingLedgerId={callingLedgerId}
         togglingLedgerId={togglingLedgerId}

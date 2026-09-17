@@ -24,6 +24,7 @@ const CHANNEL_ICON: Record<CommunicationChannel, typeof MessageSquare> = {
   sms: MessageSquare,
   email: Mail,
   voice: Phone,
+  voice_ai: Phone,
 };
 
 const CHANNEL_LABEL: Record<CommunicationChannel, string> = {
@@ -31,6 +32,7 @@ const CHANNEL_LABEL: Record<CommunicationChannel, string> = {
   sms: "SMS",
   email: "Email",
   voice: "Voice call",
+  voice_ai: "AI voice call",
 };
 
 const STATUS_LABEL: Record<CommunicationStatus, string> = {

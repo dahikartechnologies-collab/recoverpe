@@ -8,6 +8,7 @@ export interface InboxThreadRow {
   unread: boolean;
   bot_paused: boolean;
   dhs: number | null;
+  primary_ledger_id: string | null;
 }
 
 export interface InboxMessageRow {

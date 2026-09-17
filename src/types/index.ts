@@ -60,7 +60,12 @@ export type CommunicationStatus =
   | "failed"
   | "call_completed";
 
-export type CommunicationChannel = "whatsapp" | "sms" | "email" | "voice";
+export type CommunicationChannel =
+  | "whatsapp"
+  | "sms"
+  | "email"
+  | "voice"
+  | "voice_ai";
 
 export type CommunicationDirection = "inbound" | "outbound";
 
@@ -645,6 +650,7 @@ export interface UpdateLedgerPayload {
 
 export interface InitiateVapiCallPayload {
   ledger_id: string;
+  contact_id: string;
 }
 
 export interface InitiateVapiCallResponse {
@@ -652,7 +658,7 @@ export interface InitiateVapiCallResponse {
   simulated: boolean;
   message: string;
   vapi_call_id: string | null;
-  vapi_wallet_balance: number;
+  vapi_wallet_balance?: number;
   communication_log: CommunicationLog;
   draft: {
     customer_number: string;

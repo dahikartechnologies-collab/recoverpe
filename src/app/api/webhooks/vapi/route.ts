@@ -4,6 +4,7 @@ import {
   parseVapiEndOfCallReport,
   verifyVapiWebhookSecret,
 } from "@/lib/vapi-webhook";
+import { incrementVapiMinutesUsageSafely } from "@/lib/business-usage-metering";
 import { VAPI_CALL_CREDIT_COST } from "@/lib/vapi";
 import { reserveVapiCredits } from "@/lib/vapi-wallet";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("ledgers")
-      .select("id, user_id")
+      .select("id, user_id, business_id, contact_id")
       .eq("id", ledgerId)
       .maybeSingle();
 
@@ -60,6 +61,13 @@ export async function POST(request: Request) {
     }
 
     const userId = report.user_id ?? ledgerRow.user_id;
+    const businessId = (ledgerRow.business_id as string | null) ?? null;
+    const contactId = (ledgerRow.contact_id as string | null) ?? null;
+    const billedMinutes = Math.max(1, Math.ceil(report.duration_seconds / 60));
+    const callSummary =
+      report.summary?.trim() ||
+      insights.executive_summary?.trim() ||
+      "AI voice recovery call completed.";
 
     const reservedCredits = Number(existingLog?.cost_deducted ?? 0);
     const alreadyReconciled =
@@ -96,11 +104,17 @@ export async function POST(request: Request) {
     }
 
     const logUpdate = {
+      user_id: userId as string,
+      business_id: businessId,
+      contact_id: contactId,
+      channel: "voice_ai" as const,
+      direction: "outbound" as const,
       status: "call_completed" as const,
       cost_deducted: totalCreditCost,
       recording_url: report.recording_url,
       sentiment: insights.sentiment,
       executive_summary: insights.executive_summary,
+      summary: callSummary,
       transcript: report.transcript || null,
       duration_seconds: report.duration_seconds,
       vapi_call_id: report.vapi_call_id,
@@ -134,10 +148,15 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!alreadyReconciled && businessId) {
+      await incrementVapiMinutesUsageSafely(supabase, businessId, billedMinutes);
+    }
+
     console.log("[Recoverpe VAPI Webhook]", {
       vapi_call_id: report.vapi_call_id,
       ledger_id: ledgerId,
       duration_seconds: report.duration_seconds,
+      billed_minutes: billedMinutes,
       total_credit_cost: totalCreditCost,
       reserved_credits: reservedCredits,
       additional_credits_charged: additionalCreditsCharged,
