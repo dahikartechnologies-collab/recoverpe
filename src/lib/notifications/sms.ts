@@ -1,15 +1,19 @@
 import { isDevelopmentAppEnv } from "@/lib/app-env";
+import {
+  buildFast2SmsRequest,
+  normalizeIndianMobile,
+  postFast2SmsRequest,
+  type SmsDltVariables,
+} from "@/lib/sms";
 
-export interface SmsDltVariables {
-  amount: string;
-  businessName: string;
-  payUrl: string;
-}
+export type { SmsDltVariables } from "@/lib/sms";
 
 export interface SmsDispatchInput {
   phoneNumber: string;
   message: string;
   dltVariables?: SmsDltVariables;
+  /** Server-side OTP alerts only — never used for login/registration. */
+  otpCode?: string;
 }
 
 export interface SmsDispatchResult {
@@ -21,21 +25,7 @@ export interface SmsDispatchResult {
   error?: string;
   status?: string;
   providerPayload?: unknown;
-  route?: "dlt" | "q" | "msg91";
-}
-
-function normalizeIndianMobile(value: string): string {
-  const digits = value.replace(/\D/g, "");
-
-  if (digits.length === 10) {
-    return digits;
-  }
-
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return digits.slice(2);
-  }
-
-  throw new Error("Enter a valid 10-digit mobile number for SMS.");
+  route?: "dlt" | "otp" | "msg91";
 }
 
 function formatSmsAmount(amount: number): string {
@@ -44,10 +34,6 @@ function formatSmsAmount(amount: number): string {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(amount);
-}
-
-function sanitizeDltVariable(value: string, maxLength = 30): string {
-  return value.replace(/\|/g, "/").trim().slice(0, maxLength);
 }
 
 function isDltComplianceError(httpStatus: number, body: string): boolean {
@@ -104,35 +90,19 @@ function buildSmsFailureResult(input: {
   };
 }
 
-function buildFast2SmsDltPayload(input: {
-  numbers: string;
-  dltVariables: SmsDltVariables;
-}): { body: Record<string, string>; route: "dlt" } | { error: string } {
-  const dltTemplateId = process.env.FAST2SMS_DLT_TEMPLATE_ID?.trim();
-  const senderId = process.env.FAST2SMS_SENDER_ID?.trim();
-
-  if (!dltTemplateId) {
-    return { error: "FAST2SMS_DLT_TEMPLATE_ID is not configured." };
+function extractPayloadMessage(payload: unknown, rawBody: string): string {
+  if (
+    typeof payload === "object" &&
+    payload &&
+    "message" in payload &&
+    payload.message
+  ) {
+    return Array.isArray(payload.message)
+      ? payload.message.join(", ")
+      : String(payload.message);
   }
 
-  if (!senderId) {
-    return { error: "FAST2SMS_SENDER_ID is not configured." };
-  }
-
-  return {
-    route: "dlt",
-    body: {
-      route: "dlt",
-      sender_id: senderId,
-      message: dltTemplateId,
-      variables_values: [
-        sanitizeDltVariable(input.dltVariables.amount, 12),
-        sanitizeDltVariable(input.dltVariables.businessName, 30),
-        sanitizeDltVariable(input.dltVariables.payUrl, 120),
-      ].join("|"),
-      numbers: input.numbers,
-    },
-  };
+  return rawBody;
 }
 
 async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResult> {
@@ -148,75 +118,63 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
       });
     }
 
-    const numbers = normalizeIndianMobile(input.phoneNumber);
+    const otpCode = input.otpCode?.trim();
     const dltTemplateId = process.env.FAST2SMS_DLT_TEMPLATE_ID?.trim();
-    const useDltRoute = Boolean(dltTemplateId && input.dltVariables);
 
-    let requestBody: Record<string, string>;
-    let route: SmsDispatchResult["route"] = "q";
+    let dispatchRequest;
 
-    if (useDltRoute && input.dltVariables) {
-      const dltPayload = buildFast2SmsDltPayload({
-        numbers,
+    if (otpCode) {
+      dispatchRequest = buildFast2SmsRequest({
+        intent: "otp",
+        phoneNumber: input.phoneNumber,
+        otpCode,
+      });
+    } else if (input.dltVariables) {
+      dispatchRequest = buildFast2SmsRequest({
+        intent: "dlt",
+        phoneNumber: input.phoneNumber,
         dltVariables: input.dltVariables,
       });
-
-      if ("error" in dltPayload) {
-        return buildSmsFailureResult({
-          provider: "fast2sms",
-          message: "Fast2SMS DLT is not fully configured.",
-          error: dltPayload.error,
-          status: "NOT_CONFIGURED",
-          route: "dlt",
-        });
-      }
-
-      requestBody = dltPayload.body;
-      route = "dlt";
+    } else if (dltTemplateId) {
+      return buildSmsFailureResult({
+        provider: "fast2sms",
+        message: "Fast2SMS DLT template variables are required.",
+        error:
+          "DLT variables missing while FAST2SMS_DLT_TEMPLATE_ID is configured. Generic route 'q' is disallowed.",
+        status: "INVALID_ROUTE",
+        route: "dlt",
+      });
     } else {
-      requestBody = {
-        route: "q",
-        message: input.message,
-        language: "english",
-        numbers,
-      };
+      return buildSmsFailureResult({
+        provider: "fast2sms",
+        message: "SMS route could not be determined.",
+        error:
+          "Provide DLT variables or an OTP code. Generic route 'q' is disallowed.",
+        status: "INVALID_ROUTE",
+      });
     }
 
-    const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
-      method: "POST",
-      headers: {
-        authorization: apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
+    if ("error" in dispatchRequest) {
+      return buildSmsFailureResult({
+        provider: "fast2sms",
+        message: "Fast2SMS route guard rejected the request.",
+        error: dispatchRequest.error,
+        status: "INVALID_ROUTE",
+        route: otpCode ? "otp" : "dlt",
+      });
+    }
+
+    const { body, route } = dispatchRequest;
+    const { ok, status, rawBody, payload } = await postFast2SmsRequest({
+      apiKey,
+      body,
     });
 
-    const rawBody = await response.text();
-    let payload: unknown = rawBody;
+    const payloadMessage = extractPayloadMessage(payload, rawBody);
 
-    try {
-      payload = JSON.parse(rawBody) as {
-        return?: boolean;
-        request_id?: string;
-        message?: string | string[];
-      };
-    } catch {
-      // Keep raw text payload for diagnostics.
-    }
-
-    const payloadMessage =
-      typeof payload === "object" &&
-      payload &&
-      "message" in payload &&
-      payload.message
-        ? Array.isArray(payload.message)
-          ? payload.message.join(", ")
-          : String(payload.message)
-        : rawBody;
-
-    if (!response.ok) {
-      const dltPending = isDltComplianceError(response.status, rawBody);
-      const formattingError = isDltFormattingError(response.status, rawBody);
+    if (!ok) {
+      const dltPending = isDltComplianceError(status, rawBody);
+      const formattingError = isDltFormattingError(status, rawBody);
 
       return buildSmsFailureResult({
         provider: "fast2sms",
@@ -224,13 +182,13 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
           ? "Fast2SMS DLT compliance is pending."
           : formattingError
             ? "Fast2SMS DLT template formatting error."
-            : `Fast2SMS failed with HTTP ${response.status}.`,
+            : `Fast2SMS failed with HTTP ${status}.`,
         error: payloadMessage,
         status: dltPending
           ? "DLT_PENDING"
           : formattingError
             ? "DLT_FORMAT_ERROR"
-            : `HTTP_${response.status}`,
+            : `HTTP_${status}`,
         providerPayload: payload,
         route,
       });
@@ -273,7 +231,7 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
       message:
         route === "dlt"
           ? "SMS sent via Fast2SMS DLT template."
-          : "SMS sent via Fast2SMS.",
+          : "SMS sent via Fast2SMS OTP route.",
       providerPayload: parsed,
       route,
     };
@@ -425,7 +383,7 @@ export async function sendTransactionalSms(
         simulated: true,
         provider: "simulated",
         message: "Simulated SMS in development.",
-        route: input.dltVariables ? "dlt" : "q",
+        route: input.otpCode ? "otp" : input.dltVariables ? "dlt" : undefined,
       };
     }
 
@@ -452,4 +410,15 @@ export async function sendTransactionalSms(
       status: "EXCEPTION",
     };
   }
+}
+
+export async function sendOtpAlertSms(input: {
+  phoneNumber: string;
+  otpCode: string;
+}): Promise<SmsDispatchResult> {
+  return sendTransactionalSms({
+    phoneNumber: input.phoneNumber,
+    message: `Your RecoverPe verification code is ${input.otpCode}.`,
+    otpCode: input.otpCode,
+  });
 }

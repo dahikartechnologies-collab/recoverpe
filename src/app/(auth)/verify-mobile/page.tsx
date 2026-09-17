@@ -15,6 +15,7 @@ import {
   getOrCreateInvisibleRecaptcha,
   RECAPTCHA_CONTAINER_ID,
   sendPhoneOtp,
+  setRecaptchaErrorHandler,
   syncUserToSupabase,
   userNeedsMobileVerification,
   verifyPhoneOtp,
@@ -61,7 +62,12 @@ export default function VerifyMobilePage() {
   }, [router]);
 
   useEffect(() => {
+    setRecaptchaErrorHandler((recaptchaError) => {
+      setError(getFirebaseAuthErrorMessage(recaptchaError));
+    });
+
     return () => {
+      setRecaptchaErrorHandler(undefined);
       clearInvisibleRecaptcha();
     };
   }, []);

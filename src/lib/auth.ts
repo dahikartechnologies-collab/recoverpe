@@ -50,13 +50,15 @@ export function getFirebaseAuthErrorMessage(error: unknown): string {
       case "auth/invalid-credential":
         return "Invalid email or password.";
       case "auth/too-many-requests":
-        return "Too many attempts. Please wait a moment and try again.";
+        return "Too many attempts. Please wait 2 minutes.";
+      case "auth/unauthorized-domain":
+        return "Domain authorization pending in Firebase Console.";
       case "auth/invalid-verification-code":
         return "Invalid OTP. Please check the 6-digit code and try again.";
       case "auth/code-expired":
         return "OTP expired. Please request a new code.";
       case "auth/invalid-phone-number":
-        return "Invalid mobile number. Enter a valid 10-digit Indian number.";
+        return "Please enter a valid 10-digit mobile number.";
       case "auth/credential-already-in-use":
         return "This mobile number is already linked to another account. Please log in to that account.";
       case "auth/phone-number-already-exists":
@@ -112,6 +114,7 @@ export const RECAPTCHA_CONTAINER_ID = "recaptcha-container";
 declare global {
   interface Window {
     recaptchaVerifier?: RecaptchaVerifier;
+    recaptchaErrorHandler?: (error: Error) => void;
   }
 }
 
@@ -143,6 +146,16 @@ export function clearInvisibleRecaptcha(): void {
   window.recaptchaVerifier = undefined;
 }
 
+export function setRecaptchaErrorHandler(
+  handler: ((error: Error) => void) | undefined
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.recaptchaErrorHandler = handler;
+}
+
 export function getOrCreateInvisibleRecaptcha(
   containerId: string = RECAPTCHA_CONTAINER_ID
 ): RecaptchaVerifier {
@@ -157,6 +170,16 @@ export function getOrCreateInvisibleRecaptcha(
     containerId,
     {
       size: "invisible",
+      callback: () => {
+        // Firebase completes phone verification after invisible reCAPTCHA passes.
+      },
+      "expired-callback": () => {
+        clearInvisibleRecaptcha();
+      },
+      "error-callback": (error: Error) => {
+        console.error("[recaptcha] invisible verification failed", error);
+        window.recaptchaErrorHandler?.(error);
+      },
     }
   );
 
@@ -168,13 +191,17 @@ export function createInvisibleRecaptcha(containerId: string): RecaptchaVerifier
   return getOrCreateInvisibleRecaptcha(containerId);
 }
 
+/**
+ * Sends login/registration OTP via Firebase Client Phone Auth only.
+ * Fast2SMS must never be called from the auth flow.
+ */
 export async function sendPhoneOtp(
   user: User,
   mobileDigits: string,
   recaptchaVerifier: RecaptchaVerifier
 ): Promise<ConfirmationResult> {
   if (!isValidIndianMobileNumber(mobileDigits)) {
-    throw new Error("Enter a valid 10-digit Indian mobile number.");
+    throw new Error("Please enter a valid 10-digit mobile number.");
   }
 
   const phoneNumber = formatIndianMobileNumber(mobileDigits);
