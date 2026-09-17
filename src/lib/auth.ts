@@ -67,6 +67,9 @@ export function getFirebaseAuthErrorMessage(error: unknown): string {
         return "This mobile number is already linked to another account.";
       case "auth/captcha-check-failed":
         return "Security verification failed. Refresh the page and try again.";
+      case "auth/internal-error":
+        console.error("[firebase-auth] internal error", error.message);
+        return "Phone verification could not start. Refresh the page and try again. If this persists, disable ad blockers or try another browser.";
       default:
         return error.message || "Authentication failed. Please try again.";
     }

@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { ConfirmationResult } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import {
+  ConfirmationResult,
+  onAuthStateChanged,
+  User,
+} from "firebase/auth";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -84,6 +88,12 @@ export default function VerifyMobilePage() {
     setIsSendingOtp(true);
 
     try {
+      if (!document.getElementById(RECAPTCHA_CONTAINER_ID)) {
+        throw new Error(
+          `reCAPTCHA container #${RECAPTCHA_CONTAINER_ID} is not mounted in the DOM.`
+        );
+      }
+
       const recaptchaVerifier = getOrCreateInvisibleRecaptcha(
         RECAPTCHA_CONTAINER_ID
       );
@@ -96,6 +106,12 @@ export default function VerifyMobilePage() {
       setOtpSent(true);
     } catch (sendError) {
       clearInvisibleRecaptcha();
+      if (
+        sendError instanceof FirebaseError &&
+        sendError.code === "auth/internal-error"
+      ) {
+        console.error("[verify-mobile] Firebase internal error", sendError.message);
+      }
       setError(getFirebaseAuthErrorMessage(sendError));
     } finally {
       setIsSendingOtp(false);
