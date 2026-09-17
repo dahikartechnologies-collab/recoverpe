@@ -8,9 +8,14 @@ import { getAuthHeaders } from "@/lib/auth-headers";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { debtorHealthTier } from "@/lib/debtor-health";
 import { InboxMessageRow, InboxThreadRow } from "@/lib/inbox-types";
+import { useActiveBusinessEntitlements } from "@/lib/use-active-business-entitlement";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
-function dhsLabel(score: number | null): string {
+function dhsLabel(score: number | null, canViewDhs: boolean): string {
+  if (!canViewDhs) {
+    return "DHS locked · Upgrade to Premium";
+  }
+
   if (score === null) {
     return "DHS —";
   }
@@ -58,6 +63,8 @@ function statusIndicator(status: string): string {
 
 export function InboxClient() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
+  const { hasEntitlement } = useActiveBusinessEntitlements();
+  const canViewDhs = hasEntitlement("debtor_health_score");
   const [threads, setThreads] = useState<InboxThreadRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<InboxMessageRow[]>([]);
@@ -243,7 +250,7 @@ export function InboxClient() {
                         {thread.last_summary || "No summary"}
                       </p>
                       <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                        {dhsLabel(thread.dhs)}
+                        {dhsLabel(thread.dhs, canViewDhs)}
                         {thread.bot_paused ? " · bot paused" : ""}
                       </p>
                     </button>
@@ -264,7 +271,7 @@ export function InboxClient() {
                       {selected.name}
                     </h2>
                     <p className="text-sm text-recoverpe-grey-medium">
-                      {selected.phone_number} · {dhsLabel(selected.dhs)}
+                      {selected.phone_number} · {dhsLabel(selected.dhs, canViewDhs)}
                     </p>
                   </div>
                   <Button variant="secondary" onClick={() => void togglePause()}>

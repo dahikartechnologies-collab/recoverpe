@@ -1,4 +1,7 @@
 import { DebtorPortalInvoice, DebtorPortalView } from "@/types";
+import { resolveEffectiveTier } from "@/lib/entitlements";
+import { provisionContactVirtualAccount } from "@/lib/payments/provision-contact-virtual-account";
+import { resolveSmartCheckout } from "@/lib/payments/smart-checkout-router";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const OPEN_LEDGER_STATUSES = new Set([
@@ -20,6 +23,29 @@ function toPortalInvoice(ledger: Record<string, unknown>): DebtorPortalInvoice {
     status: ledger.status as string,
     total_amount: totalAmount,
     amount_paid: Math.max(totalAmount - balanceDue, 0),
+  };
+}
+
+export async function fetchDebtorPortalPaymentStatus(
+  supabase: SupabaseClient,
+  token: string
+): Promise<{
+  session_id: string;
+  total_outstanding: number;
+  is_settled: boolean;
+  is_paid: boolean;
+} | null> {
+  const view = await fetchDebtorPortalView(supabase, token);
+
+  if (!view) {
+    return null;
+  }
+
+  return {
+    session_id: view.session_id,
+    total_outstanding: view.total_outstanding,
+    is_settled: view.total_outstanding <= 0,
+    is_paid: view.total_outstanding <= 0,
   };
 }
 
@@ -60,7 +86,9 @@ export async function fetchDebtorPortalView(
 
   const { data: contact, error: contactError } = await supabase
     .from("contacts")
-    .select("id, name, phone_number")
+    .select(
+      "id, name, phone_number, virtual_upi_id, virtual_bank_account_number, virtual_ifsc_code"
+    )
     .eq("id", session.contact_id)
     .eq("user_id", session.user_id)
     .maybeSingle();
@@ -69,8 +97,32 @@ export async function fetchDebtorPortalView(
     return null;
   }
 
-  // The full relationship, not just what is owed: showing settled invoices
-  // alongside open ones is what makes the statement credible to the debtor.
+  if (!contact.virtual_bank_account_number) {
+    try {
+      await provisionContactVirtualAccount({
+        userId: session.user_id as string,
+        contactId: contact.id as string,
+        contactName: contact.name as string,
+      });
+    } catch (error) {
+      console.error(
+        "[portal] Virtual account provisioning failed:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  const { data: refreshedContact } = await supabase
+    .from("contacts")
+    .select(
+      "id, name, phone_number, virtual_upi_id, virtual_bank_account_number, virtual_ifsc_code"
+    )
+    .eq("id", session.contact_id)
+    .eq("user_id", session.user_id)
+    .maybeSingle();
+
+  const contactRow = refreshedContact ?? contact;
+
   const { data: ledgers, error: ledgerError } = await supabase
     .from("ledgers")
     .select(
@@ -113,16 +165,20 @@ export async function fetchDebtorPortalView(
     0
   );
 
+  const primaryLedger = openLedgers[0] ?? null;
+
   const businessId =
+    (primaryLedger?.business_id as string | null) ??
     (openLedgers.find((ledger) => ledger.business_id)?.business_id as string | null) ??
     null;
 
   let businessName = "Recoverpe Merchant";
+  let businessEntitlements = null;
 
   if (businessId) {
     const { data: business } = await supabase
       .from("businesses")
-      .select("business_name")
+      .select("business_name, subscription_tier, subscription_status, addons")
       .eq("id", businessId)
       .eq("user_id", session.user_id)
       .maybeSingle();
@@ -130,10 +186,18 @@ export async function fetchDebtorPortalView(
     if (business?.business_name) {
       businessName = business.business_name as string;
     }
+
+    businessEntitlements = business
+      ? {
+          subscription_tier: business.subscription_tier as never,
+          subscription_status: business.subscription_status as string | null,
+          addons: business.addons,
+        }
+      : null;
   } else {
     const { data: userProfile } = await supabase
       .from("users")
-      .select("full_name, email")
+      .select("full_name, email, default_upi_vpa")
       .eq("id", session.user_id)
       .maybeSingle();
 
@@ -143,36 +207,72 @@ export async function fetchDebtorPortalView(
       businessName;
   }
 
-  let virtualAccountQuery = supabase
-    .from("virtual_accounts")
-    .select(
-      "virtual_upi_id, virtual_account_number, ifsc_code, status, business_id"
-    )
-    .eq("user_id", session.user_id)
-    .eq("contact_id", session.contact_id)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const { data: userRow } = await supabase
+    .from("users")
+    .select("default_upi_vpa")
+    .eq("id", session.user_id)
+    .maybeSingle();
 
-  if (businessId) {
-    virtualAccountQuery = virtualAccountQuery.eq("business_id", businessId);
-  }
+  const merchantVpa =
+    (userRow?.default_upi_vpa as string | undefined)?.trim() ||
+    process.env.DEFAULT_MERCHANT_UPI_VPA?.trim() ||
+    (contactRow.virtual_upi_id as string | null) ||
+    null;
 
-  const { data: virtualAccount } = await virtualAccountQuery.maybeSingle();
+  const effectiveTier = businessEntitlements
+    ? resolveEffectiveTier(businessEntitlements)
+    : null;
+
+  const checkoutDecision = resolveSmartCheckout({
+    amount: totalOutstanding,
+    ledgerId: (primaryLedger?.id as string) ?? session.id,
+    invoiceNumber: (primaryLedger?.invoice_number as string | null) ?? null,
+    business: businessEntitlements,
+    businessName,
+    merchantVpa,
+    virtualBankAccountNumber:
+      (contactRow.virtual_bank_account_number as string | null) ?? null,
+    virtualIfscCode: (contactRow.virtual_ifsc_code as string | null) ?? null,
+  });
 
   return {
     session_id: session.id as string,
     merchant_name: businessName,
-    contact_name: contact.name as string,
+    contact_name: contactRow.name as string,
     total_outstanding: totalOutstanding,
     expires_at: session.expires_at as string,
-    virtual_upi_id: (virtualAccount?.virtual_upi_id as string | null) ?? null,
+    virtual_upi_id: (contactRow.virtual_upi_id as string | null) ?? merchantVpa,
     virtual_account_number:
-      (virtualAccount?.virtual_account_number as string | null) ?? null,
-    ifsc_code: (virtualAccount?.ifsc_code as string | null) ?? null,
+      (contactRow.virtual_bank_account_number as string | null) ?? null,
+    ifsc_code: (contactRow.virtual_ifsc_code as string | null) ?? null,
     open_invoices: openLedgers.map(toPortalInvoice),
     total_invoiced: totalInvoiced,
     total_paid: totalPaid,
     invoice_history: allLedgers.map(toPortalInvoice),
+    primary_ledger_id: (primaryLedger?.id as string | null) ?? null,
+    business_tier: effectiveTier,
+    merchant_vpa: merchantVpa,
+    checkout: {
+      mode: checkoutDecision.mode,
+      amount: checkoutDecision.amount,
+      payment_reference: checkoutDecision.paymentReference,
+      smart_collect_ready: checkoutDecision.smartCollectReady,
+      upi: checkoutDecision.upi
+        ? {
+            vpa: checkoutDecision.upi.vpa,
+            amount: checkoutDecision.upi.amount,
+            transaction_reference: checkoutDecision.upi.transactionReference,
+          }
+        : undefined,
+      bank: checkoutDecision.bank
+        ? {
+            beneficiary_name: checkoutDecision.bank.beneficiaryName,
+            account_number: checkoutDecision.bank.accountNumber,
+            ifsc: checkoutDecision.bank.ifsc,
+            amount: checkoutDecision.bank.amount,
+            payment_reference: checkoutDecision.bank.paymentReference,
+          }
+        : undefined,
+    },
   };
 }

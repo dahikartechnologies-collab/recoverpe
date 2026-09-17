@@ -996,6 +996,10 @@ export interface DebtorPortalView {
   total_invoiced: number;
   total_paid: number;
   invoice_history: DebtorPortalInvoice[];
+  primary_ledger_id: string | null;
+  business_tier: BusinessSubscriptionTier | null;
+  merchant_vpa: string | null;
+  checkout: PublicPayLedgerData["checkout"];
 }
 
 export interface PortalLinkResponse {

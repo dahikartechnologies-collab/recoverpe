@@ -5,11 +5,13 @@ import Link from "next/link";
 import { EditMemberRoleModal } from "@/components/settings/EditMemberRoleModal";
 import { InviteMemberModal } from "@/components/settings/InviteMemberModal";
 import { TeamMemberActionsMenu } from "@/components/settings/TeamMemberActionsMenu";
+import { PremiumUpgradeLock } from "@/components/billing/PremiumUpgradeLock";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { fetchWorkspaceRole } from "@/lib/kiosk-client";
+import { useActiveBusinessEntitlements } from "@/lib/use-active-business-entitlement";
 import {
   canAccessTeamSettings,
   formatAppRoleLabel,
@@ -25,6 +27,8 @@ import {
 import { WorkspaceMember } from "@/types";
 
 export function TeamSettingsView() {
+  const { hasEntitlement } = useActiveBusinessEntitlements();
+  const canUseAgentNetwork = hasEntitlement("field_agent_network");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [canManageTeam, setCanManageTeam] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -157,6 +161,33 @@ export function TeamSettingsView() {
       {error && canManageTeam ? (
         <p className="text-sm text-recoverpe-error">{error}</p>
       ) : null}
+
+      {canUseAgentNetwork ? (
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold tracking-tight text-recoverpe-black">
+              Field Agent Network
+            </h2>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-recoverpe-grey-medium">
+            <p>
+              Invite field staff below, then assign open vendor ledgers from each
+              vendor profile. Agents collect via the RecoverPe kiosk app.
+            </p>
+            <Link
+              href="/kiosk"
+              className="inline-flex font-medium text-recoverpe-black underline underline-offset-2"
+            >
+              Open kiosk dashboard
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <PremiumUpgradeLock
+          title="Field Agent Network"
+          description="Premium unlocks field staff invites, vendor-to-agent routing, and the kiosk collection workflow."
+        />
+      )}
 
       <Card>
         <CardHeader>

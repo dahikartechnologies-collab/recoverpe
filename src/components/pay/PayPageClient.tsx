@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { PaymentSuccessCelebration } from "@/components/pay/PaymentSuccessCelebration";
+import { SmartCheckoutRails } from "@/components/pay/SmartCheckoutRails";
+import { usePaymentStatusPolling } from "@/hooks/use-payment-status-polling";
 import {
   trackPayPageViewed,
   trackPaymentClaimed,
 } from "@/lib/analytics-events";
 import { formatCurrency } from "@/lib/gst";
-import { resolveSmartCheckout } from "@/lib/payments/smart-checkout-router";
-import { generateUPIIntent, generateUPIQRCodeBase64 } from "@/lib/upi";
+import { isZeroMdrCheckoutEligible } from "@/lib/entitlements";
 import { PublicPayLedgerData } from "@/types";
 
 interface PayPageClientProps {
@@ -106,133 +108,29 @@ function formatDueDate(value: string): string {
   }).format(new Date(value));
 }
 
-function clampPaymentAmount(value: number, maxAmount: number): number {
-  if (!Number.isFinite(value) || value <= 0) {
-    return maxAmount;
-  }
-
-  return Math.min(value, maxAmount);
-}
-
-async function copyToClipboard(value: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
-}
-
 export function PayPageClient({ data }: PayPageClientProps) {
-  const [paymentAmount, setPaymentAmount] = useState(data.balance_due);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState("");
-  const [copyMessage, setCopyMessage] = useState("");
-
-  const merchantName = data.business_name ?? "Recoverpe Merchant";
+  const [isPaid, setIsPaid] = useState(false);
+  const autoReconcileEligible = isZeroMdrCheckoutEligible(
+    data.business_tier ? { subscription_tier: data.business_tier } : null
+  );
 
   useEffect(() => {
     trackPayPageViewed({ amountDueInr: data.balance_due });
   }, [data.balance_due]);
 
-  const normalizedAmount = useMemo(
-    () => clampPaymentAmount(paymentAmount, data.balance_due),
-    [paymentAmount, data.balance_due]
-  );
+  usePaymentStatusPolling({
+    statusUrl: `/api/pay/${data.ledger_id}/status`,
+    enabled: !isPaid && data.balance_due > 0,
+    onPaid: () => setIsPaid(true),
+  });
 
-  const checkout = useMemo(
-    () =>
-      resolveSmartCheckout({
-        amount: normalizedAmount,
-        ledgerId: data.ledger_id,
-        invoiceNumber: data.invoice_number,
-        business: data.business_tier
-          ? { subscription_tier: data.business_tier }
-          : null,
-        businessName: data.business_name,
-        merchantVpa: data.merchant_vpa,
-        virtualBankAccountNumber: data.virtual_bank_account_number,
-        virtualIfscCode: data.virtual_ifsc_code,
-      }),
-    [
-      data.business_name,
-      data.business_tier,
-      data.invoice_number,
-      data.ledger_id,
-      data.merchant_vpa,
-      data.virtual_bank_account_number,
-      data.virtual_ifsc_code,
-      normalizedAmount,
-    ]
-  );
-
-  const isZeroMdrBank = checkout.mode === "zero_mdr_bank";
-
-  const upiIntentUri = useMemo(() => {
-    if (!checkout.upi) {
-      return null;
-    }
-
-    return generateUPIIntent(
-      checkout.upi.vpa,
-      merchantName,
-      normalizedAmount,
-      checkout.paymentReference
+  if (isPaid) {
+    return (
+      <PaymentSuccessCelebration
+        amount={data.balance_due}
+        subtitle="Your invoice has been marked paid automatically."
+      />
     );
-  }, [checkout.paymentReference, checkout.upi, merchantName, normalizedAmount]);
-
-  useEffect(() => {
-    if (!upiIntentUri || isZeroMdrBank) {
-      setQrCodeDataUrl(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function renderQrCode() {
-      setQrError("");
-
-      try {
-        const dataUrl = await generateUPIQRCodeBase64(upiIntentUri!);
-
-        if (!cancelled) {
-          setQrCodeDataUrl(dataUrl);
-        }
-      } catch {
-        if (!cancelled) {
-          setQrCodeDataUrl(null);
-          setQrError("Unable to render payment QR code.");
-        }
-      }
-    }
-
-    void renderQrCode();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isZeroMdrBank, upiIntentUri]);
-
-  function handleAmountChange(rawValue: string) {
-    const parsed = Number.parseFloat(rawValue);
-
-    if (!Number.isFinite(parsed)) {
-      setPaymentAmount(data.balance_due);
-      return;
-    }
-
-    setPaymentAmount(clampPaymentAmount(parsed, data.balance_due));
-  }
-
-  async function handleCopy(value: string, label: string) {
-    await copyToClipboard(value);
-    setCopyMessage(`${label} copied`);
-    window.setTimeout(() => setCopyMessage(""), 2000);
   }
 
   return (
@@ -244,7 +142,7 @@ export function PayPageClient({ data }: PayPageClientProps) {
               Recoverpe Secure Payment
             </p>
             <h1 className="text-2xl font-semibold text-recoverpe-black">
-              Pay {formatCurrency(normalizedAmount)}
+              Pay {formatCurrency(data.balance_due)}
             </h1>
             <p className="text-sm text-recoverpe-grey-medium">
               For {data.contact_name}
@@ -261,145 +159,35 @@ export function PayPageClient({ data }: PayPageClientProps) {
             )}
           </div>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="paymentAmount"
-              className="block text-sm font-medium text-recoverpe-black"
-            >
-              Edit amount (partial payment)
-            </label>
-            <Input
-              id="paymentAmount"
-              type="number"
-              inputMode="decimal"
-              min={1}
-              max={data.balance_due}
-              step="0.01"
-              value={Number.isFinite(paymentAmount) ? paymentAmount : data.balance_due}
-              onChange={(event) => handleAmountChange(event.target.value)}
-            />
-            <p className="text-xs text-recoverpe-grey-medium">
-              Outstanding balance: {formatCurrency(data.balance_due)}
-            </p>
-          </div>
+          <SmartCheckoutRails
+            amount={data.balance_due}
+            maxAmount={data.balance_due}
+            ledgerId={data.ledger_id}
+            invoiceNumber={data.invoice_number}
+            merchantName={data.business_name ?? "Recoverpe Merchant"}
+            businessTier={data.business_tier}
+            merchantVpa={data.merchant_vpa}
+            virtualBankAccountNumber={data.virtual_bank_account_number}
+            virtualIfscCode={data.virtual_ifsc_code}
+            showAmountEditor
+          />
 
-          {isZeroMdrBank && checkout.bank ? (
-            <div className="space-y-4 rounded-md border border-recoverpe-grey-light px-4 py-5">
-              <div>
-                <p className="text-sm font-semibold text-recoverpe-black">
-                  Pay via IMPS / NEFT / RTGS
-                </p>
-                <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                  Zero UPI MDR for payments above ₹2,000. Your invoice updates
-                  automatically once the transfer is received.
-                </p>
-              </div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-recoverpe-grey-medium">Beneficiary</p>
-                    <p className="font-medium">{checkout.bank.beneficiaryName}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-recoverpe-grey-medium">Account number</p>
-                    <p className="font-mono">{checkout.bank.accountNumber}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() =>
-                      void handleCopy(checkout.bank!.accountNumber, "Account number")
-                    }
-                  >
-                    Copy
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-recoverpe-grey-medium">IFSC</p>
-                    <p className="font-mono">{checkout.bank.ifsc}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => void handleCopy(checkout.bank!.ifsc, "IFSC")}
-                  >
-                    Copy
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-recoverpe-grey-medium">Payment reference</p>
-                    <p className="font-mono">{checkout.paymentReference}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() =>
-                      void handleCopy(
-                        checkout.paymentReference,
-                        "Payment reference"
-                      )
-                    }
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </div>
-              {copyMessage ? (
-                <p className="text-xs text-recoverpe-success">{copyMessage}</p>
-              ) : null}
+          {!autoReconcileEligible ? (
+            <div className="border-t border-recoverpe-grey-light pt-4 space-y-3">
+              <p className="text-sm font-medium text-recoverpe-black">
+                Already paid? Upload payment screenshot
+              </p>
+              <PaymentProofUpload
+                ledgerId={data.ledger_id}
+                balanceDue={data.balance_due}
+              />
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="md:hidden">
-                {upiIntentUri ? (
-                  <a href={upiIntentUri} className="block">
-                    <Button type="button" className="w-full">
-                      Pay via UPI App
-                    </Button>
-                  </a>
-                ) : null}
-                <p className="mt-2 text-center text-xs text-recoverpe-grey-medium">
-                  Opens Google Pay, PhonePe, Paytm, or your default UPI app.
-                </p>
-              </div>
-
-              <div className="hidden md:block">
-                <div className="flex flex-col items-center rounded-md border border-recoverpe-grey-light px-4 py-6">
-                  <p className="text-sm font-medium text-recoverpe-black">
-                    Scan to pay on mobile
-                  </p>
-                  <p className="mt-1 text-xs text-recoverpe-grey-medium">
-                    Use any UPI app to scan this QR code.
-                  </p>
-                  {qrCodeDataUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={qrCodeDataUrl}
-                      alt="UPI payment QR code"
-                      className="mt-4 h-44 w-44 rounded-md border border-recoverpe-grey-light bg-recoverpe-white p-2"
-                    />
-                  ) : (
-                    <p className="mt-4 text-sm text-recoverpe-grey-medium">
-                      {qrError || "Generating QR code..."}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="border-t border-recoverpe-grey-light pt-4 space-y-3">
-            <p className="text-sm font-medium text-recoverpe-black">
-              {isZeroMdrBank
-                ? "Paid but invoice not updated yet?"
-                : "Already paid? Upload payment screenshot"}
+            <p className="border-t border-recoverpe-grey-light pt-4 text-center text-xs text-recoverpe-grey-medium">
+              Waiting for your bank transfer? This page will update automatically once
+              payment is received.
             </p>
-            <PaymentProofUpload ledgerId={data.ledger_id} balanceDue={data.balance_due} />
-          </div>
+          )}
 
           {data.pdf_url ? (
             <div className="border-t border-recoverpe-grey-light pt-4 text-center">
@@ -413,12 +201,6 @@ export function PayPageClient({ data }: PayPageClientProps) {
               </a>
             </div>
           ) : null}
-
-          <p className="text-center text-[11px] text-recoverpe-grey-medium">
-            {isZeroMdrBank
-              ? "Bank transfers are reconciled automatically via RecoverPe Smart Collect."
-              : "Payments go directly to the merchant UPI ID."}
-          </p>
         </CardContent>
       </Card>
     </div>

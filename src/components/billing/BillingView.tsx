@@ -293,19 +293,6 @@ export function BillingView({ user }: BillingViewProps) {
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-recoverpe-black">
-            Legacy add-ons
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Promise Register and Settlement Desk are now included in Business and
-            Premium. Existing monthly add-on purchases still grandfather access until
-            expiry.
-          </p>
-        </div>
-      </section>
-
       {toast ? (
         <Toast
           message={toast.message}

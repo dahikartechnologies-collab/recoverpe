@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PremiumUpgradeLock } from "@/components/billing/PremiumUpgradeLock";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import {
   assignVendorCollectionAgent,
   fetchWorkspaceMembers,
 } from "@/lib/workspace-client";
+import { useActiveBusinessEntitlements } from "@/lib/use-active-business-entitlement";
 import { LedgerWithContact, WorkspaceMember } from "@/types";
 
 interface AssignAgentCardProps {
@@ -22,6 +24,8 @@ export function AssignAgentCard({
   ledgers,
   onAssigned,
 }: AssignAgentCardProps) {
+  const { hasEntitlement } = useActiveBusinessEntitlements();
+  const canUseAgentNetwork = hasEntitlement("field_agent_network");
   const [fieldStaff, setFieldStaff] = useState<WorkspaceMember[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -100,6 +104,15 @@ export function AssignAgentCard({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  if (!canUseAgentNetwork) {
+    return (
+      <PremiumUpgradeLock
+        title="Field Agent Network"
+        description="Premium unlocks vendor-to-agent routing so your field staff can collect on assigned ledgers from the kiosk app."
+      />
+    );
   }
 
   return (

@@ -177,3 +177,40 @@ export class AdminAccessDeniedError extends Error {
     this.name = "AdminAccessDeniedError";
   }
 }
+
+export interface AdminTestNotificationsPayload {
+  email?: string;
+  phone?: string;
+}
+
+export interface AdminTestNotificationsResponse {
+  emailSuccess: boolean;
+  emailResponse?: unknown;
+  smsSuccess: boolean;
+  smsResponse?: unknown;
+}
+
+export async function testAdminNotifications(
+  payload: AdminTestNotificationsPayload
+): Promise<AdminTestNotificationsResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/test-notifications", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as AdminTestNotificationsResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok) {
+    throw new Error(body.error || "Notification diagnostics failed.");
+  }
+
+  return body;
+}

@@ -1,18 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PremiumUpgradeLock } from "@/components/billing/PremiumUpgradeLock";
 import { Card, CardContent } from "@/components/ui/Card";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { DailyBriefing } from "@/lib/briefing-types";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import { useActiveBusinessEntitlements } from "@/lib/use-active-business-entitlement";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 export function MorningBriefingCard() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
+  const { hasEntitlement } = useActiveBusinessEntitlements();
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
 
+  const canViewBriefing = hasEntitlement("morning_briefing");
+
   useEffect(() => {
-    if (!activeBusinessId) {
+    if (!activeBusinessId || !canViewBriefing) {
       setBriefing(null);
       return;
     }
@@ -32,7 +37,17 @@ export function MorningBriefingCard() {
         setBriefing(null);
       }
     })();
-  }, [activeBusinessId]);
+  }, [activeBusinessId, canViewBriefing]);
+
+  if (!canViewBriefing) {
+    return (
+      <PremiumUpgradeLock
+        title="Morning Briefing"
+        description="Premium unlocks the daily Command Center briefing with overnight collections, broken promises, and recovery priorities."
+      />
+    );
+  }
+
   if (!briefing) {
     return (
       <Card>

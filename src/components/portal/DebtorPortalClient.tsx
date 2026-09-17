@@ -1,12 +1,11 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { PaymentSuccessCelebration } from "@/components/pay/PaymentSuccessCelebration";
+import { SmartCheckoutRails } from "@/components/pay/SmartCheckoutRails";
+import { usePaymentStatusPolling } from "@/hooks/use-payment-status-polling";
 import { formatCurrency } from "@/lib/gst";
-import {
-  generateUPIQRCodeBase64,
-  generateVirtualAccountUpiUri,
-} from "@/lib/upi";
+import { isZeroMdrCheckoutEligible } from "@/lib/entitlements";
 import { DebtorPortalInvoice, DebtorPortalView } from "@/types";
 
 interface DebtorPortalViewProps {
@@ -41,46 +40,31 @@ function InvoiceStatusBadge({ invoice }: { invoice: DebtorPortalInvoice }) {
 }
 
 export function DebtorPortalClient({ view }: DebtorPortalViewProps) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState("");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [celebrationAmount, setCelebrationAmount] = useState<number | null>(null);
+  const [isPaid, setIsPaid] = useState(view.total_outstanding <= 0);
+  const primaryInvoice = view.open_invoices[0] ?? null;
+  const autoReconcileEligible = isZeroMdrCheckoutEligible(
+    view.business_tier ? { subscription_tier: view.business_tier } : null
+  );
 
-  useEffect(() => {
-    let cancelled = false;
+  usePaymentStatusPolling({
+    statusUrl: `/api/portal/${view.session_id}/status`,
+    enabled: !isPaid && view.total_outstanding > 0,
+    onPaid: () => {
+      setCelebrationAmount(view.total_outstanding);
+      setIsPaid(true);
+    },
+  });
 
-    async function renderQr() {
-      if (!view.virtual_upi_id) {
-        setQrDataUrl(null);
-        setQrError("Smart Collect payment details are not available yet.");
-        return;
-      }
-
-      try {
-        const upiUri = generateVirtualAccountUpiUri(
-          view.virtual_upi_id,
-          view.merchant_name,
-          view.total_outstanding > 0 ? view.total_outstanding : undefined
-        );
-        const dataUrl = await generateUPIQRCodeBase64(upiUri);
-
-        if (!cancelled) {
-          setQrDataUrl(dataUrl);
-          setQrError("");
-        }
-      } catch {
-        if (!cancelled) {
-          setQrDataUrl(null);
-          setQrError("Unable to render payment QR code.");
-        }
-      }
-    }
-
-    void renderQr();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [view.merchant_name, view.total_outstanding, view.virtual_upi_id]);
+  if (isPaid) {
+    return (
+      <PaymentSuccessCelebration
+        amount={celebrationAmount ?? view.total_paid}
+        subtitle="Your statement of account has been updated automatically."
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-recoverpe-white text-recoverpe-black">
@@ -209,54 +193,37 @@ export function DebtorPortalClient({ view }: DebtorPortalViewProps) {
           </section>
         ) : null}
 
-        <section className="mt-auto rounded-lg border border-recoverpe-grey-light bg-recoverpe-white p-5">
-          <h2 className="text-base font-semibold">Pay via Smart Collect</h2>
-          <p className="mt-2 text-sm leading-6 text-recoverpe-grey-medium">
-            Scan this QR or use the UPI ID to pay. Your ledger will be updated
-            automatically.
-          </p>
-
-          {view.virtual_upi_id ? (
-            <div className="mt-5 flex flex-col items-center">
-              <div className="flex h-44 w-44 items-center justify-center rounded-lg border border-recoverpe-grey-light bg-recoverpe-white p-3">
-                {qrDataUrl ? (
-                  <Image
-                    src={qrDataUrl}
-                    alt="Smart Collect UPI QR code"
-                    width={160}
-                    height={160}
-                    unoptimized
-                    className="h-40 w-40"
-                  />
-                ) : (
-                  <p className="px-3 text-center text-xs text-recoverpe-grey-medium">
-                    {qrError || "Generating QR code..."}
-                  </p>
-                )}
-              </div>
-              <p className="mt-4 break-all text-center font-mono text-sm">
-                {view.virtual_upi_id}
-              </p>
-            </div>
-          ) : (
-            <p className="mt-4 text-sm text-recoverpe-grey-medium">
-              Virtual payment details are not configured for this account yet.
+        {view.total_outstanding > 0 ? (
+          <section className="mt-auto rounded-lg border border-recoverpe-grey-light bg-recoverpe-white p-5">
+            <h2 className="text-base font-semibold">Pay Outstanding Balance</h2>
+            <p className="mt-2 text-sm leading-6 text-recoverpe-grey-medium">
+              {view.checkout.mode === "zero_mdr_bank"
+                ? "Use the dedicated virtual account below for IMPS/NEFT/RTGS. Include the payment reference for instant reconciliation."
+                : "Scan the QR code or pay via UPI. Your khata updates automatically once payment lands."}
             </p>
-          )}
 
-          {view.virtual_account_number && view.ifsc_code ? (
-            <div className="mt-5 space-y-2 rounded-lg border border-recoverpe-grey-light px-4 py-3 text-sm">
-              <p>
-                <span className="text-recoverpe-grey-medium">Account:</span>{" "}
-                <span className="font-mono">{view.virtual_account_number}</span>
-              </p>
-              <p>
-                <span className="text-recoverpe-grey-medium">IFSC:</span>{" "}
-                <span className="font-mono">{view.ifsc_code}</span>
-              </p>
+            <div className="mt-5">
+              <SmartCheckoutRails
+                amount={view.total_outstanding}
+                maxAmount={view.total_outstanding}
+                ledgerId={view.primary_ledger_id ?? view.session_id}
+                invoiceNumber={primaryInvoice?.invoice_number ?? null}
+                merchantName={view.merchant_name}
+                businessTier={view.business_tier}
+                merchantVpa={view.merchant_vpa}
+                virtualBankAccountNumber={view.virtual_account_number}
+                virtualIfscCode={view.ifsc_code}
+              />
             </div>
-          ) : null}
-        </section>
+
+            {autoReconcileEligible ? (
+              <p className="mt-4 text-center text-xs text-recoverpe-grey-medium">
+                Waiting for your bank transfer? This page will celebrate automatically
+                once payment is received.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         <footer className="pt-6 text-center text-xs text-recoverpe-grey-medium">
           Secure debtor portal · Powered by Recoverpe
