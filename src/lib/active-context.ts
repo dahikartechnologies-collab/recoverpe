@@ -79,6 +79,22 @@ export function merchantHomePath(role: AppRole): "/dashboard" | "/kiosk" {
  * After Firebase sync: one phone can be a shop owner and a RecoverPe agent.
  * Missing cookie is merchant for existing sessions.
  */
+/**
+ * Agent context cookies survive logouts on other tabs and block merchant hydration
+ * APIs in middleware. Drop stale agent context when the signed-in user has no agent
+ * surface before calling `/api/users/workspace-role`.
+ */
+export function reconcileStaleActiveContext(
+  surfaces: IdentitySurfaces,
+  activeContext: ActiveContext | null
+): ActiveContext | null {
+  if (activeContext === "agent" && !surfaces.has_agent) {
+    return "merchant";
+  }
+
+  return activeContext;
+}
+
 export function resolveLandingPath(input: {
   surfaces: IdentitySurfaces;
   role: AppRole;

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveLandingPath } from "@/lib/active-context";
+import {
+  reconcileStaleActiveContext,
+  resolveLandingPath,
+} from "@/lib/active-context";
 import { isAgentReferralFrozen } from "@/lib/agent/cash-protocol";
 import {
   AGENT_LIABILITY_FREEZE_INR,
@@ -13,6 +16,26 @@ import {
 } from "@/lib/agent/otp";
 import { buildRuleBasedBriefing } from "@/lib/briefing";
 import { computeDebtorHealthScore } from "@/lib/debtor-health";
+
+describe("reconcileStaleActiveContext", () => {
+  it("clears stale agent cookies for merchant-only users", () => {
+    expect(
+      reconcileStaleActiveContext(
+        { has_merchant: true, has_agent: false },
+        "agent"
+      )
+    ).toBe("merchant");
+  });
+
+  it("keeps agent context when the user still has an agent surface", () => {
+    expect(
+      reconcileStaleActiveContext(
+        { has_merchant: true, has_agent: true },
+        "agent"
+      )
+    ).toBe("agent");
+  });
+});
 
 describe("resolveLandingPath", () => {
   it("sends dual-identity users to the chooser when no cookie is set", () => {

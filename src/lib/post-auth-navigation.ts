@@ -4,6 +4,7 @@ import {
   getActiveContextFromDocument,
   IdentitySurfaces,
   merchantHomePath,
+  reconcileStaleActiveContext,
   resolveLandingPath,
   setActiveContextCookie,
 } from "@/lib/active-context";
@@ -36,13 +37,18 @@ export async function persistActiveContext(context: ActiveContext): Promise<void
 }
 
 /**
- * Resolves the first screen after auth. Skips merchant workspace hydration when
- * the active context cookie is already "agent".
+ * Resolves the first screen after auth. Clears stale agent cookies before merchant
+ * hydration, then skips workspace-role when the user is genuinely in agent context.
  */
 export async function resolvePostAuthPath(): Promise<string> {
   const { surfaces, active_context } = await fetchIdentitySurfaces();
+  const activeContext = reconcileStaleActiveContext(surfaces, active_context);
 
-  if (active_context === "agent" && surfaces.has_agent) {
+  if (activeContext !== active_context && activeContext === "merchant") {
+    await persistActiveContext("merchant");
+  }
+
+  if (activeContext === "agent" && surfaces.has_agent) {
     await persistActiveContext("agent");
     return "/agent-dashboard";
   }
@@ -53,7 +59,7 @@ export async function resolvePostAuthPath(): Promise<string> {
   const path = resolveLandingPath({
     surfaces,
     role: roleContext.role,
-    activeContext: active_context,
+    activeContext,
     preferChooserWhenBoth: true,
   });
 
