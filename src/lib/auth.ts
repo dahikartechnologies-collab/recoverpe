@@ -45,6 +45,8 @@ export function getFirebaseAuthErrorMessage(error: unknown): string {
         return "Please enter a valid email address.";
       case "auth/weak-password":
         return "Password must be at least 6 characters.";
+      case "auth/password-does-not-meet-requirements":
+        return "Your password does not meet all security requirements.";
       case "auth/user-not-found":
       case "auth/wrong-password":
       case "auth/invalid-credential":

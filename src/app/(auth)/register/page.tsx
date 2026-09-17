@@ -7,11 +7,16 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { PasswordInput } from "@/components/auth/PasswordInput";
+import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
 import { trackSignUp } from "@/lib/analytics-events";
 import {
   getFirebaseAuthErrorMessage,
   registerWithEmail,
 } from "@/lib/auth";
+import {
+  getRegisterPasswordValidationMessage,
+  isRegisterPasswordValid,
+} from "@/lib/password-policy";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,8 +30,11 @@ export default function RegisterPage() {
     event.preventDefault();
     setError("");
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (!isRegisterPasswordValid(password)) {
+      setError(
+        getRegisterPasswordValidationMessage(password) ??
+          "Password does not meet the security requirements."
+      );
       return;
     }
 
@@ -88,11 +96,12 @@ export default function RegisterPage() {
             <PasswordInput
               id="password"
               autoComplete="new-password"
-              placeholder="Minimum 6 characters"
+              placeholder="Create a secure password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
             />
+            <PasswordRequirements password={password} />
           </div>
 
           <div>
@@ -116,7 +125,11 @@ export default function RegisterPage() {
             <p className="text-sm text-recoverpe-error">{error}</p>
           ) : null}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isSubmitting || !isRegisterPasswordValid(password)}
+          >
             {isSubmitting ? "Creating account..." : "Continue to mobile verification"}
           </Button>
         </form>
