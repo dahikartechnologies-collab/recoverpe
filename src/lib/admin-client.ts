@@ -214,3 +214,23 @@ export async function testAdminNotifications(
 
   return body;
 }
+
+export async function triggerDailyEscalationCron(): Promise<unknown> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/cron/daily-escalations", {
+    method: "POST",
+    headers,
+  });
+
+  const body = (await response.json()) as { error?: string };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok) {
+    throw new Error(body.error || "Daily escalation cron failed.");
+  }
+
+  return body;
+}

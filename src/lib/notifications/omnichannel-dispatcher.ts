@@ -8,6 +8,7 @@ import {
 } from "@/lib/entitlements";
 import { sendDebtReminderEmail } from "@/lib/notifications/email";
 import {
+  buildDebtReminderSmsDltVariables,
   buildDebtReminderSmsMessage,
   sendTransactionalSms,
 } from "@/lib/notifications/sms";
@@ -165,11 +166,18 @@ export async function dispatchDebtReminder(
   if (shouldSendSms) {
     try {
       const payUrl = getPayPageUrl(ledgerId);
+      const reminderAmount = Number(ledgerRow.balance_due);
+      const businessName = businessRow?.business_name ?? "RecoverPe Merchant";
       const smsResult = await sendTransactionalSms({
         phoneNumber: contact.phone_number as string,
         message: buildDebtReminderSmsMessage({
-          amount: Number(ledgerRow.balance_due),
-          businessName: businessRow?.business_name ?? "RecoverPe Merchant",
+          amount: reminderAmount,
+          businessName,
+          payUrl,
+        }),
+        dltVariables: buildDebtReminderSmsDltVariables({
+          amount: reminderAmount,
+          businessName,
           payUrl,
         }),
       });

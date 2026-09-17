@@ -22,8 +22,22 @@ export function usePaymentStatusPolling(options: {
     }
 
     let cancelled = false;
+    let intervalId: number | null = null;
+
+    function stopPolling() {
+      cancelled = true;
+
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
 
     async function pollStatus() {
+      if (cancelled) {
+        return;
+      }
+
       try {
         const response = await fetch(options.statusUrl!, { cache: "no-store" });
 
@@ -34,6 +48,7 @@ export function usePaymentStatusPolling(options: {
         const payload = (await response.json()) as PaymentStatusPayload;
 
         if (payload.is_paid || payload.is_settled) {
+          stopPolling();
           onPaidRef.current();
         }
       } catch {
@@ -42,13 +57,12 @@ export function usePaymentStatusPolling(options: {
     }
 
     void pollStatus();
-    const interval = window.setInterval(() => {
+    intervalId = window.setInterval(() => {
       void pollStatus();
     }, options.intervalMs ?? 5000);
 
     return () => {
-      cancelled = true;
-      window.clearInterval(interval);
+      stopPolling();
     };
   }, [options.enabled, options.intervalMs, options.statusUrl]);
 }

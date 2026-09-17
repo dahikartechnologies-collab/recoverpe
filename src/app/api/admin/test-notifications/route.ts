@@ -3,6 +3,7 @@ import { requireSuperAdminUser } from "@/lib/api-auth";
 import { getPayPageUrl } from "@/lib/app-url";
 import { sendDebtReminderEmail } from "@/lib/notifications/email";
 import {
+  buildDebtReminderSmsDltVariables,
   buildDebtReminderSmsMessage,
   sendTransactionalSms,
 } from "@/lib/notifications/sms";
@@ -64,6 +65,11 @@ export async function POST(request: Request) {
       smsResponse = await sendTransactionalSms({
         phoneNumber: phone,
         message: buildDebtReminderSmsMessage({
+          amount: 12500,
+          businessName: "RecoverPe Diagnostics",
+          payUrl: samplePayUrl,
+        }),
+        dltVariables: buildDebtReminderSmsDltVariables({
           amount: 12500,
           businessName: "RecoverPe Diagnostics",
           payUrl: samplePayUrl,

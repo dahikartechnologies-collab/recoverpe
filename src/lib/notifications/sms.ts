@@ -1,8 +1,15 @@
 import { isDevelopmentAppEnv } from "@/lib/app-env";
 
+export interface SmsDltVariables {
+  amount: string;
+  businessName: string;
+  payUrl: string;
+}
+
 export interface SmsDispatchInput {
   phoneNumber: string;
   message: string;
+  dltVariables?: SmsDltVariables;
 }
 
 export interface SmsDispatchResult {
@@ -14,6 +21,7 @@ export interface SmsDispatchResult {
   error?: string;
   status?: string;
   providerPayload?: unknown;
+  route?: "dlt" | "q" | "msg91";
 }
 
 function normalizeIndianMobile(value: string): string {
@@ -30,18 +38,42 @@ function normalizeIndianMobile(value: string): string {
   throw new Error("Enter a valid 10-digit mobile number for SMS.");
 }
 
+function formatSmsAmount(amount: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function sanitizeDltVariable(value: string, maxLength = 30): string {
+  return value.replace(/\|/g, "/").trim().slice(0, maxLength);
+}
+
 function isDltComplianceError(httpStatus: number, body: string): boolean {
   const normalized = body.toLowerCase();
 
   return (
+    (httpStatus === 403 &&
+      (normalized.includes("dlt") ||
+        normalized.includes("pe-tm") ||
+        normalized.includes("template id") ||
+        normalized.includes("sender id") ||
+        normalized.includes("entity id"))) ||
+    normalized.includes("dlt pending") ||
+    normalized.includes("pe-tm chain")
+  );
+}
+
+function isDltFormattingError(httpStatus: number, body: string): boolean {
+  const normalized = body.toLowerCase();
+
+  return (
     httpStatus === 400 ||
-    httpStatus === 403 ||
-    normalized.includes("dlt") ||
-    normalized.includes("pe-tm") ||
-    normalized.includes("pe tm") ||
-    normalized.includes("template id") ||
-    normalized.includes("sender id") ||
-    normalized.includes("entity id")
+    normalized.includes("variable") ||
+    normalized.includes("format") ||
+    normalized.includes("invalid template") ||
+    normalized.includes("message id")
   );
 }
 
@@ -51,10 +83,12 @@ function buildSmsFailureResult(input: {
   error: string;
   status: string;
   providerPayload?: unknown;
+  route?: SmsDispatchResult["route"];
 }): SmsDispatchResult {
   console.error(`[${input.provider}] SMS dispatch failed`, {
     status: input.status,
     error: input.error,
+    route: input.route,
     providerPayload: input.providerPayload,
   });
 
@@ -66,6 +100,38 @@ function buildSmsFailureResult(input: {
     error: input.error,
     status: input.status,
     providerPayload: input.providerPayload,
+    route: input.route,
+  };
+}
+
+function buildFast2SmsDltPayload(input: {
+  numbers: string;
+  dltVariables: SmsDltVariables;
+}): { body: Record<string, string>; route: "dlt" } | { error: string } {
+  const dltTemplateId = process.env.FAST2SMS_DLT_TEMPLATE_ID?.trim();
+  const senderId = process.env.FAST2SMS_SENDER_ID?.trim();
+
+  if (!dltTemplateId) {
+    return { error: "FAST2SMS_DLT_TEMPLATE_ID is not configured." };
+  }
+
+  if (!senderId) {
+    return { error: "FAST2SMS_SENDER_ID is not configured." };
+  }
+
+  return {
+    route: "dlt",
+    body: {
+      route: "dlt",
+      sender_id: senderId,
+      message: dltTemplateId,
+      variables_values: [
+        sanitizeDltVariable(input.dltVariables.amount, 12),
+        sanitizeDltVariable(input.dltVariables.businessName, 30),
+        sanitizeDltVariable(input.dltVariables.payUrl, 120),
+      ].join("|"),
+      numbers: input.numbers,
+    },
   };
 }
 
@@ -83,18 +149,46 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
     }
 
     const numbers = normalizeIndianMobile(input.phoneNumber);
+    const dltTemplateId = process.env.FAST2SMS_DLT_TEMPLATE_ID?.trim();
+    const useDltRoute = Boolean(dltTemplateId && input.dltVariables);
+
+    let requestBody: Record<string, string>;
+    let route: SmsDispatchResult["route"] = "q";
+
+    if (useDltRoute && input.dltVariables) {
+      const dltPayload = buildFast2SmsDltPayload({
+        numbers,
+        dltVariables: input.dltVariables,
+      });
+
+      if ("error" in dltPayload) {
+        return buildSmsFailureResult({
+          provider: "fast2sms",
+          message: "Fast2SMS DLT is not fully configured.",
+          error: dltPayload.error,
+          status: "NOT_CONFIGURED",
+          route: "dlt",
+        });
+      }
+
+      requestBody = dltPayload.body;
+      route = "dlt";
+    } else {
+      requestBody = {
+        route: "q",
+        message: input.message,
+        language: "english",
+        numbers,
+      };
+    }
+
     const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
       method: "POST",
       headers: {
         authorization: apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        route: "q",
-        message: input.message,
-        language: "english",
-        numbers,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const rawBody = await response.text();
@@ -122,15 +216,23 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
 
     if (!response.ok) {
       const dltPending = isDltComplianceError(response.status, rawBody);
+      const formattingError = isDltFormattingError(response.status, rawBody);
 
       return buildSmsFailureResult({
         provider: "fast2sms",
         message: dltPending
           ? "Fast2SMS DLT compliance is pending."
-          : `Fast2SMS failed with HTTP ${response.status}.`,
+          : formattingError
+            ? "Fast2SMS DLT template formatting error."
+            : `Fast2SMS failed with HTTP ${response.status}.`,
         error: payloadMessage,
-        status: dltPending ? "DLT_PENDING" : `HTTP_${response.status}`,
+        status: dltPending
+          ? "DLT_PENDING"
+          : formattingError
+            ? "DLT_FORMAT_ERROR"
+            : `HTTP_${response.status}`,
         providerPayload: payload,
+        route,
       });
     }
 
@@ -143,15 +245,23 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
     if (!parsed.return) {
       const rejectionBody = JSON.stringify(parsed);
       const dltPending = isDltComplianceError(200, rejectionBody);
+      const formattingError = isDltFormattingError(200, rejectionBody);
 
       return buildSmsFailureResult({
         provider: "fast2sms",
         message: dltPending
           ? "Fast2SMS DLT compliance is pending."
-          : payloadMessage || "Fast2SMS rejected the message.",
+          : formattingError
+            ? "Fast2SMS DLT template formatting error."
+            : payloadMessage || "Fast2SMS rejected the message.",
         error: payloadMessage || "Fast2SMS rejected the message.",
-        status: dltPending ? "DLT_PENDING" : "REJECTED",
+        status: dltPending
+          ? "DLT_PENDING"
+          : formattingError
+            ? "DLT_FORMAT_ERROR"
+            : "REJECTED",
         providerPayload: parsed,
+        route,
       });
     }
 
@@ -160,8 +270,12 @@ async function sendViaFast2Sms(input: SmsDispatchInput): Promise<SmsDispatchResu
       simulated: false,
       provider: "fast2sms",
       externalMessageId: parsed.request_id ?? null,
-      message: "SMS sent via Fast2SMS.",
+      message:
+        route === "dlt"
+          ? "SMS sent via Fast2SMS DLT template."
+          : "SMS sent via Fast2SMS.",
       providerPayload: parsed,
+      route,
     };
   } catch (error) {
     const errorMessage =
@@ -187,6 +301,7 @@ async function sendViaMsg91(input: SmsDispatchInput): Promise<SmsDispatchResult>
         message: "MSG91 is not configured.",
         error: "MSG91_AUTH_KEY is not configured.",
         status: "NOT_CONFIGURED",
+        route: "msg91",
       });
     }
 
@@ -230,6 +345,7 @@ async function sendViaMsg91(input: SmsDispatchInput): Promise<SmsDispatchResult>
         error: rawBody,
         status: dltPending ? "DLT_PENDING" : `HTTP_${response.status}`,
         providerPayload: payload,
+        route: "msg91",
       });
     }
 
@@ -246,6 +362,7 @@ async function sendViaMsg91(input: SmsDispatchInput): Promise<SmsDispatchResult>
       externalMessageId: parsed.request_id ?? null,
       message: parsed.message || "SMS sent via MSG91.",
       providerPayload: parsed,
+      route: "msg91",
     };
   } catch (error) {
     const errorMessage =
@@ -256,8 +373,21 @@ async function sendViaMsg91(input: SmsDispatchInput): Promise<SmsDispatchResult>
       message: "MSG91 dispatch failed.",
       error: errorMessage,
       status: "EXCEPTION",
+      route: "msg91",
     });
   }
+}
+
+export function buildDebtReminderSmsDltVariables(input: {
+  amount: number;
+  businessName: string;
+  payUrl: string;
+}): SmsDltVariables {
+  return {
+    amount: formatSmsAmount(input.amount),
+    businessName: input.businessName,
+    payUrl: input.payUrl,
+  };
 }
 
 export function buildDebtReminderSmsMessage(input: {
@@ -265,11 +395,7 @@ export function buildDebtReminderSmsMessage(input: {
   businessName: string;
   payUrl: string;
 }): string {
-  const amountLabel = new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(input.amount);
+  const amountLabel = formatSmsAmount(input.amount);
 
   return `Dear Customer, payment of ${amountLabel} for ${input.businessName} is pending. Pay instantly at: ${input.payUrl} - RecoverPe`;
 }
@@ -299,6 +425,7 @@ export async function sendTransactionalSms(
         simulated: true,
         provider: "simulated",
         message: "Simulated SMS in development.",
+        route: input.dltVariables ? "dlt" : "q",
       };
     }
 

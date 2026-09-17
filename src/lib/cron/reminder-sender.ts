@@ -51,9 +51,10 @@ async function wasReminderSentToday(
 export async function processCronReminderTargets(
   supabase: SupabaseClient,
   targets: CronLedgerTarget[],
-  referenceDate: string
+  referenceDate: string,
+  options: { bypassCurfew?: boolean } = {}
 ): Promise<CronReminderSendResult[]> {
-  if (isTraiCurfewActive()) {
+  if (!options.bypassCurfew && isTraiCurfewActive()) {
     const curfewMessage = getTraiCurfewMessage();
 
     return targets.map((target) => ({
@@ -143,7 +144,8 @@ export async function processCronReminderTargets(
 
 export async function runDailyReminderJob(
   supabase: SupabaseClient,
-  referenceDate: string
+  referenceDate: string,
+  options: { bypassCurfew?: boolean } = {}
 ): Promise<{
   targets: CronLedgerTarget[];
   results: CronReminderSendResult[];
@@ -152,7 +154,8 @@ export async function runDailyReminderJob(
   const results = await processCronReminderTargets(
     supabase,
     targets,
-    referenceDate
+    referenceDate,
+    options
   );
 
   return { targets, results };
