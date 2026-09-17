@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import {
   canInitiateAiCallForLedger,
   canRectifyLedger,
@@ -272,42 +273,46 @@ export function LedgerActionsMenu({
 
   return (
     <div ref={containerRef} className="relative inline-block text-left">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-haspopup="menu"
         aria-expanded={isOpen}
         aria-label="Ledger actions"
         onClick={() => setIsOpen((open) => !open)}
-        className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-md border border-recoverpe-grey-light bg-recoverpe-white text-recoverpe-black transition-all duration-200 ease-out hover:bg-recoverpe-grey-light"
+        className="h-8 w-8 px-0"
       >
         <span className="text-base leading-none">⋮</span>
-      </button>
+      </Button>
 
       {isOpen ? (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 min-w-[15rem] overflow-hidden rounded-md border border-recoverpe-grey-light bg-recoverpe-white py-1 shadow-none"
+          className="absolute right-0 z-20 mt-1 min-w-[15rem] overflow-hidden rounded-xl border border-recoverpe-line bg-recoverpe-white py-1"
         >
           {items.map((item) => (
             <div key={item.key}>
               {item.dividerBefore ? (
                 <div
                   role="separator"
-                  className="my-1 border-t border-recoverpe-grey-light"
+                  className="my-1 border-t border-recoverpe-line"
                 />
               ) : null}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 role="menuitem"
                 disabled={item.disabled}
                 onClick={() => {
                   item.onClick();
                   setIsOpen(false);
                 }}
-                className="focus-ring block w-full px-3 py-2 text-left text-sm text-recoverpe-black transition-all duration-200 ease-out hover:bg-recoverpe-grey-light disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-auto w-full justify-start rounded-none px-3 py-2 text-left font-normal"
               >
                 {item.label}
-              </button>
+              </Button>
             </div>
           ))}
         </div>

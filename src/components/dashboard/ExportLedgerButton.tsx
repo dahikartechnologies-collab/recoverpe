@@ -28,6 +28,7 @@ export function ExportLedgerButton({
     <Button
       type="button"
       variant="secondary"
+      size="sm"
       onClick={handleExport}
       disabled={disabled || ledgers.length === 0}
       className="inline-flex items-center gap-2"

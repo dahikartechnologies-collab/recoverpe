@@ -2,11 +2,24 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
 import { VendorTableSkeleton } from "@/components/dashboard/VendorTableSkeleton";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { fetchVendorDirectory } from "@/lib/vendor-client";
 import { downloadVendorsCsv } from "@/lib/vendor-export";
 import { formatCurrency } from "@/lib/gst";
@@ -14,12 +27,24 @@ import { useWorkspaceStore } from "@/store/workspace-store";
 import { ContactDirectoryEntry } from "@/types";
 
 const PAGE_SIZE = 50;
+const AMOUNT_CLASS = "font-mono tabular-nums tracking-tight text-recoverpe-black";
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-IN").format(value);
 }
 
+function walletAmountClass(contact: ContactDirectoryEntry): string {
+  if (contact.wallet_balance > 0) {
+    return "font-mono tabular-nums tracking-tight text-recoverpe-success-ink";
+  }
+  if (contact.net_outstanding > 0) {
+    return "font-mono tabular-nums tracking-tight text-recoverpe-danger-ink";
+  }
+  return "font-mono tabular-nums tracking-tight text-recoverpe-muted";
+}
+
 export default function VendorsPage() {
+  const router = useRouter();
   const mode = useWorkspaceStore((state) => state.mode);
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const businesses = useWorkspaceStore((state) => state.businesses);
@@ -124,25 +149,21 @@ export default function VendorsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="type-eyebrow">Enterprise</p>
-          <h1 className="type-page-title mt-2">Vendor Directory</h1>
-          <p className="type-data-secondary mt-3 max-w-2xl text-sm leading-relaxed">
-            Aggregated exposure by contact with open invoice counts and aging
-            buckets for your active workspace.
-          </p>
-        </div>
+      <PageHeader
+        eyebrow="Enterprise"
+        title="Vendor Directory"
+        description="Aggregated exposure by contact with open invoice counts and aging buckets for your active workspace."
+        actions={
+          mode === "business" && activeBusiness ? (
+            <ShopQrDownloadButton
+              businessId={activeBusiness.id}
+              businessName={activeBusiness.business_name}
+            />
+          ) : null
+        }
+      />
 
-        {mode === "business" && activeBusiness ? (
-          <ShopQrDownloadButton
-            businessId={activeBusiness.id}
-            businessName={activeBusiness.business_name}
-          />
-        ) : null}
-      </div>
-
-      {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
 
       {isLoading ? (
         <VendorTableSkeleton />
@@ -163,20 +184,14 @@ export default function VendorsPage() {
                 />
               ) : (
                 <>
-                  <div className="md:hidden flex flex-col space-y-4 p-4">
+                  <div className="flex flex-col space-y-4 p-4 md:hidden">
                     {contacts.map((contact) => {
                       const isSelected = selectedIds.includes(contact.contact_id);
-                      const walletTone =
-                        contact.wallet_balance > 0
-                          ? "text-recoverpe-success"
-                          : contact.net_outstanding > 0
-                            ? "text-orange-600"
-                            : "text-recoverpe-grey-medium";
 
                       return (
                         <div
                           key={contact.contact_id}
-                          className="rounded-md border border-recoverpe-grey-light p-4 transition-colors"
+                          className="rounded-xl border border-recoverpe-line p-4"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex min-w-0 items-start gap-3">
@@ -187,7 +202,7 @@ export default function VendorsPage() {
                                 onChange={() =>
                                   toggleContactSelection(contact.contact_id)
                                 }
-                                className="focus-ring mt-0.5 h-4 w-4 shrink-0 rounded border-recoverpe-grey-light"
+                                className="focus-ring mt-0.5 h-4 w-4 shrink-0 rounded border-recoverpe-line"
                               />
                               <div className="min-w-0">
                                 <Link
@@ -202,19 +217,21 @@ export default function VendorsPage() {
                               </div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <p className="text-[10px] font-medium uppercase tracking-wide text-recoverpe-grey-medium">
-                                Wallet
-                              </p>
-                              <p className={`text-sm font-semibold tabular-nums ${walletTone}`}>
+                              <p className="type-eyebrow">Wallet</p>
+                              <p className={`mt-1 text-sm ${walletAmountClass(contact)}`}>
                                 {formatCurrency(contact.wallet_balance)}
                               </p>
                             </div>
                           </div>
-                          <div className="mt-3 flex items-center justify-between border-t border-recoverpe-grey-light pt-3 text-xs">
-                            <span className="text-recoverpe-grey-medium">
+                          <div className="mt-3 flex items-center justify-between border-t border-recoverpe-line pt-3 text-xs">
+                            <Badge
+                              tone={
+                                contact.open_invoice_count > 0 ? "warning" : "neutral"
+                              }
+                            >
                               {formatCount(contact.open_invoice_count)} open
-                            </span>
-                            <span className="font-medium text-recoverpe-black">
+                            </Badge>
+                            <span className={AMOUNT_CLASS}>
                               {formatCurrency(contact.net_outstanding)} due
                             </span>
                           </div>
@@ -223,100 +240,123 @@ export default function VendorsPage() {
                     })}
                   </div>
 
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light/60">
-                        <th className="w-10 px-5 py-3">
-                          <input
-                            type="checkbox"
-                            aria-label="Select all visible vendors"
-                            checked={allVisibleSelected}
-                            onChange={toggleSelectAllVisible}
-                            className="focus-ring h-4 w-4 rounded border-recoverpe-grey-light"
-                          />
-                        </th>
-                        <th className="type-table-header px-5 py-3 text-left">Vendor</th>
-                        <th className="type-table-header px-5 py-3 text-left">
-                          Open Invoices
-                        </th>
-                        <th className="type-table-header max-w-[10rem] px-5 py-3 text-left">
-                          Net Outstanding
-                        </th>
-                        <th className="type-table-header max-w-[10rem] px-5 py-3 text-left">
-                          90+ Days
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contacts.map((contact) => (
-                        <tr
-                          key={contact.contact_id}
-                          className="group border-b border-recoverpe-grey-light transition-all duration-200 ease-out last:border-b-0 hover:bg-recoverpe-grey-light/50"
-                        >
-                          <td className="px-5 py-4 align-middle">
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-10">
                             <input
                               type="checkbox"
-                              aria-label={`Select ${contact.contact_name}`}
-                              checked={selectedIds.includes(contact.contact_id)}
-                              onChange={() => toggleContactSelection(contact.contact_id)}
-                              className="focus-ring h-4 w-4 rounded border-recoverpe-grey-light"
+                              aria-label="Select all visible vendors"
+                              checked={allVisibleSelected}
+                              onChange={toggleSelectAllVisible}
+                              className="focus-ring h-4 w-4 rounded border-recoverpe-line"
                             />
-                          </td>
-                          <td className="min-w-0 max-w-[14rem] px-5 py-4 align-middle">
-                            <Link
-                              href={`/dashboard/vendors/${contact.contact_id}`}
-                              className="focus-ring block truncate rounded-sm text-sm font-semibold text-recoverpe-black transition-all duration-200 ease-out hover:underline"
-                            >
-                              {contact.contact_name}
-                            </Link>
-                            <p className="type-data-secondary mt-1 truncate">
-                              {contact.phone_number}
-                            </p>
-                          </td>
-                          <td className="type-data-secondary px-5 py-4 align-middle text-sm">
-                            {formatCount(contact.open_invoice_count)}
-                          </td>
-                          <td className="max-w-[10rem] px-5 py-4 align-middle">
-                            <span className="type-data-primary block truncate text-sm">
+                          </TableHead>
+                          <TableHead>Vendor</TableHead>
+                          <TableHead>Open Invoices</TableHead>
+                          <TableHead>Net Outstanding</TableHead>
+                          <TableHead>90+ Days</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {contacts.map((contact) => (
+                          <TableRow key={contact.contact_id} className="group">
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${contact.contact_name}`}
+                                checked={selectedIds.includes(contact.contact_id)}
+                                onChange={() =>
+                                  toggleContactSelection(contact.contact_id)
+                                }
+                                className="focus-ring h-4 w-4 rounded border-recoverpe-line"
+                              />
+                            </TableCell>
+                            <TableCell className="min-w-0 max-w-[14rem]">
+                              <Link
+                                href={`/dashboard/vendors/${contact.contact_id}`}
+                                className="focus-ring rp-interactive block truncate rounded-sm text-sm font-semibold text-recoverpe-black hover:underline"
+                              >
+                                {contact.contact_name}
+                              </Link>
+                              <p className="type-data-secondary mt-1 truncate">
+                                {contact.phone_number}
+                              </p>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                tone={
+                                  contact.open_invoice_count > 0
+                                    ? "warning"
+                                    : "neutral"
+                                }
+                              >
+                                {formatCount(contact.open_invoice_count)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={AMOUNT_CLASS}>
                               {formatCurrency(contact.net_outstanding)}
-                            </span>
-                          </td>
-                          <td className="max-w-[10rem] px-5 py-4 align-middle">
-                            <span className="type-data-primary block truncate text-sm">
-                              {formatCurrency(contact.bucket_90_plus)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            </TableCell>
+                            <TableCell>
+                              {contact.bucket_90_plus > 0 ? (
+                                <span className="font-mono tabular-nums tracking-tight text-recoverpe-danger-ink">
+                                  {formatCurrency(contact.bucket_90_plus)}
+                                </span>
+                              ) : (
+                                <span className="font-mono tabular-nums tracking-tight text-recoverpe-muted">
+                                  {formatCurrency(contact.bucket_90_plus)}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/vendors/${contact.contact_id}`
+                                  )
+                                }
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </>
               )}
 
               {total > PAGE_SIZE ? (
-                <div className="flex items-center justify-between border-t border-recoverpe-grey-light px-5 py-4">
+                <div className="flex items-center justify-between border-t border-recoverpe-line px-5 py-4">
                   <p className="type-data-secondary text-xs">
                     Showing {start}–{end} of {formatCount(total)}
                   </p>
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => void loadDirectory(page - 1)}
                       disabled={page <= 1}
-                      className="focus-ring rounded-md border border-recoverpe-black px-3 py-1.5 text-xs font-medium text-recoverpe-black transition-all duration-200 ease-out enabled:hover:bg-recoverpe-grey-light disabled:cursor-not-allowed disabled:border-recoverpe-grey-light disabled:text-recoverpe-grey-medium"
                     >
                       Previous
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => void loadDirectory(page + 1)}
                       disabled={!hasMore}
-                      className="focus-ring rounded-md border border-recoverpe-black px-3 py-1.5 text-xs font-medium text-recoverpe-black transition-all duration-200 ease-out enabled:hover:bg-recoverpe-grey-light disabled:cursor-not-allowed disabled:border-recoverpe-grey-light disabled:text-recoverpe-grey-medium"
                     >
                       Next
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : null}

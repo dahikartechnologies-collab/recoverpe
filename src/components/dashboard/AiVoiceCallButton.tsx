@@ -64,7 +64,7 @@ export function AiVoiceCallButton({
     <>
       <Button
         type="button"
-        variant="secondary"
+        variant={compact ? "ghost" : "secondary"}
         size={compact ? "sm" : "md"}
         disabled={disabled || isCalling}
         onClick={() => void handleCall()}

@@ -43,10 +43,11 @@ export function LedgerQuickReachActions({
       {reminderEnabled && canSendReminders ? (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
+          size="sm"
           disabled={isSending}
           onClick={() => onSendReminder(ledger)}
-          className="inline-flex items-center gap-2 px-3 py-2"
+          className="inline-flex items-center gap-1.5"
           aria-label="Send WhatsApp reminder"
         >
           <MessageSquare className="h-4 w-4" aria-hidden />

@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PremiumUpgradeLock } from "@/components/billing/PremiumUpgradeLock";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Select";
 import {
   assignVendorCollectionAgent,
   fetchWorkspaceMembers,
@@ -118,18 +120,16 @@ export function AssignAgentCard({
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-lg font-semibold text-recoverpe-black">
-          Collection assignment
-        </h2>
-        <p className="mt-1 text-sm text-recoverpe-grey-medium">
+        <h2 className="type-section-title">Collection assignment</h2>
+        <p className="mt-1 text-sm text-recoverpe-muted">
           Route open invoices for this vendor to a field staff agent.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (
-          <p className="text-sm text-recoverpe-grey-medium">Loading agents...</p>
+          <p className="text-sm text-recoverpe-muted">Loading agents...</p>
         ) : fieldStaff.length === 0 ? (
-          <p className="text-sm text-recoverpe-grey-medium">
+          <p className="text-sm text-recoverpe-muted">
             Invite field staff from Settings → Team before assigning vendors.
           </p>
         ) : (
@@ -141,11 +141,10 @@ export function AssignAgentCard({
               >
                 Assign to agent
               </label>
-              <select
+              <Select
                 id="assign-agent"
                 value={selectedAgentId}
                 onChange={(event) => setSelectedAgentId(event.target.value)}
-                className="w-full rounded-md border border-recoverpe-grey-light bg-recoverpe-white px-3 py-2.5 text-sm text-recoverpe-black"
               >
                 <option value="">Unassigned</option>
                 {fieldStaff.map((member) => (
@@ -153,18 +152,16 @@ export function AssignAgentCard({
                     {member.full_name || member.email}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <Button type="button" onClick={() => void handleAssign()} disabled={isSaving}>
+            <Button type="button" size="sm" onClick={() => void handleAssign()} disabled={isSaving}>
               {isSaving ? "Saving..." : "Save assignment"}
             </Button>
           </div>
         )}
 
-        {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
-        {successMessage ? (
-          <p className="text-sm text-recoverpe-success">{successMessage}</p>
-        ) : null}
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+        {successMessage ? <Alert tone="success">{successMessage}</Alert> : null}
       </CardContent>
     </Card>
   );

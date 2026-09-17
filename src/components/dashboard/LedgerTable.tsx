@@ -2,9 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Badge, BadgeTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { LedgerActionsMenu } from "@/components/dashboard/LedgerActionsMenu";
 import { LedgerQuickReachActions } from "@/components/dashboard/LedgerQuickReachActions";
 import { formatCurrency } from "@/lib/gst";
@@ -57,11 +66,34 @@ function formatDueDate(value: string): string {
   }).format(new Date(value));
 }
 
-function StatusBadge({ status }: { status: ReturnType<typeof getDisplayLedgerStatus> }) {
-  const tone: BadgeTone =
-    status === "paid" ? "success" : status === "overdue" ? "danger" : "neutral";
+const AMOUNT_CLASS = "font-mono tabular-nums tracking-tight text-recoverpe-black";
 
-  return <Badge tone={tone}>{displayStatusLabel(status)}</Badge>;
+function ledgerStatusPresentation(
+  status: ReturnType<typeof getDisplayLedgerStatus>
+): { tone: BadgeTone; label: string } {
+  switch (status) {
+    case "paid":
+      return { tone: "success", label: "Paid" };
+    case "overdue":
+      return { tone: "danger", label: "Overdue" };
+    case "pending":
+      return { tone: "warning", label: "Unpaid" };
+    case "partially_paid":
+      return { tone: "warning", label: "Partial" };
+    case "draft":
+      return { tone: "neutral", label: "Draft" };
+    case "cancelled":
+      return { tone: "neutral", label: "Cancelled" };
+    case "refunded":
+      return { tone: "neutral", label: "Refunded" };
+    default:
+      return { tone: "neutral", label: displayStatusLabel(status) };
+  }
+}
+
+function StatusBadge({ status }: { status: ReturnType<typeof getDisplayLedgerStatus> }) {
+  const { tone, label } = ledgerStatusPresentation(status);
+  return <Badge tone={tone}>{label}</Badge>;
 }
 
 interface LedgerActionsProps {
@@ -181,27 +213,29 @@ function LedgerPaginationControls({
   const end = Math.min(pagination.offset + pagination.limit, pagination.total);
 
   return (
-    <div className="flex items-center justify-between border-t border-recoverpe-grey-light px-5 py-4">
-      <p className="text-xs text-recoverpe-grey-medium">
+    <div className="flex items-center justify-between border-t border-recoverpe-line px-5 py-4">
+      <p className="text-xs text-recoverpe-muted">
         Showing {start}–{end} of {pagination.total}
       </p>
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onPreviousPage}
           disabled={pagination.page <= 1}
-          className="focus-ring rounded-md border border-recoverpe-black px-3 py-1.5 text-xs font-medium text-recoverpe-black transition-all duration-200 ease-out enabled:hover:bg-recoverpe-grey-light disabled:cursor-not-allowed disabled:border-recoverpe-grey-light disabled:text-recoverpe-grey-medium"
         >
           Previous
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onNextPage}
           disabled={!pagination.hasMore}
-          className="focus-ring rounded-md border border-recoverpe-black px-3 py-1.5 text-xs font-medium text-recoverpe-black transition-all duration-200 ease-out enabled:hover:bg-recoverpe-grey-light disabled:cursor-not-allowed disabled:border-recoverpe-grey-light disabled:text-recoverpe-grey-medium"
         >
           Next
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -341,7 +375,7 @@ export function LedgerTable({
                     aria-label={`Select ${ledger.contact.name}`}
                     checked={selectedIds.includes(ledger.id)}
                     onChange={() => toggleLedgerSelection(ledger.id)}
-                    className="focus-ring h-4 w-4 rounded border-recoverpe-grey-light"
+                    className="focus-ring h-4 w-4 rounded border-recoverpe-line"
                   />
                 </div>
                 <div className="absolute right-5 top-5">
@@ -362,7 +396,7 @@ export function LedgerTable({
                 <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="type-table-header">Balance Due</p>
-                    <p className="type-data-primary mt-2 text-base">
+                    <p className={`${AMOUNT_CLASS} mt-2 text-base`}>
                       {formatCurrency(ledger.balance_due)}
                     </p>
                   </div>
@@ -374,7 +408,7 @@ export function LedgerTable({
                   </div>
                   <div>
                     <p className="type-table-header">Amount</p>
-                    <p className="type-data-primary mt-2 text-base">
+                    <p className={`${AMOUNT_CLASS} mt-2 text-base`}>
                       {formatCurrency(ledger.total_amount)}
                     </p>
                   </div>
@@ -390,80 +424,75 @@ export function LedgerTable({
 
       <Card className="hidden md:block">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-recoverpe-grey-light bg-recoverpe-grey-light/60">
-                  <th className="w-10 px-5 py-3">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all visible ledgers"
-                      checked={allVisibleSelected}
-                      onChange={toggleSelectAllVisible}
-                      className="focus-ring h-4 w-4 rounded border-recoverpe-grey-light"
-                    />
-                  </th>
-                  <th className="type-table-header px-5 py-3 text-left">Contact</th>
-                  <th className="type-table-header px-5 py-3 text-left">Amount</th>
-                  <th className="type-table-header px-5 py-3 text-left">Balance Due</th>
-                  <th className="type-table-header px-5 py-3 text-left">Due Date</th>
-                  <th className="type-table-header px-5 py-3 text-left">Status</th>
-                  <th className="type-table-header px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledgers.map((ledger) => {
-                  const displayStatus = getDisplayLedgerStatus(ledger);
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible ledgers"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    className="focus-ring h-4 w-4 rounded border-recoverpe-line"
+                  />
+                </TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Balance Due</TableHead>
+                <TableHead>Due Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ledgers.map((ledger) => {
+                const displayStatus = getDisplayLedgerStatus(ledger);
 
-                  return (
-                    <tr
-                      key={ledger.id}
-                      className="group border-b border-recoverpe-grey-light transition-all duration-200 ease-out last:border-b-0 hover:bg-recoverpe-grey-light/50"
-                    >
-                      <td className="px-5 py-4 align-middle">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${ledger.contact.name}`}
-                          checked={selectedIds.includes(ledger.id)}
-                          onChange={() => toggleLedgerSelection(ledger.id)}
-                          className="focus-ring h-4 w-4 rounded border-recoverpe-grey-light"
+                return (
+                  <TableRow key={ledger.id} className="group">
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${ledger.contact.name}`}
+                        checked={selectedIds.includes(ledger.id)}
+                        onChange={() => toggleLedgerSelection(ledger.id)}
+                        className="focus-ring h-4 w-4 rounded border-recoverpe-line"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <p className="truncate text-sm font-semibold text-recoverpe-black">
+                        {ledger.contact.name}
+                      </p>
+                      <p className="type-data-secondary mt-1 truncate">
+                        {ledger.contact.phone_number}
+                        {ledger.communication_paused ? " · Automations paused" : ""}
+                      </p>
+                    </TableCell>
+                    <TableCell className={AMOUNT_CLASS}>
+                      {formatCurrency(ledger.total_amount)}
+                    </TableCell>
+                    <TableCell className={AMOUNT_CLASS}>
+                      {formatCurrency(ledger.balance_due)}
+                    </TableCell>
+                    <TableCell className="type-data-secondary">
+                      {formatDueDate(ledger.due_date)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={displayStatus} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="opacity-100 transition-opacity duration-150 ease-out md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                        <LedgerRowActions
+                          {...sharedActionProps}
+                          ledger={ledger}
                         />
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <p className="truncate text-sm font-semibold text-recoverpe-black">
-                          {ledger.contact.name}
-                        </p>
-                        <p className="type-data-secondary mt-1 truncate">
-                          {ledger.contact.phone_number}
-                          {ledger.communication_paused ? " · Automations paused" : ""}
-                        </p>
-                      </td>
-                      <td className="type-data-primary px-5 py-4 align-middle text-sm">
-                        {formatCurrency(ledger.total_amount)}
-                      </td>
-                      <td className="type-data-primary px-5 py-4 align-middle text-sm">
-                        {formatCurrency(ledger.balance_due)}
-                      </td>
-                      <td className="type-data-secondary px-5 py-4 align-middle text-sm">
-                        {formatDueDate(ledger.due_date)}
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <StatusBadge status={displayStatus} />
-                      </td>
-                      <td className="px-5 py-4 align-middle text-right">
-                        <div className="opacity-100 transition-opacity duration-200 ease-out md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                          <LedgerRowActions
-                            {...sharedActionProps}
-                            ledger={ledger}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
           {pagination ? (
             <LedgerPaginationControls
               pagination={pagination}

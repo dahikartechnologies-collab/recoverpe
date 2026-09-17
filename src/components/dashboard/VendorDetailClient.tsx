@@ -16,7 +16,18 @@ import { ContactVirtualAccountCard } from "@/components/dashboard/ContactVirtual
 import { SmartCollectCard } from "@/components/dashboard/SmartCollectCard";
 import { WalletBalanceCard } from "@/components/dashboard/WalletBalanceCard";
 import { Toast } from "@/components/ui/Toast";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { useBusinessProfileUpsell } from "@/hooks/use-business-profile-upsell";
 import {
   fetchVendorDetail,
@@ -548,10 +559,8 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
         <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-recoverpe-black">
-            Statement of Account
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Statement of Account</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Invoices tied to this vendor only.
           </p>
         </div>
@@ -599,71 +608,65 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
 
       <div className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold text-recoverpe-black">
-            Wallet History
-          </h2>
-          <p className="mt-1 text-sm text-recoverpe-grey-medium">
+          <h2 className="type-section-title">Wallet History</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
             Manual Jama advances credited to this vendor&apos;s khata wallet.
           </p>
         </div>
 
         {walletTransactions.length === 0 ? (
-          <div className="rounded-md border border-dashed border-recoverpe-grey-light px-5 py-8 text-center">
-            <p className="text-sm font-medium text-recoverpe-black">
-              No wallet advances yet
-            </p>
-            <p className="mt-2 text-sm text-recoverpe-grey-medium">
-              Log an advance to see it recorded here with date, amount, and type.
-            </p>
-          </div>
+          <Card>
+            <CardContent className="p-0">
+              <EmptyState
+                title="No wallet advances yet"
+                description="Log an advance to see it recorded here with date, amount, and type."
+              />
+            </CardContent>
+          </Card>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-recoverpe-grey-light">
-            <table className="min-w-full divide-y divide-recoverpe-grey-light text-sm">
-              <thead className="bg-recoverpe-grey-light/40">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-recoverpe-grey-medium">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-recoverpe-grey-medium">
-                    Time
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-recoverpe-grey-medium">
-                    Amount
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-recoverpe-grey-medium">
-                    Type
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-recoverpe-grey-light bg-recoverpe-white">
-                {walletTransactions.map((transaction) => {
-                  const loggedAt = new Date(transaction.logged_at);
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Type</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {walletTransactions.map((transaction) => {
+                    const loggedAt = new Date(transaction.logged_at);
 
-                  return (
-                    <tr key={transaction.id}>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {new Intl.DateTimeFormat("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        }).format(loggedAt)}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">
-                        {new Intl.DateTimeFormat("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }).format(loggedAt)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-recoverpe-success">
-                        {formatCurrency(transaction.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-recoverpe-black">Advance</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    return (
+                      <TableRow key={transaction.id}>
+                        <TableCell className="text-recoverpe-black">
+                          {new Intl.DateTimeFormat("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          }).format(loggedAt)}
+                        </TableCell>
+                        <TableCell className="text-recoverpe-black">
+                          {new Intl.DateTimeFormat("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }).format(loggedAt)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums tracking-tight text-recoverpe-success-ink">
+                          {formatCurrency(transaction.amount)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge tone="success">Advance</Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
         </>
