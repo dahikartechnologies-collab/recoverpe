@@ -63,12 +63,12 @@ export function DashboardSidebar() {
 
   return (
     <aside className="hidden w-60 shrink-0 border-r border-recoverpe-line bg-recoverpe-white lg:block">
-      <div className="sticky top-0 flex h-screen flex-col px-5 py-8">
-        <div className="mb-4 px-1">
+      <div className="sticky top-0 flex h-screen min-h-0 flex-col px-5 py-8">
+        <div className="mb-4 shrink-0 px-1">
           <RecoverpeLogo size="sm" href={homeHref} priority />
         </div>
 
-        <div className="mb-8">
+        <div className="mb-4 shrink-0">
           <WorkspaceSwitcher />
           {isSuperAdmin ? (
             <Link
@@ -85,7 +85,7 @@ export function DashboardSidebar() {
           ) : null}
         </div>
 
-        <nav className="space-y-1.5">
+        <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
           {visibleLinks.map((link) => {
             const isActive = link.exact
               ? pathname === link.href
@@ -111,7 +111,7 @@ export function DashboardSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto space-y-3 border-t border-recoverpe-line pt-6">
+        <div className="mt-auto shrink-0 space-y-3 border-t border-recoverpe-line pt-6">
           <Button
             type="button"
             variant="ghost"

@@ -61,7 +61,7 @@ export async function fetchCronReminderTargets(
         name,
         phone_number
       ),
-      users (
+      users!ledgers_user_id_fkey (
         subscription_plan
       )
     `

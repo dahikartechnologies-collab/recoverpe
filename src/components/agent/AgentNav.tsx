@@ -111,7 +111,7 @@ export function AgentNav() {
       </div>
 
       {isMobileMenuOpen ? (
-        <div className="border-t border-recoverpe-line px-4 py-3 md:hidden">
+        <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto border-t border-recoverpe-line px-4 py-3 md:hidden">
           <div className="space-y-1">
             {AGENT_LINKS.map((link) => {
               const Icon = link.icon;
