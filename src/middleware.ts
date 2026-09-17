@@ -44,10 +44,9 @@ function applyActiveContextGuards(request: NextRequest): NextResponse | null {
   const isSessionApi =
     pathname.startsWith("/api/session/") ||
     pathname === "/api/users/sync" ||
-    pathname === "/api/users/me";
-  const isMerchantHydrationApi =
-    pathname === "/api/users/workspace-role" ||
-    pathname.startsWith("/api/dashboard/");
+    pathname === "/api/users/me" ||
+    pathname === "/api/users/workspace-role";
+  const isMerchantHydrationApi = pathname.startsWith("/api/dashboard/");
 
   if (context === "agent") {
     if (isMerchantHydrationApi) {
