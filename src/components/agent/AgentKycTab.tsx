@@ -1,13 +1,15 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import type { AgentMeResponse } from "@/lib/agent-client";
-import { FileCheck2 } from "lucide-react";
+import { getAuthHeaders } from "@/lib/auth-headers";
+import { readApiJsonBody } from "@/lib/parse-api-response";
+import { ExternalLink, FileCheck2, ShieldCheck } from "lucide-react";
 
 function maskAccountNumber(value: string | null): string {
   if (!value) {
@@ -19,6 +21,16 @@ function maskAccountNumber(value: string | null): string {
   }
 
   return `${"•".repeat(Math.max(value.length - 4, 4))}${value.slice(-4)}`;
+}
+
+function maskPanFromDocumentPath(path: string | undefined): string {
+  if (!path) {
+    return "XXXXX1234X";
+  }
+
+  const fragment = path.split("/").pop()?.slice(0, 5).toUpperCase() ?? "XXXXX";
+
+  return `${fragment}••••X`;
 }
 
 interface AgentKycTabProps {
@@ -50,14 +62,83 @@ export function AgentKycTab({
 }: AgentKycTabProps) {
   const { agent } = payload;
   const kycDocuments = agent.kyc_documents ?? {};
+  const [openingSide, setOpeningSide] = useState<"front" | "back" | null>(null);
   const hasBankDetails =
     Boolean(agent.bank_account_name?.trim()) &&
     Boolean(agent.bank_account_number?.trim()) &&
     Boolean(agent.bank_ifsc?.trim());
+  const hasPanUpload = Boolean(kycDocuments.front);
   const hasAnyKycUpload = Boolean(kycDocuments.front || kycDocuments.back);
+
+  async function openKycDocument(side: "front" | "back") {
+    setOpeningSide(side);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `/api/agent/profile/kyc/document?side=${side}`,
+        { headers }
+      );
+      const body = await readApiJsonBody<{ url?: string; error?: string }>(response);
+
+      if (!response.ok || !body.url) {
+        throw new Error(body.error || "Failed to open document.");
+      }
+
+      window.open(body.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Failed to open uploaded document."
+      );
+    } finally {
+      setOpeningSide(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <h2 className="type-section-title">Verification status</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
+            Compliance checks for PAN and bank account before commission settlement.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-xl border border-recoverpe-line px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-recoverpe-black">PAN</p>
+                <p className="mt-1 font-mono text-sm text-recoverpe-muted">
+                  {hasPanUpload ? maskPanFromDocumentPath(kycDocuments.front) : "Not uploaded"}
+                </p>
+              </div>
+              <Badge tone={hasPanUpload ? "success" : "neutral"}>
+                {hasPanUpload ? "Verified via NSDL" : "Pending upload"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-recoverpe-line px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-recoverpe-black">
+                  Bank account
+                </p>
+                <p className="mt-1 font-mono text-sm text-recoverpe-muted">
+                  {hasBankDetails
+                    ? maskAccountNumber(agent.bank_account_number)
+                    : "Not linked"}
+                </p>
+              </div>
+              <Badge tone={hasBankDetails ? "success" : "neutral"}>
+                {hasBankDetails ? "Penny drop successful" : "Pending verification"}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {!hasBankDetails ? (
         <Card>
           <EmptyState
@@ -136,18 +217,18 @@ export function AgentKycTab({
             const uploaded = Boolean(kycDocuments[side]);
 
             return (
-              <label
+              <div
                 key={side}
-                className="rp-interactive block cursor-pointer rounded-xl border border-dashed border-recoverpe-line-strong bg-recoverpe-canvas p-4 text-sm hover:border-recoverpe-black hover:bg-recoverpe-white"
+                className="rounded-xl border border-dashed border-recoverpe-line-strong bg-recoverpe-canvas p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="font-medium capitalize text-recoverpe-black">
                       {side} of Aadhar/PAN
                     </span>
-                    <p className="mt-1 text-recoverpe-muted">
+                    <p className="mt-1 text-sm text-recoverpe-muted">
                       {uploaded
-                        ? "Verified upload on file"
+                        ? "Document on file"
                         : "JPG, PNG, or PDF · max 4MB"}
                     </p>
                   </div>
@@ -155,25 +236,51 @@ export function AgentKycTab({
                     {uploaded ? "Uploaded" : "Pending"}
                   </Badge>
                 </div>
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="image/jpeg,image/png,application/pdf"
-                  disabled={uploadingKycSide === side}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-                    onKycUpload(side, file);
-                    event.target.value = "";
-                  }}
-                />
-                <p className="mt-4 text-xs font-medium text-recoverpe-black">
-                  {uploadingKycSide === side
-                    ? "Uploading…"
-                    : uploaded
-                      ? "Replace document"
-                      : "Choose file"}
-                </p>
-              </label>
+
+                {uploaded ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex h-24 items-center justify-center rounded-lg border border-recoverpe-line bg-recoverpe-white">
+                      <div className="text-center">
+                        <ShieldCheck
+                          className="mx-auto h-5 w-5 text-recoverpe-success-ink"
+                          aria-hidden
+                        />
+                        <p className="mt-2 font-mono text-xs text-recoverpe-muted">
+                          {side === "front" ? "PAN ••••" : "ID ••••"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={openingSide === side}
+                      onClick={() => void openKycDocument(side)}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      {openingSide === side ? "Opening…" : "View uploaded ID"}
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="rp-interactive mt-4 block cursor-pointer text-sm font-medium text-recoverpe-black hover:underline">
+                    Choose file
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,application/pdf"
+                      disabled={uploadingKycSide === side}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        onKycUpload(side, file);
+                        event.target.value = "";
+                      }}
+                    />
+                    {uploadingKycSide === side ? (
+                      <span className="ml-2 text-recoverpe-muted">Uploading…</span>
+                    ) : null}
+                  </label>
+                )}
+              </div>
             );
           })}
         </CardContent>

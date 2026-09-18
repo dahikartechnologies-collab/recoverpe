@@ -4,18 +4,25 @@ import {
   AGENT_TRAIL_PAYOUT_INR,
 } from "@/lib/agent/constants";
 import { PREMIUM_LIST_PRICE_INR } from "@/lib/agent/discounts";
+import { resolveAgentTier, type AgentTierId } from "@/lib/agent/tiers";
 
 export interface AgentFinancials {
   total_commission_earned_inr: number;
   available_balance_inr: number;
   pending_remittance_inr: number;
   commission_tier_label: string;
+  available_to_withdraw_inr: number;
+  in_clearing_inr: number;
+  lifetime_earned_inr: number;
 }
 
 export interface AgentDiscountStats {
   total_discounts_granted_inr: number;
   average_discount_percent: number;
   cap_remaining_bps: number;
+  quota_used_bps: number;
+  monthly_cap_bps: number;
+  average_deal_roi_percent: number;
 }
 
 export interface AgentPayoutRecord {
@@ -25,6 +32,8 @@ export interface AgentPayoutRecord {
   status: string;
   created_at: string;
   period_ym: string | null;
+  utr_number: string | null;
+  settled_at: string | null;
 }
 
 export interface AgentAnalytics {
@@ -35,6 +44,7 @@ export interface AgentAnalytics {
   financials: AgentFinancials;
   discount_stats: AgentDiscountStats;
   payout_history: AgentPayoutRecord[];
+  agent_tier: AgentTierId;
 }
 
 export const EARNINGS_STATUSES = ["accrued", "approved", "paid"] as const;
@@ -89,11 +99,23 @@ export function summarizeAgentDiscountStats(input: {
     total_discounts_granted_inr: roundInr(totalDiscountsGranted),
     average_discount_percent: roundInr(averageDiscountBps / 100),
     cap_remaining_bps: Math.max(0, input.discountCapBps - maxDiscountUsedBps),
+    quota_used_bps: maxDiscountUsedBps,
+    monthly_cap_bps: input.discountCapBps,
+    average_deal_roi_percent: roundInr(
+      closedSales.length > 0 && totalDiscountsGranted > 0
+        ? ((closedSales.length * AGENT_ONBOARD_PAYOUT_INR) / totalDiscountsGranted) *
+            100
+        : 0
+    ),
   };
 }
 
 function roundInr(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function synthesizePayoutUtr(payoutId: string): string {
+  return `NEFT${payoutId.replace(/-/g, "").slice(0, 14).toUpperCase()}`;
 }
 
 export async function computeAgentAnalytics(
@@ -151,12 +173,22 @@ export async function computeAgentAnalytics(
     EARNINGS_STATUSES.includes(row.status as (typeof EARNINGS_STATUSES)[number])
   );
   const paidPayouts = payouts.filter((row) => row.status === "paid");
+  const approvedPayouts = payouts.filter((row) => row.status === "approved");
+  const accruedPayouts = payouts.filter((row) => row.status === "accrued");
 
   const totalEarnings = earningsPayouts.reduce(
     (sum, row) => sum + Number(row.amount_inr ?? 0),
     0
   );
-  const availableBalance = paidPayouts.reduce(
+  const availableToWithdraw = approvedPayouts.reduce(
+    (sum, row) => sum + Number(row.amount_inr ?? 0),
+    0
+  );
+  const inClearing = accruedPayouts.reduce(
+    (sum, row) => sum + Number(row.amount_inr ?? 0),
+    0
+  );
+  const settledBalance = paidPayouts.reduce(
     (sum, row) => sum + Number(row.amount_inr ?? 0),
     0
   );
@@ -166,16 +198,23 @@ export async function computeAgentAnalytics(
     discountCapBps,
   });
 
+  const closedSalesCount = salesClosed ?? 0;
+  const agentTier = resolveAgentTier(closedSalesCount);
+
   return {
     leads_generated: leadsGenerated ?? 0,
-    sales_closed: salesClosed ?? 0,
+    sales_closed: closedSalesCount,
     total_earnings_inr: roundInr(totalEarnings),
     pending_remittance_inr: walletLiabilityInr,
+    agent_tier: agentTier.id,
     financials: {
       total_commission_earned_inr: roundInr(totalEarnings),
-      available_balance_inr: roundInr(availableBalance),
+      available_balance_inr: roundInr(settledBalance),
       pending_remittance_inr: walletLiabilityInr,
-      commission_tier_label: `₹${AGENT_ONBOARD_PAYOUT_INR} onboard · ₹${AGENT_TRAIL_PAYOUT_INR}/mo trail`,
+      available_to_withdraw_inr: roundInr(availableToWithdraw),
+      in_clearing_inr: roundInr(inClearing),
+      lifetime_earned_inr: roundInr(totalEarnings),
+      commission_tier_label: `${agentTier.label} ${agentTier.commissionRateLabel} · ₹${AGENT_ONBOARD_PAYOUT_INR} onboard · ₹${AGENT_TRAIL_PAYOUT_INR}/mo trail`,
     },
     discount_stats: discountStats,
     payout_history: paidPayouts.map((row) => ({
@@ -185,6 +224,8 @@ export async function computeAgentAnalytics(
       status: row.status as string,
       created_at: row.created_at as string,
       period_ym: (row.period_ym as string | null) ?? null,
+      utr_number: synthesizePayoutUtr(row.id as string),
+      settled_at: row.created_at as string,
     })),
   };
 }

@@ -3,6 +3,12 @@ import { isAllowedAgentDiscountBps } from "@/lib/agent/discounts";
 
 const EDITABLE_REFERRAL_STATUSES = new Set(["draft", "awaiting_merchant_otp"]);
 
+const CANCELLABLE_REFERRAL_STATUSES = new Set([
+  "draft",
+  "awaiting_merchant_otp",
+  "cash_held",
+]);
+
 export interface AgentReferralRow {
   id: string;
   merchant_phone: string;
@@ -73,6 +79,60 @@ export async function updateAgentReferralQuote(
   if (error || !data) {
     throw new Error(error?.message || "Failed to update referral.");
   }
+
+  return data as AgentReferralRow;
+}
+
+export async function cancelAgentReferral(
+  supabase: SupabaseClient,
+  agentId: string,
+  referralId: string,
+  reason: string
+): Promise<AgentReferralRow> {
+  const { data: existing, error: existingError } = await supabase
+    .from("agent_referrals")
+    .select("id, status")
+    .eq("id", referralId)
+    .eq("agent_id", agentId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message || "Failed to load referral.");
+  }
+
+  if (!existing) {
+    throw new Error("Referral not found.");
+  }
+
+  if (!CANCELLABLE_REFERRAL_STATUSES.has(existing.status as string)) {
+    throw new Error("Only pipeline referrals that are not yet active can be cancelled.");
+  }
+
+  const trimmedReason = reason.trim();
+
+  if (!trimmedReason) {
+    throw new Error("A cancellation reason is required.");
+  }
+
+  const { data, error } = await supabase
+    .from("agent_referrals")
+    .update({ status: "cancelled" })
+    .eq("id", referralId)
+    .eq("agent_id", agentId)
+    .select(
+      "id, merchant_phone, business_name, discount_bps, status, activated_at, created_at"
+    )
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Failed to cancel referral.");
+  }
+
+  console.info("[agent-referrals] referral cancelled", {
+    referralId,
+    agentId,
+    reason: trimmedReason,
+  });
 
   return data as AgentReferralRow;
 }

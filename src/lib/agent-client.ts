@@ -153,6 +153,24 @@ export async function resendAgentReferralOtp(referralId: string): Promise<void> 
   await parseApiJsonResponse(response);
 }
 
+export async function cancelAgentReferral(
+  referralId: string,
+  reason: string
+): Promise<AgentReferralRecord> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`/api/agent/referrals/${referralId}/cancel`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ reason }),
+  });
+
+  const payload = await parseApiJsonResponse<{ referral: AgentReferralRecord }>(
+    response
+  );
+
+  return payload.referral;
+}
+
 export async function patchAgentBankProfile(body: {
   bank_account_name: string;
   bank_account_number: string;

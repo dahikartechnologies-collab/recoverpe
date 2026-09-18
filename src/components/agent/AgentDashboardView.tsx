@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentKycTab } from "@/components/agent/AgentKycTab";
 import { AgentLeadsTab } from "@/components/agent/AgentLeadsTab";
+import { AgentMarketingToolkit } from "@/components/agent/AgentMarketingToolkit";
 import { AgentPerformanceTab } from "@/components/agent/AgentPerformanceTab";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,6 +17,7 @@ import {
   patchAgentBankProfile,
   patchAgentReferral,
   resendAgentReferralOtp,
+  cancelAgentReferral,
   uploadAgentKycDocument,
   type AgentMeResponse,
   type AgentReferralRecord,
@@ -54,6 +56,9 @@ export function AgentDashboardView() {
   const [editDiscountBps, setEditDiscountBps] = useState("0");
   const [editBusinessName, setEditBusinessName] = useState("");
   const [savingReferralId, setSavingReferralId] = useState<string | null>(null);
+  const [cancellingReferralId, setCancellingReferralId] = useState<string | null>(
+    null
+  );
   const [bankAccountName, setBankAccountName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankIfsc, setBankIfsc] = useState("");
@@ -238,6 +243,25 @@ export function AgentDashboardView() {
     }
   }
 
+  async function handleCancelReferral(referralId: string, reason: string) {
+    setError("");
+    setCancellingReferralId(referralId);
+
+    try {
+      await cancelAgentReferral(referralId, reason);
+      setEditingReferralId(null);
+      await load();
+    } catch (cancelError) {
+      setError(
+        cancelError instanceof Error
+          ? cancelError.message
+          : "Failed to cancel referral."
+      );
+    } finally {
+      setCancellingReferralId(null);
+    }
+  }
+
   async function handleSaveBankProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -339,6 +363,11 @@ export function AgentDashboardView() {
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
+      <AgentMarketingToolkit
+        referralCode={agent.referral_code}
+        displayName={agent.display_name}
+      />
+
       {activeTab === "performance" ? <AgentPerformanceTab payload={payload} /> : null}
 
       {activeTab === "leads" ? (
@@ -358,6 +387,7 @@ export function AgentDashboardView() {
           editDiscountBps={editDiscountBps}
           editBusinessName={editBusinessName}
           savingReferralId={savingReferralId}
+          cancellingReferralId={cancellingReferralId}
           setPhone={setPhone}
           setShop={setShop}
           setDiscountBps={setDiscountBps}
@@ -372,6 +402,7 @@ export function AgentDashboardView() {
           onResendOtp={handleResendOtp}
           onBeginEditReferral={beginEditReferral}
           onSaveReferralEdit={handleSaveReferralEdit}
+          onCancelReferral={handleCancelReferral}
         />
       ) : null}
 
