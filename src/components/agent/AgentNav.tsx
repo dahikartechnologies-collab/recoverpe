@@ -1,33 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BarChart3, Briefcase, FileCheck2, Menu, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { parseAgentTab, type AgentTab } from "@/lib/agent/tab-state";
+import { type AgentTab } from "@/lib/agent/tab-state";
+import { useAgentTab } from "@/hooks/use-agent-tab";
 import { persistActiveContext } from "@/lib/post-auth-navigation";
 
 const AGENT_LINKS: Array<{
-  href: string;
   hash: AgentTab;
   label: string;
   icon: typeof BarChart3;
 }> = [
   {
-    href: "/agent-dashboard#performance",
     hash: "performance",
     label: "Performance",
     icon: BarChart3,
   },
   {
-    href: "/agent-dashboard#leads",
     hash: "leads",
     label: "Leads",
     icon: Users,
   },
   {
-    href: "/agent-dashboard#kyc",
     hash: "kyc",
     label: "KYC",
     icon: FileCheck2,
@@ -36,24 +32,17 @@ const AGENT_LINKS: Array<{
 
 export function AgentNav() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<AgentTab>("performance");
+  const { activeTab, navigateToTab } = useAgentTab();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    function syncHash() {
-      const hash = window.location.hash.replace("#", "");
-      setActiveTab(parseAgentTab(hash || "performance"));
-    }
-
-    syncHash();
-    window.addEventListener("hashchange", syncHash);
-
-    return () => window.removeEventListener("hashchange", syncHash);
-  }, []);
 
   async function switchToMerchant() {
     await persistActiveContext("merchant");
     router.push("/dashboard");
+  }
+
+  function handleTabClick(tab: AgentTab) {
+    navigateToTab(tab);
+    setIsMobileMenuOpen(false);
   }
 
   return (
@@ -65,9 +54,10 @@ export function AgentNav() {
             const isActive = activeTab === link.hash;
 
             return (
-              <Link
-                key={link.href}
-                href={link.href}
+              <button
+                key={link.hash}
+                type="button"
+                onClick={() => handleTabClick(link.hash)}
                 className={`rp-interactive inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium ${
                   isActive
                     ? "border-recoverpe-black text-recoverpe-black"
@@ -76,7 +66,7 @@ export function AgentNav() {
               >
                 <Icon className="h-4 w-4" aria-hidden />
                 {link.label}
-              </Link>
+              </button>
             );
           })}
         </div>
@@ -118,11 +108,11 @@ export function AgentNav() {
               const isActive = activeTab === link.hash;
 
               return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`rp-interactive flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium ${
+                <button
+                  key={link.hash}
+                  type="button"
+                  onClick={() => handleTabClick(link.hash)}
+                  className={`rp-interactive flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm font-medium ${
                     isActive
                       ? "bg-recoverpe-black text-recoverpe-white"
                       : "text-recoverpe-black hover:bg-recoverpe-fill"
@@ -130,7 +120,7 @@ export function AgentNav() {
                 >
                   <Icon className="h-4 w-4" aria-hidden />
                   {link.label}
-                </Link>
+                </button>
               );
             })}
           </div>

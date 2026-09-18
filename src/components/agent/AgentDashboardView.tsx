@@ -21,15 +21,15 @@ import {
   type AgentReferralRecord,
 } from "@/lib/agent-client";
 import { getAgentDiscountOptionsForCap } from "@/lib/agent/discounts";
-import { parseAgentTab, type AgentTab } from "@/lib/agent/tab-state";
+import { useAgentTab } from "@/hooks/use-agent-tab";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { persistActiveContext } from "@/lib/post-auth-navigation";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 
 export function AgentDashboardView() {
   const router = useRouter();
+  const { activeTab, navigateToTab } = useAgentTab();
   const referralCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const [activeTab, setActiveTab] = useState<AgentTab>("performance");
   const [payload, setPayload] = useState<AgentMeResponse | null>(null);
   const [error, setError] = useState("");
   const [duplicateOwnedMessage, setDuplicateOwnedMessage] = useState("");
@@ -79,23 +79,6 @@ export function AgentDashboardView() {
   }, []);
 
   useEffect(() => {
-    function syncTabFromHash() {
-      const hash = window.location.hash.replace("#", "");
-      const nextTab = parseAgentTab(hash || "performance");
-      setActiveTab(nextTab);
-    }
-
-    if (!window.location.hash) {
-      window.location.replace(`${window.location.pathname}#performance`);
-    }
-
-    syncTabFromHash();
-    window.addEventListener("hashchange", syncTabFromHash);
-
-    return () => window.removeEventListener("hashchange", syncTabFromHash);
-  }, []);
-
-  useEffect(() => {
     if (!highlightedReferralId) {
       return;
     }
@@ -126,8 +109,7 @@ export function AgentDashboardView() {
   }, [discountBps, discountOptions]);
 
   function focusExistingReferral(referralId: string) {
-    setActiveTab("leads");
-    window.location.hash = "leads";
+    navigateToTab("leads");
     setHighlightedReferralId(referralId);
     setDuplicateOwnedMessage("Merchant already exists in your pipeline.");
     window.setTimeout(() => setHighlightedReferralId(null), 6000);

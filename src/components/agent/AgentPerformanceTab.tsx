@@ -37,7 +37,20 @@ interface AgentPerformanceTabProps {
 
 export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
   const { agent, analytics } = payload;
-  const { financials, discount_stats, payout_history } = analytics;
+
+  if (!analytics?.financials || !analytics.discount_stats) {
+    return (
+      <Card>
+        <EmptyState
+          icon={<Wallet className="h-5 w-5" aria-hidden />}
+          title="Performance data unavailable"
+          description="We could not load your commission analytics. Refresh the page or try again in a moment."
+        />
+      </Card>
+    );
+  }
+
+  const { financials, discount_stats, payout_history = [] } = analytics;
 
   return (
     <div className="space-y-6">

@@ -81,6 +81,7 @@ export function AgentLeadsTab({
   onSaveReferralEdit,
 }: AgentLeadsTabProps) {
   const { agent, referrals } = payload;
+  const safeReferrals = referrals ?? [];
   const discountOptions = getAgentDiscountOptionsForCap(agent.discount_cap_bps);
   const expectedCollection = formatExpectedCashCollection(Number(discountBps));
 
@@ -173,7 +174,7 @@ export function AgentLeadsTab({
           </p>
         </div>
 
-        {referrals.length === 0 ? (
+        {safeReferrals.length === 0 ? (
           <Card>
             <EmptyState
               icon={<Users className="h-5 w-5" aria-hidden />}
@@ -182,7 +183,7 @@ export function AgentLeadsTab({
             />
           </Card>
         ) : (
-          referrals.map((referral) => (
+          safeReferrals.map((referral) => (
             <AgentLeadCard
               key={referral.id}
               referral={referral}

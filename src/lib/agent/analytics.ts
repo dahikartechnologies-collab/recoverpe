@@ -37,7 +37,60 @@ export interface AgentAnalytics {
   payout_history: AgentPayoutRecord[];
 }
 
-const EARNINGS_STATUSES = ["accrued", "approved", "paid"] as const;
+export const EARNINGS_STATUSES = ["accrued", "approved", "paid"] as const;
+
+/** Merchant paid or subscription live — counts as a closed sale. */
+export const AGENT_CLOSED_SALE_STATUSES = ["activated", "cash_held"] as const;
+
+export const AGENT_EXCLUDED_REFERRAL_STATUSES = ["cancelled", "clawback"] as const;
+
+export function isClosedAgentSale(status: string): boolean {
+  return (AGENT_CLOSED_SALE_STATUSES as readonly string[]).includes(status);
+}
+
+export function isCountableAgentReferral(status: string): boolean {
+  return !(AGENT_EXCLUDED_REFERRAL_STATUSES as readonly string[]).includes(status);
+}
+
+export interface AgentReferralDiscountRow {
+  discount_bps: number | null;
+  status?: string | null;
+}
+
+export function summarizeAgentDiscountStats(input: {
+  referrals: AgentReferralDiscountRow[];
+  discountCapBps: number;
+  listPriceInr?: number;
+}): AgentDiscountStats {
+  const listPriceInr = input.listPriceInr ?? PREMIUM_LIST_PRICE_INR;
+  const closedSales = input.referrals.filter((row) =>
+    isClosedAgentSale(String(row.status ?? ""))
+  );
+  const capReferrals = input.referrals.filter((row) =>
+    isCountableAgentReferral(String(row.status ?? ""))
+  );
+
+  const totalDiscountsGranted = closedSales.reduce(
+    (sum, row) =>
+      sum + listPriceInr * (Number(row.discount_bps ?? 0) / 10_000),
+    0
+  );
+  const averageDiscountBps =
+    closedSales.length > 0
+      ? closedSales.reduce((sum, row) => sum + Number(row.discount_bps ?? 0), 0) /
+        closedSales.length
+      : 0;
+  const maxDiscountUsedBps = capReferrals.reduce(
+    (max, row) => Math.max(max, Number(row.discount_bps ?? 0)),
+    0
+  );
+
+  return {
+    total_discounts_granted_inr: roundInr(totalDiscountsGranted),
+    average_discount_percent: roundInr(averageDiscountBps / 100),
+    cap_remaining_bps: Math.max(0, input.discountCapBps - maxDiscountUsedBps),
+  };
+}
 
 function roundInr(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -63,15 +116,16 @@ export async function computeAgentAnalytics(
       .from("agent_referrals")
       .select("id", { count: "exact", head: true })
       .eq("agent_id", agentId)
-      .eq("status", "activated"),
+      .in("status", [...AGENT_CLOSED_SALE_STATUSES]),
     supabase
       .from("agent_referrals")
-      .select("discount_bps")
+      .select("discount_bps, status")
       .eq("agent_id", agentId),
     supabase
       .from("agent_payouts")
       .select("id, amount_inr, kind, status, created_at, period_ym")
       .eq("agent_id", agentId)
+      .in("status", [...EARNINGS_STATUSES, "paid"])
       .order("created_at", { ascending: false }),
   ]);
 
@@ -107,20 +161,10 @@ export async function computeAgentAnalytics(
     0
   );
 
-  const totalDiscountsGranted = referrals.reduce(
-    (sum, row) =>
-      sum + PREMIUM_LIST_PRICE_INR * (Number(row.discount_bps ?? 0) / 10_000),
-    0
-  );
-  const averageDiscountBps =
-    referrals.length > 0
-      ? referrals.reduce((sum, row) => sum + Number(row.discount_bps ?? 0), 0) /
-        referrals.length
-      : 0;
-  const maxDiscountUsedBps = referrals.reduce(
-    (max, row) => Math.max(max, Number(row.discount_bps ?? 0)),
-    0
-  );
+  const discountStats = summarizeAgentDiscountStats({
+    referrals,
+    discountCapBps,
+  });
 
   return {
     leads_generated: leadsGenerated ?? 0,
@@ -133,11 +177,7 @@ export async function computeAgentAnalytics(
       pending_remittance_inr: walletLiabilityInr,
       commission_tier_label: `₹${AGENT_ONBOARD_PAYOUT_INR} onboard · ₹${AGENT_TRAIL_PAYOUT_INR}/mo trail`,
     },
-    discount_stats: {
-      total_discounts_granted_inr: roundInr(totalDiscountsGranted),
-      average_discount_percent: roundInr(averageDiscountBps / 100),
-      cap_remaining_bps: Math.max(0, discountCapBps - maxDiscountUsedBps),
-    },
+    discount_stats: discountStats,
     payout_history: paidPayouts.map((row) => ({
       id: row.id as string,
       amount_inr: Number(row.amount_inr ?? 0),

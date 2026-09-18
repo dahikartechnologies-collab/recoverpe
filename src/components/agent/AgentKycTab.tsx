@@ -4,8 +4,10 @@ import { FormEvent } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import type { AgentMeResponse } from "@/lib/agent-client";
+import { FileCheck2 } from "lucide-react";
 
 function maskAccountNumber(value: string | null): string {
   if (!value) {
@@ -47,9 +49,25 @@ export function AgentKycTab({
   onKycUpload,
 }: AgentKycTabProps) {
   const { agent } = payload;
+  const kycDocuments = agent.kyc_documents ?? {};
+  const hasBankDetails =
+    Boolean(agent.bank_account_name?.trim()) &&
+    Boolean(agent.bank_account_number?.trim()) &&
+    Boolean(agent.bank_ifsc?.trim());
+  const hasAnyKycUpload = Boolean(kycDocuments.front || kycDocuments.back);
 
   return (
     <div className="space-y-6">
+      {!hasBankDetails ? (
+        <Card>
+          <EmptyState
+            icon={<FileCheck2 className="h-5 w-5" aria-hidden />}
+            title="Add payout bank details"
+            description="Save your account holder name, account number, and IFSC so commissions can settle after merchant onboardings close."
+          />
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <h2 className="type-section-title">Bank account & payout details</h2>
@@ -115,7 +133,7 @@ export function AgentKycTab({
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           {(["front", "back"] as const).map((side) => {
-            const uploaded = Boolean(agent.kyc_documents[side]);
+            const uploaded = Boolean(kycDocuments[side]);
 
             return (
               <label
@@ -160,6 +178,16 @@ export function AgentKycTab({
           })}
         </CardContent>
       </Card>
+
+      {!hasAnyKycUpload ? (
+        <Card>
+          <EmptyState
+            icon={<FileCheck2 className="h-5 w-5" aria-hidden />}
+            title="No KYC documents uploaded"
+            description="Upload the front and back of your government ID to complete field agent verification."
+          />
+        </Card>
+      ) : null}
     </div>
   );
 }
