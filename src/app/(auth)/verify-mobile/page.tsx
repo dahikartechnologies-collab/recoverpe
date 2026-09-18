@@ -26,6 +26,7 @@ import {
 } from "@/lib/auth";
 import { setActorUserCookie } from "@/lib/auth-cookies";
 import { resolvePostAuthPath } from "@/lib/post-auth-navigation";
+import { clearWorkspaceCookies } from "@/lib/workspace-context";
 
 export default function VerifyMobilePage() {
   const router = useRouter();
@@ -137,6 +138,7 @@ export default function VerifyMobilePage() {
 
       const syncedUser = await syncUserToSupabase(credential.user);
       setActorUserCookie(syncedUser.id);
+      clearWorkspaceCookies();
       router.push(await resolvePostAuthPath());
     } catch (verifyError) {
       setError(getFirebaseAuthErrorMessage(verifyError));

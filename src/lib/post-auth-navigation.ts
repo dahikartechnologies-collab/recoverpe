@@ -11,6 +11,7 @@ import {
 import { setAppRoleCookie } from "@/lib/auth-cookies";
 import { fetchWorkspaceRole } from "@/lib/kiosk-client";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import { clearWorkspaceCookies } from "@/lib/workspace-context";
 
 export function isAgentContextActive(): boolean {
   return getActiveContextFromDocument() === "agent";
@@ -41,6 +42,8 @@ export async function persistActiveContext(context: ActiveContext): Promise<void
  * hydration, then skips workspace-role when the user is genuinely in agent context.
  */
 export async function resolvePostAuthPath(): Promise<string> {
+  clearWorkspaceCookies();
+
   const { surfaces, active_context } = await fetchIdentitySurfaces();
   const activeContext = reconcileStaleActiveContext(surfaces, active_context);
 

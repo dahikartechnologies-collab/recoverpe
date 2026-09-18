@@ -68,12 +68,12 @@ export async function resolveWorkspaceAuth(
 
   const actorUserId = authResult.userId;
   const cookieHeader = request.headers.get("cookie");
-  const workspaceUserId =
+  let workspaceUserId =
     getCookieValue(cookieHeader, WORKSPACE_USER_COOKIE) ?? actorUserId;
   const workspaceBusinessId =
     options.businessId ?? getRequestedBusinessIdFromRequest(request);
 
-  const isOwner = actorUserId === workspaceUserId;
+  let isOwner = actorUserId === workspaceUserId;
   const supabase = createAdminSupabaseClient();
 
   let role: AppRole = "owner";
@@ -89,16 +89,22 @@ export async function resolveWorkspaceAuth(
       .maybeSingle();
 
     if (membershipError || !membership) {
-      return {
-        error: NextResponse.json(
-          { error: "Forbidden. You do not have access to this workspace." },
-          { status: 403 }
-        ),
-      };
-    }
+      console.warn(
+        "[auth-gateway] Invalid or stale workspace cookie; falling back to actor workspace.",
+        {
+          actorUserId,
+          requestedWorkspaceUserId: workspaceUserId,
+        }
+      );
 
-    role = membership.role as AppRole;
-    customPermissions = parseCustomPermissions(membership.custom_permissions);
+      workspaceUserId = actorUserId;
+      isOwner = true;
+      role = "owner";
+      customPermissions = { ...OWNER_CUSTOM_PERMISSIONS };
+    } else {
+      role = membership.role as AppRole;
+      customPermissions = parseCustomPermissions(membership.custom_permissions);
+    }
   }
 
   if (options.ownerOnly) {

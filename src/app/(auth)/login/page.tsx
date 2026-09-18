@@ -15,6 +15,7 @@ import {
 } from "@/lib/auth";
 import { setActorUserCookie } from "@/lib/auth-cookies";
 import { resolvePostAuthPath } from "@/lib/post-auth-navigation";
+import { clearWorkspaceCookies } from "@/lib/workspace-context";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function LoginPage() {
       }
 
       const syncedUser = await syncUserToSupabase(credential.user);
+      clearWorkspaceCookies();
       setActorUserCookie(syncedUser.id);
       router.push(await resolvePostAuthPath());
     } catch (submitError) {
