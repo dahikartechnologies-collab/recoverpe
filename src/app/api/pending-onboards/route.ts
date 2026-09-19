@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logAndRespondDatabaseError } from "@/lib/api-error-response";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
 import { fetchPendingOnboardsForBusiness } from "@/lib/pending-onboards";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
@@ -31,6 +32,13 @@ export async function GET(request: Request) {
       .maybeSingle();
 
     if (businessError || !business) {
+      if (businessError) {
+        return logAndRespondDatabaseError(
+          "pending-onboards GET business lookup",
+          businessError
+        );
+      }
+
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
 
@@ -45,9 +53,6 @@ export async function GET(request: Request) {
       khata_auto_approve: Boolean(business.khata_auto_approve),
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load onboarding queue.";
-
-    return NextResponse.json({ error: message }, { status: 500 });
+    return logAndRespondDatabaseError("pending-onboards GET", error);
   }
 }

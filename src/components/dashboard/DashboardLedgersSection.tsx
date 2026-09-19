@@ -25,6 +25,7 @@ import { getAuthHeaders } from "@/lib/businesses";
 import { formatCurrency } from "@/lib/gst";
 import { downloadDocumentFromApiRoute } from "@/lib/pdf-download";
 import { initiateVapiOutboundCall } from "@/lib/vapi-client";
+import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
 import { sendWhatsAppReminder } from "@/lib/messages";
 import {
@@ -461,6 +462,12 @@ export function DashboardLedgersSection({
 
       bumpWalletRefresh();
       await refreshDashboard();
+    } catch (callError) {
+      console.error("[DashboardLedgersSection] AI escalation call failed:", callError);
+      setToast({
+        message: VAPI_UNAVAILABLE_TOAST_MESSAGE,
+        variant: "error",
+      });
     } finally {
       setEscalatingCall(false);
     }
@@ -535,11 +542,9 @@ export function DashboardLedgersSection({
       bumpWalletRefresh();
       await refreshDashboard();
     } catch (callError) {
+      console.error("[DashboardLedgersSection] AI voice call failed:", callError);
       setToast({
-        message:
-          callError instanceof Error
-            ? callError.message
-            : "Failed to initiate AI voice call.",
+        message: VAPI_UNAVAILABLE_TOAST_MESSAGE,
         variant: "error",
       });
     } finally {

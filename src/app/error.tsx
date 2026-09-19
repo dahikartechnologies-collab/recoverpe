@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { AppErrorFallback } from "@/components/ui/AppErrorFallback";
 
-export default function AgentError({
+export default function RootError({
   error,
   reset,
 }: {
@@ -11,14 +11,11 @@ export default function AgentError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[agent] Segment error:", error);
+    console.error("[app] Root error boundary:", error);
   }, [error]);
 
   return (
     <AppErrorFallback
-      title="Agent dashboard failed to load"
-      description="Something went wrong while loading this section. Try again or return home."
-      resetLabel="Retry"
       onReset={() => reset()}
       digest={error.digest}
     />

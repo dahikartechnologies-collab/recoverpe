@@ -36,6 +36,7 @@ import {
 } from "@/lib/vendor-client";
 import { sendWhatsAppReminder } from "@/lib/messages";
 import { initiateVapiOutboundCall } from "@/lib/vapi-client";
+import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
 import {
   loadSamadhaanFulfillment,
@@ -290,10 +291,8 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
       showToast("AI voice call initiated.", "success");
       bumpLedgerRefresh();
     } catch (callError) {
-      showToast(
-        callError instanceof Error ? callError.message : "Failed to initiate call.",
-        "error"
-      );
+      console.error("[VendorDetailClient] AI voice call failed:", callError);
+      showToast(VAPI_UNAVAILABLE_TOAST_MESSAGE, "error");
     } finally {
       setCallingLedgerId(null);
     }

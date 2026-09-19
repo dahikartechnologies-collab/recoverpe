@@ -7,6 +7,7 @@ import { PremiumUpgradeLock } from "@/components/billing/PremiumUpgradeLock";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { initiateVapiOutboundCall } from "@/lib/vapi-client";
+import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 import { useActiveBusinessEntitlements } from "@/lib/use-active-business-entitlement";
 
 interface AiVoiceCallButtonProps {
@@ -47,8 +48,13 @@ export function AiVoiceCallButton({
 
       onSuccess?.("AI Agent is dialing the customer.");
     } catch (error) {
+      console.error("[AiVoiceCallButton] VAPI call failed:", error);
+
       const message =
-        error instanceof Error ? error.message : "Failed to initiate AI voice call.";
+        error instanceof Error &&
+        error.message.toLowerCase().includes("premium")
+          ? error.message
+          : VAPI_UNAVAILABLE_TOAST_MESSAGE;
 
       if (message.toLowerCase().includes("premium")) {
         setShowUpgrade(true);

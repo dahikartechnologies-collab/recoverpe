@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  getSafeApiErrorMessage,
+  getSafeApiErrorStatus,
+  logAndRespondDatabaseError,
+} from "@/lib/api-error-response";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { approvePendingOnboard } from "@/lib/pending-onboards";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
@@ -35,12 +40,19 @@ export const POST = withWorkspaceMutation<RouteContext>(
       });
 
       const supabase = createAdminSupabaseClient();
-      const { data: business } = await supabase
+      const { data: business, error: businessError } = await supabase
         .from("businesses")
         .select("business_name")
         .eq("id", result.pending_onboard.business_id)
         .eq("user_id", auth.effectiveUserId)
         .maybeSingle();
+
+      if (businessError) {
+        return logAndRespondDatabaseError(
+          "pending-onboards approve business lookup",
+          businessError
+        );
+      }
 
       const approvedAmount = result.pending_onboard.amount;
 
@@ -63,12 +75,17 @@ export const POST = withWorkspaceMutation<RouteContext>(
         contact_id: result.contact.id,
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to approve customer.";
+      console.error("[pending-onboards approve]", error);
 
-      const status = message.includes("Free plan") ? 402 : 500;
-
-      return NextResponse.json({ error: message }, { status });
+      return NextResponse.json(
+        {
+          error: getSafeApiErrorMessage(
+            error,
+            "Database verification failed. Please try again."
+          ),
+        },
+        { status: getSafeApiErrorStatus(error) }
+      );
     }
   },
   { permission: "manage_team" }
