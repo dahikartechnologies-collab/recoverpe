@@ -3,11 +3,11 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from "@/components/auth/AuthProvider";
-import { MetaPixel } from "@/components/MetaPixel";
+import { MetaPixel } from "@/components/analytics/MetaPixel";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim();
+const GA_MEASUREMENT_ID = "G-9X4LWG7Q94";
 
 export const viewport: Viewport = {
   themeColor: "#0A0A0A",
@@ -42,7 +42,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-recoverpe-white font-sans text-recoverpe-black antialiased">
         <AuthProvider>{children}</AuthProvider>
         <ServiceWorkerRegister />
-        {GA_MEASUREMENT_ID ? <GoogleAnalytics gaId={GA_MEASUREMENT_ID} /> : null}
+        <GoogleAnalytics gaId={GA_MEASUREMENT_ID} />
         <MetaPixel />
         <Analytics />
         <SpeedInsights />

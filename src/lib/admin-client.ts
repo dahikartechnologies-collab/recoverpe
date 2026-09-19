@@ -14,7 +14,7 @@ import {
 
 export async function fetchAdminMetrics(): Promise<AdminMetricsResponse> {
   const headers = await getAuthHeaders();
-  const response = await fetch("/api/admin/metrics", { headers });
+  const response = await fetch("/api/admin/dashboard", { headers });
   const body = (await response.json()) as AdminMetricsResponse & {
     error?: string;
   };
