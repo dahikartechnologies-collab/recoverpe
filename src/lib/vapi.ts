@@ -64,6 +64,8 @@ export interface VapiOutboundCallPayload {
   metadata: {
     ledger_id: string;
     recoverpe_user_id: string;
+    contact_id?: string;
+    business_id?: string;
   };
 }
 
@@ -144,6 +146,30 @@ export function buildSnehaFirstMessage(context: VapiCallContext): string {
   return `Hello ${context.debtor_name}, this is Sneha calling from ${context.business_name}. I'm reaching out about your pending balance of ${context.balance_due_label}. Do you have a moment to discuss payment?`;
 }
 
+export function buildSnehaAssistantOverrides(
+  context: VapiCallContext
+): VapiOutboundCallPayload["assistantOverrides"] {
+  const system_prompt = buildSnehaSystemPrompt(context);
+  const first_message = buildSnehaFirstMessage(context);
+  const modelTools = context.owner_phone_number
+    ? [buildTransferCallTool(context.owner_phone_number)]
+    : undefined;
+
+  return {
+    variableValues: context,
+    firstMessage: first_message,
+    model: {
+      messages: [
+        {
+          role: "system",
+          content: system_prompt,
+        },
+      ],
+      ...(modelTools ? { tools: modelTools } : {}),
+    },
+  };
+}
+
 function buildTransferCallTool(ownerPhoneNumber: string): VapiTransferCallTool {
   return {
     type: "transferCall",
@@ -187,10 +213,7 @@ export function draftVapiCall({
   const system_prompt = buildSnehaSystemPrompt(context);
   const first_message = buildSnehaFirstMessage(context);
   const customer_number = normalizePhoneNumber(ledger.contact.phone_number);
-
-  const modelTools = normalizedOwnerPhone
-    ? [buildTransferCallTool(normalizedOwnerPhone)]
-    : undefined;
+  const assistantOverrides = buildSnehaAssistantOverrides(context);
 
   const vapi_payload: VapiOutboundCallPayload = {
     assistantId,
@@ -199,22 +222,12 @@ export function draftVapiCall({
       number: customer_number,
       name: ledger.contact.name,
     },
-    assistantOverrides: {
-      variableValues: context,
-      firstMessage: first_message,
-      model: {
-        messages: [
-          {
-            role: "system",
-            content: system_prompt,
-          },
-        ],
-        ...(modelTools ? { tools: modelTools } : {}),
-      },
-    },
+    assistantOverrides,
     metadata: {
       ledger_id: ledger.id,
       recoverpe_user_id: userId,
+      contact_id: ledger.contact_id,
+      ...(ledger.business_id ? { business_id: ledger.business_id } : {}),
     },
   };
 
@@ -226,6 +239,14 @@ export function draftVapiCall({
     first_message,
     vapi_payload,
   };
+}
+
+function resolveVapiApiKey(): string {
+  return (
+    process.env.VAPI_PRIVATE_KEY?.trim() ||
+    process.env.VAPI_API_KEY?.trim() ||
+    ""
+  );
 }
 
 export async function initiateVapiOutboundCall(
@@ -257,10 +278,12 @@ export async function initiateVapiOutboundCall(
     };
   }
 
-  const apiKey = process.env.VAPI_API_KEY;
+  const apiKey = resolveVapiApiKey();
 
   if (!apiKey) {
-    throw new Error("VAPI API credentials are not configured for production calls.");
+    throw new Error(
+      "VAPI API credentials are not configured for production calls."
+    );
   }
 
   if (!draft.vapi_payload.assistantId || !draft.vapi_payload.phoneNumberId) {

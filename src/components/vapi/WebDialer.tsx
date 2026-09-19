@@ -2,9 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import Vapi from "@vapi-ai/web";
+import type { AssistantOverrides } from "@vapi-ai/web/dist/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Toast } from "@/components/ui/Toast";
+import { formatCurrency } from "@/lib/gst";
+import { getTodayDateStringInIst } from "@/lib/timezone";
+import {
+  buildSnehaAssistantOverrides,
+  type VapiCallContext,
+} from "@/lib/vapi";
 import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 
 type DialerState = "idle" | "connecting" | "connected" | "speaking" | "error";
@@ -17,6 +24,18 @@ const STATE_LABEL: Record<DialerState, string> = {
   error: "Error",
 };
 
+const WEB_DIALER_TEST_CONTEXT: VapiCallContext = {
+  business_name: "RecoverPe Test",
+  debtor_name: "Founder",
+  balance_due: 5000,
+  balance_due_label: formatCurrency(5000),
+  days_overdue: 14,
+  due_date: getTodayDateStringInIst(),
+  invoice_number: "TEST-001",
+  ledger_id: "test-ledger",
+  owner_phone_number: null,
+};
+
 export function WebDialer() {
   const vapiRef = useRef<Vapi | null>(null);
   const [state, setState] = useState<DialerState>("idle");
@@ -26,6 +45,7 @@ export function WebDialer() {
   const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY?.trim() ?? "";
   const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim() ?? "";
   const isConfigured = Boolean(publicKey && assistantId);
+  const snehaOverrides = buildSnehaAssistantOverrides(WEB_DIALER_TEST_CONTEXT);
 
   function showUnavailableToast() {
     setToastMessage(VAPI_UNAVAILABLE_TOAST_MESSAGE);
@@ -87,14 +107,10 @@ export function WebDialer() {
     }
 
     try {
-      await vapiRef.current.start(assistantId, {
-        variableValues: {
-          businessName: "RecoverPe Test",
-          debtorName: "Founder",
-          balanceDue: "5000",
-          paymentLink: "https://www.recoverpe.com/pay/test",
-        },
-      });
+      await vapiRef.current.start(
+        assistantId,
+        snehaOverrides as unknown as AssistantOverrides
+      );
     } catch (startError) {
       console.error("[WebDialer] Failed to start WebRTC call:", startError);
       setState("error");
@@ -123,9 +139,8 @@ export function WebDialer() {
             Zero-Cost AI Voice Simulator (WebRTC)
           </p>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Bypass PSTN routing and talk to your VAPI dashboard assistant directly
-            in the browser. Uses Deepgram + ElevenLabs Hindi voice with test
-            recovery variables.
+            Bypass PSTN routing and talk to Sneha directly in the browser using
+            the same system prompt and first message as live recovery calls.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -141,7 +156,9 @@ export function WebDialer() {
               Status: {STATE_LABEL[state]}
             </p>
             <p className="mt-1 text-recoverpe-grey-medium">
-              Test context — RecoverPe Test · Founder · ₹5,000 pending
+              Sneha test context — {WEB_DIALER_TEST_CONTEXT.business_name} ·{" "}
+              {WEB_DIALER_TEST_CONTEXT.debtor_name} ·{" "}
+              {WEB_DIALER_TEST_CONTEXT.balance_due_label} pending
             </p>
           </div>
 

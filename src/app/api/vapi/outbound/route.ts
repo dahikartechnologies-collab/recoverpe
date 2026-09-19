@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getPayPageUrl } from "@/lib/app-url";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   fetchBusinessUsageMeteringRow,
@@ -12,11 +11,11 @@ import { enforceVapiCallRateLimit } from "@/lib/rate-limit";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import {
-  createVapiOutboundCall,
+  draftVapiCall,
+  initiateVapiOutboundCall,
   TraiCurfewError,
-  VapiClientError,
-} from "@/lib/vapi/client";
-import { CommunicationLog } from "@/types";
+} from "@/lib/vapi";
+import { Business, CommunicationLog } from "@/types";
 
 interface VapiOutboundPayload {
   ledgerId?: string;
@@ -70,20 +69,32 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       );
     }
 
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select(
-        "id, business_name, subscription_tier, subscription_status, addons, quota_vapi_minutes, usage_vapi_minutes"
-      )
-      .eq("id", ledger.business_id)
-      .eq("user_id", auth.effectiveUserId)
-      .maybeSingle();
+    const [{ data: business, error: businessError }, { data: userRow, error: userError }] =
+      await Promise.all([
+        supabase
+          .from("businesses")
+          .select(
+            "id, business_name, subscription_tier, subscription_status, addons, quota_vapi_minutes, usage_vapi_minutes"
+          )
+          .eq("id", ledger.business_id)
+          .eq("user_id", auth.effectiveUserId)
+          .maybeSingle(),
+        supabase
+          .from("users")
+          .select("id, phone_number")
+          .eq("id", auth.effectiveUserId)
+          .single(),
+      ]);
 
     if (businessError || !business) {
       return NextResponse.json(
         { error: businessError?.message || "Business profile not found." },
         { status: 404 }
       );
+    }
+
+    if (userError || !userRow) {
+      return NextResponse.json({ error: "User profile not found." }, { status: 404 });
     }
 
     const businessEntitlements = {
@@ -122,20 +133,14 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       );
     }
 
-    const paymentLink = getPayPageUrl(ledger.id);
-
-    const callResult = await createVapiOutboundCall({
-      ledgerId: ledger.id,
-      contactId: ledger.contact_id,
-      businessId: ledger.business_id,
+    const draft = draftVapiCall({
+      ledger,
+      business: business as Pick<Business, "business_name">,
       userId: auth.effectiveUserId,
-      businessName:
-        (business.business_name as string | null)?.trim() || "RecoverPe Merchant",
-      debtorName: ledger.contact.name,
-      debtorPhone: ledger.contact.phone_number,
-      balanceDue: ledger.balance_due,
-      paymentLink,
+      ownerPhoneNumber: userRow.phone_number ?? null,
     });
+
+    const callResult = await initiateVapiOutboundCall(draft);
 
     const { data: communicationLog, error: logError } = await supabase
       .from("communication_logs")
@@ -150,7 +155,7 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
         status: "sent",
         summary: "AI voice recovery call initiated",
         cost_deducted: 0,
-        vapi_call_id: callResult.vapiCallId,
+        vapi_call_id: callResult.vapi_call_id ?? null,
         executed_at: new Date().toISOString(),
       })
       .select(
@@ -169,22 +174,18 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       success: true,
       simulated: callResult.simulated,
       message: callResult.message,
-      vapi_call_id: callResult.vapiCallId,
+      vapi_call_id: callResult.vapi_call_id ?? null,
       communication_log: communicationLog as CommunicationLog,
-      variable_values: {
-        businessName: business.business_name,
-        debtorName: ledger.contact.name,
-        balanceDue: ledger.balance_due,
-        paymentLink,
+      draft: {
+        customer_number: draft.customer_number,
+        context: draft.context,
+        system_prompt: draft.system_prompt,
+        first_message: draft.first_message,
       },
     });
   } catch (error) {
     if (error instanceof TraiCurfewError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof VapiClientError) {
-      return NextResponse.json({ error: error.message }, { status: 502 });
     }
 
     const message =
