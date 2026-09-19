@@ -7,6 +7,7 @@ import { AgentLeadsTab } from "@/components/agent/AgentLeadsTab";
 import { AgentMarketingToolkit } from "@/components/agent/AgentMarketingToolkit";
 import { AgentNav } from "@/components/agent/AgentNav";
 import { AgentPerformanceTab } from "@/components/agent/AgentPerformanceTab";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -361,19 +362,24 @@ export function AgentDashboardView() {
         className="mx-auto max-w-5xl space-y-6 px-6 py-8"
         data-agent-shell="tier-1"
       >
-        <PageHeader
-          eyebrow="Field agent"
-          title={agent.display_name}
-          description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
-          actions={
-            <>
-              <Button variant="ghost" size="sm" onClick={() => void switchToMerchant()}>
-                Switch to Merchant Dashboard
-              </Button>
-              <DashboardLogoutButton variant="header" />
-            </>
-          }
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <PageHeader
+            eyebrow="Field agent"
+            title={agent.display_name}
+            description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
+            actions={
+              <>
+                <Button variant="ghost" size="sm" onClick={() => void switchToMerchant()}>
+                  Switch to Merchant Dashboard
+                </Button>
+                <DashboardLogoutButton variant="header" />
+              </>
+            }
+          />
+          <Badge tone="success" className="shrink-0 text-xs sm:text-[11px]">
+            TIER-1 V2.0 ACTIVE
+          </Badge>
+        </div>
 
         {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BarChart3, Briefcase, FileCheck2, Menu, Users, X } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { type AgentTab } from "@/lib/agent/tab-state";
 import { useAgentTab } from "@/hooks/use-agent-tab";
@@ -47,6 +48,11 @@ export function AgentNav() {
 
   return (
     <nav className="border-b border-recoverpe-line bg-recoverpe-white">
+      <div className="border-b border-recoverpe-success-line bg-recoverpe-success-fill px-4 py-2 sm:px-6">
+        <Badge tone="success" className="text-xs sm:text-[11px]">
+          TIER-1 V2.0 ACTIVE
+        </Badge>
+      </div>
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
         <div className="hidden flex-1 gap-1 overflow-x-auto md:flex">
           {AGENT_LINKS.map((link) => {

@@ -127,6 +127,7 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  generateEtags: false,
   serverExternalPackages: ["jwks-rsa", "jose", "firebase-admin"],
   experimental: {
     // Next 14 gates src/instrumentation.ts behind this flag; it is how the
