@@ -1,6 +1,8 @@
 export interface VapiWebRtcConfig {
   publicKey: string;
   assistantId: string;
+  modelProvider: string;
+  modelName: string;
   isConfigured: boolean;
 }
 
@@ -21,9 +23,14 @@ export function resolveVapiWebRtcConfig(): VapiWebRtcConfig {
     process.env.VAPI_ASSISTANT_ID?.trim() ||
     "";
 
+  const modelProvider = process.env.VAPI_MODEL_PROVIDER?.trim() || "openai";
+  const modelName = process.env.VAPI_MODEL_NAME?.trim() || "gpt-4o-mini";
+
   return {
     publicKey,
     assistantId,
+    modelProvider,
+    modelName,
     isConfigured: Boolean(publicKey && assistantId),
   };
 }

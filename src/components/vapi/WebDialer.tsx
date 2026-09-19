@@ -12,15 +12,18 @@ import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import {
   buildSnehaAssistantOverrides,
+  type SnehaModelConfig,
   type VapiCallContext,
 } from "@/lib/vapi";
-import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
+import { formatVapiClientError } from "@/lib/vapi-messages";
 
 type DialerState = "idle" | "connecting" | "connected" | "speaking" | "error";
 
 interface VapiWebRtcConfigResponse {
   publicKey?: string;
   assistantId?: string;
+  modelProvider?: string;
+  modelName?: string;
   isConfigured?: boolean;
   error?: string;
 }
@@ -53,13 +56,18 @@ export function WebDialer() {
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [publicKey, setPublicKey] = useState("");
   const [assistantId, setAssistantId] = useState("");
+  const [modelConfig, setModelConfig] = useState<SnehaModelConfig>({
+    provider: "openai",
+    model: "gpt-4o-mini",
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const isConfigured = Boolean(publicKey && assistantId);
-  const snehaOverrides = buildSnehaAssistantOverrides(WEB_DIALER_TEST_CONTEXT);
 
-  function showUnavailableToast() {
-    setToastMessage(VAPI_UNAVAILABLE_TOAST_MESSAGE);
+  function showError(message: string) {
+    setError(message);
+    setToastMessage(message);
+    setState("error");
   }
 
   useEffect(() => {
@@ -95,6 +103,10 @@ export function WebDialer() {
 
         setPublicKey(payload.publicKey);
         setAssistantId(payload.assistantId);
+        setModelConfig({
+          provider: payload.modelProvider?.trim() || "openai",
+          model: payload.modelName?.trim() || "gpt-4o-mini",
+        });
       } catch (loadError) {
         if (cancelled) {
           return;
@@ -138,11 +150,13 @@ export function WebDialer() {
       client.on("speech-start", () => setState("speaking"));
       client.on("speech-end", () => setState("connected"));
       client.on("call-end", () => setState("idle"));
+      client.on("call-start-failed", (event) => {
+        console.error("[WebDialer] VAPI call-start-failed:", event);
+        showError(formatVapiClientError(event));
+      });
       client.on("error", (vapiError) => {
         console.error("[WebDialer] VAPI runtime error:", vapiError);
-        setState("error");
-        setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
-        showUnavailableToast();
+        showError(formatVapiClientError(vapiError));
       });
 
       return () => {
@@ -151,16 +165,13 @@ export function WebDialer() {
       };
     } catch (initError) {
       console.error("[WebDialer] VAPI initialization failed:", initError);
-      setState("error");
-      setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
-      showUnavailableToast();
+      showError(formatVapiClientError(initError));
     }
   }, [publicKey]);
 
   async function startCall() {
     if (!vapiRef.current || !assistantId) {
-      setState("error");
-      setError(
+      showError(
         configError ||
           "WebRTC dialer is not configured. Set VAPI_PUBLIC_KEY and VAPI_ASSISTANT_ID in Vercel."
       );
@@ -174,12 +185,16 @@ export function WebDialer() {
       await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (permissionError) {
       console.error("[WebDialer] Microphone permission denied:", permissionError);
-      setState("error");
-      setError(
+      showError(
         "Microphone access was blocked. Allow microphone for this site in your browser settings, then retry."
       );
       return;
     }
+
+    const snehaOverrides = buildSnehaAssistantOverrides(
+      WEB_DIALER_TEST_CONTEXT,
+      modelConfig
+    );
 
     try {
       await vapiRef.current.start(
@@ -188,9 +203,7 @@ export function WebDialer() {
       );
     } catch (startError) {
       console.error("[WebDialer] Failed to start WebRTC call:", startError);
-      setState("error");
-      setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
-      showUnavailableToast();
+      showError(formatVapiClientError(startError));
     }
   }
 
@@ -229,6 +242,12 @@ export function WebDialer() {
             <p className="text-sm text-recoverpe-error">
               {configError ||
                 "Set VAPI_PUBLIC_KEY (or NEXT_PUBLIC_VAPI_PUBLIC_KEY) and VAPI_ASSISTANT_ID (or NEXT_PUBLIC_VAPI_ASSISTANT_ID) in Vercel."}
+            </p>
+          ) : null}
+
+          {isConfigured && !isConfigLoading ? (
+            <p className="text-xs text-recoverpe-muted">
+              LLM override: {modelConfig.provider} / {modelConfig.model}
             </p>
           ) : null}
 

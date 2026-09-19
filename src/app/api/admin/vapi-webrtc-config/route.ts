@@ -30,6 +30,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       publicKey: config.publicKey,
       assistantId: config.assistantId,
+      modelProvider: config.modelProvider,
+      modelName: config.modelName,
       isConfigured: true,
     });
   } catch (error) {

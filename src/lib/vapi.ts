@@ -43,6 +43,21 @@ export interface VapiTransferCallTool {
   }>;
 }
 
+export interface SnehaModelConfig {
+  provider: string;
+  model: string;
+}
+
+export interface VapiSnehaModelOverride {
+  provider: string;
+  model: string;
+  messages: Array<{
+    role: "system";
+    content: string;
+  }>;
+  tools?: VapiTransferCallTool[];
+}
+
 export interface VapiOutboundCallPayload {
   assistantId: string;
   phoneNumberId: string;
@@ -53,13 +68,7 @@ export interface VapiOutboundCallPayload {
   assistantOverrides: {
     variableValues: VapiCallContext;
     firstMessage: string;
-    model: {
-      messages: Array<{
-        role: "system";
-        content: string;
-      }>;
-      tools?: VapiTransferCallTool[];
-    };
+    model: VapiSnehaModelOverride;
   };
   metadata: {
     ledger_id: string;
@@ -146,8 +155,17 @@ export function buildSnehaFirstMessage(context: VapiCallContext): string {
   return `Hello ${context.debtor_name}, this is Sneha calling from ${context.business_name}. I'm reaching out about your pending balance of ${context.balance_due_label}. Do you have a moment to discuss payment?`;
 }
 
+/** Must match the LLM provider configured on the VAPI dashboard assistant. */
+export function resolveSnehaModelConfig(): SnehaModelConfig {
+  return {
+    provider: process.env.VAPI_MODEL_PROVIDER?.trim() || "openai",
+    model: process.env.VAPI_MODEL_NAME?.trim() || "gpt-4o-mini",
+  };
+}
+
 export function buildSnehaAssistantOverrides(
-  context: VapiCallContext
+  context: VapiCallContext,
+  modelConfig: SnehaModelConfig = resolveSnehaModelConfig()
 ): VapiOutboundCallPayload["assistantOverrides"] {
   const system_prompt = buildSnehaSystemPrompt(context);
   const first_message = buildSnehaFirstMessage(context);
@@ -159,6 +177,8 @@ export function buildSnehaAssistantOverrides(
     variableValues: context,
     firstMessage: first_message,
     model: {
+      provider: modelConfig.provider,
+      model: modelConfig.model,
       messages: [
         {
           role: "system",
