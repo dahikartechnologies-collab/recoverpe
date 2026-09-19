@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
-import { trackSignUp } from "@/lib/analytics-events";
+import { trackMetaEvent, trackSignUp } from "@/lib/analytics-events";
 import {
   getFirebaseAuthErrorMessage,
   registerWithEmail,
@@ -48,6 +48,7 @@ export default function RegisterPage() {
     try {
       await registerWithEmail(email.trim(), password);
       trackSignUp("email");
+      trackMetaEvent("CompleteRegistration");
       router.push("/verify-mobile");
     } catch (submitError) {
       setError(getFirebaseAuthErrorMessage(submitError));

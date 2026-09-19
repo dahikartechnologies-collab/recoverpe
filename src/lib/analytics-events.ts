@@ -29,22 +29,26 @@ function gtagEvent(name: string, params: Record<string, unknown> = {}): void {
   }
 }
 
-function pixelEvent(name: string, params: Record<string, unknown> = {}): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const trackMetaEvent = (eventName: string, params?: Record<string, any>) => {
   if (typeof window === "undefined" || typeof window.fbq !== "function") {
     return;
   }
 
   try {
-    window.fbq("track", name, params);
+    window.fbq("track", eventName, params);
   } catch {
     // Analytics must never break a user flow.
   }
+};
+
+function pixelEvent(name: string, params: Record<string, unknown> = {}): void {
+  trackMetaEvent(name, params);
 }
 
 /** Account created and verified. */
 export function trackSignUp(method: "email" | "mobile"): void {
   gtagEvent("sign_up", { method });
-  pixelEvent("CompleteRegistration", { status: method });
 }
 
 /** First real intent signal: the user put a receivable into the system. */

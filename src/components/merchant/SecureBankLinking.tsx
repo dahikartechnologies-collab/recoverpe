@@ -12,6 +12,7 @@ import {
   fulfillRazorpayOrderAfterCheckout,
 } from "@/lib/razorpay-client";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import { trackMetaEvent } from "@/lib/analytics-events";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 interface SecureBankLinkingProps {
@@ -51,6 +52,7 @@ export function SecureBankLinking({ onVerified }: SecureBankLinkingProps) {
       if (payload.simulated) {
         await devFulfillRazorpayOrder({ order_id: payload.order.id });
         await fulfillRazorpayOrderAfterCheckout(payload.order.id);
+        trackMetaEvent("AddPaymentInfo", { currency: "INR", value: 5.0 });
         setMessage("Bank account verified and locked for settlements.");
         onVerified?.();
         return;
@@ -83,6 +85,7 @@ export function SecureBankLinking({ onVerified }: SecureBankLinkingProps) {
             handler: async () => {
               try {
                 await fulfillRazorpayOrderAfterCheckout(payload.order.id);
+                trackMetaEvent("AddPaymentInfo", { currency: "INR", value: 5.0 });
                 setMessage(
                   "Payment received. Your settlement account is verified and locked."
                 );

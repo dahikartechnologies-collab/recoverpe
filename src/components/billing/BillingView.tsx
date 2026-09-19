@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
+import { trackMetaEvent } from "@/lib/analytics-events";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
   FREE_PLAN_LEDGER_LIMIT,
   getPremiumAmountLabel,
+  getPremiumOrderAmountPaise,
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
@@ -26,6 +28,26 @@ interface BillingViewProps {
 interface ToastState {
   message: string;
   variant: "success" | "error";
+}
+
+function getSubscriptionMetaParams(
+  purchaseType: SubscriptionPurchaseType,
+  eligibleForDiscount: boolean
+) {
+  const product = PURCHASE_PRODUCTS[purchaseType];
+  const amountPaise =
+    purchaseType === "subscription_premium"
+      ? getPremiumOrderAmountPaise(eligibleForDiscount)
+      : product.amountPaise;
+  const value = amountPaise / 100;
+  const predicted_ltv =
+    product.planInterval === "annual" ? value : value * 12;
+
+  return {
+    currency: "INR" as const,
+    value,
+    predicted_ltv,
+  };
 }
 
 export function BillingView({ user }: BillingViewProps) {
@@ -56,6 +78,10 @@ export function BillingView({ user }: BillingViewProps) {
           contact: user.phone_number,
         },
         onSuccess: () => {
+          trackMetaEvent(
+            "Subscribe",
+            getSubscriptionMetaParams(purchaseType, user.eligible_for_discount)
+          );
           bumpWalletRefresh();
           bumpUserRefresh();
           setUserBillingState("premium", user.ledger_count);
