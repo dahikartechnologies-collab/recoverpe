@@ -473,7 +473,8 @@ export type AppRole =
   | "admin"
   | "recovery_agent"
   | "accountant"
-  | "field_staff";
+  | "field_staff"
+  | "viewer";
 
 export interface CustomPermissions {
   manage_team: boolean;

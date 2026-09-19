@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireActiveAgent } from "@/lib/agent/auth";
 import { cancelAgentReferral } from "@/lib/agent/referrals";
+import { writeAuditLog } from "@/lib/audit-logs";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,14 @@ export async function POST(
       id,
       body.reason
     );
+
+    await writeAuditLog(supabase, {
+      actorId: agent.userId,
+      action: "agent.referral.cancelled",
+      resourceType: "agent_referral",
+      resourceId: id,
+      metadata: { reason: body.reason.trim() },
+    });
 
     return NextResponse.json({ referral });
   } catch (error) {

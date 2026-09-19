@@ -9,6 +9,7 @@ const ADMIN_LINKS = [
   { href: "/admin/users", label: "User Management" },
   { href: "/admin/agents", label: "Field Agents" },
   { href: "/admin/transactions", label: "Transactions & Support" },
+  { href: "/admin/audit-logs", label: "Audit Logs" },
 ];
 
 export function AdminNav() {

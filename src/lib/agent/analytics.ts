@@ -118,6 +118,36 @@ function synthesizePayoutUtr(payoutId: string): string {
   return `NEFT${payoutId.replace(/-/g, "").slice(0, 14).toUpperCase()}`;
 }
 
+export function createFallbackAgentAnalytics(
+  discountCapBps: number,
+  walletLiabilityInr: number
+): AgentAnalytics {
+  const tier = resolveAgentTier(0);
+  const discountStats = summarizeAgentDiscountStats({
+    referrals: [],
+    discountCapBps,
+  });
+
+  return {
+    leads_generated: 0,
+    sales_closed: 0,
+    total_earnings_inr: 0,
+    pending_remittance_inr: walletLiabilityInr,
+    agent_tier: tier.id,
+    financials: {
+      total_commission_earned_inr: 0,
+      available_balance_inr: 0,
+      pending_remittance_inr: walletLiabilityInr,
+      available_to_withdraw_inr: 0,
+      in_clearing_inr: 0,
+      lifetime_earned_inr: 0,
+      commission_tier_label: `${tier.label} ${tier.commissionRateLabel} · ₹${AGENT_ONBOARD_PAYOUT_INR} onboard · ₹${AGENT_TRAIL_PAYOUT_INR}/mo trail`,
+    },
+    discount_stats: discountStats,
+    payout_history: [],
+  };
+}
+
 export async function computeAgentAnalytics(
   supabase: SupabaseClient,
   agentId: string,
@@ -145,7 +175,9 @@ export async function computeAgentAnalytics(
       .eq("agent_id", agentId),
     supabase
       .from("agent_payouts")
-      .select("id, amount_inr, kind, status, created_at, period_ym")
+      .select(
+        "id, amount_inr, kind, status, created_at, period_ym, utr_number, settled_at, razorpay_payout_id"
+      )
       .eq("agent_id", agentId)
       .in("status", [...EARNINGS_STATUSES, "paid"])
       .order("created_at", { ascending: false }),
@@ -224,8 +256,12 @@ export async function computeAgentAnalytics(
       status: row.status as string,
       created_at: row.created_at as string,
       period_ym: (row.period_ym as string | null) ?? null,
-      utr_number: synthesizePayoutUtr(row.id as string),
-      settled_at: row.created_at as string,
+      utr_number:
+        (row.utr_number as string | null) ??
+        synthesizePayoutUtr(row.id as string),
+      settled_at:
+        (row.settled_at as string | null) ??
+        (row.created_at as string),
     })),
   };
 }

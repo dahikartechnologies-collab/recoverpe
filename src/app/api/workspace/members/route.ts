@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
+import { writeAuditLog } from "@/lib/audit-logs";
 import { withWorkspaceAuth } from "@/lib/auth-gateway";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { workspaceHasTeamManagementEntitlement } from "@/lib/workspace-team-entitlement";
@@ -145,7 +146,7 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       return NextResponse.json(
         {
           error:
-            "Role must be admin, recovery_agent, accountant, or field_staff.",
+            "Role must be admin, recovery_agent, accountant, field_staff, or viewer.",
         },
         { status: 400 }
       );
@@ -236,6 +237,14 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
         custom_permissions: parseCustomPermissions(updated.custom_permissions),
       };
 
+      await writeAuditLog(supabase, {
+        actorId: auth.actorUserId,
+        action: "workspace.member.invited",
+        resourceType: "workspace_member",
+        resourceId: updated.id as string,
+        metadata: { email, role, invitee_name: inviteeName },
+      });
+
       return NextResponse.json(
         {
           member,
@@ -278,6 +287,14 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       invitee_name: data.invitee_name as string,
       custom_permissions: parseCustomPermissions(data.custom_permissions),
     };
+
+    await writeAuditLog(supabase, {
+      actorId: auth.actorUserId,
+      action: "workspace.member.invited",
+      resourceType: "workspace_member",
+      resourceId: data.id as string,
+      metadata: { email, role, invitee_name: inviteeName },
+    });
 
     return NextResponse.json(
       {

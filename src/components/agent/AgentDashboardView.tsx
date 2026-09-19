@@ -9,10 +9,10 @@ import { AgentPerformanceTab } from "@/components/agent/AgentPerformanceTab";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Card, CardContent } from "@/components/ui/Card";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
 import {
   createAgentReferral,
+  createFallbackAgentMeResponse,
   fetchAgentMe,
   patchAgentBankProfile,
   patchAgentReferral,
@@ -33,6 +33,7 @@ export function AgentDashboardView() {
   const { activeTab, navigateToTab } = useAgentTab();
   const referralCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [payload, setPayload] = useState<AgentMeResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [duplicateOwnedMessage, setDuplicateOwnedMessage] = useState("");
   const [duplicateGlobalMessage, setDuplicateGlobalMessage] = useState("");
@@ -68,19 +69,24 @@ export function AgentDashboardView() {
   );
 
   async function load() {
-    const next = await fetchAgentMe();
-    setPayload(next);
-    setBankAccountName(next.agent.bank_account_name ?? "");
-    setBankAccountNumber(next.agent.bank_account_number ?? "");
-    setBankIfsc(next.agent.bank_ifsc ?? "");
-  }
-
-  useEffect(() => {
-    void load().catch((loadError: unknown) => {
+    try {
+      const next = await fetchAgentMe();
+      setPayload(next);
+      setBankAccountName(next.agent.bank_account_name ?? "");
+      setBankAccountNumber(next.agent.bank_account_number ?? "");
+      setBankIfsc(next.agent.bank_ifsc ?? "");
+    } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : "Failed to load agent desk."
       );
-    });
+      setPayload((current) => current ?? createFallbackAgentMeResponse());
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
   }, []);
 
   useEffect(() => {
@@ -310,56 +316,32 @@ export function AgentDashboardView() {
     router.push("/dashboard");
   }
 
-  if (!payload) {
-    return (
-      <div className="space-y-6">
-        {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+  const resolvedPayload = payload ?? createFallbackAgentMeResponse();
+  const { agent } = resolvedPayload;
+
+  return (
+    <div className="space-y-6">
+      {isLoading && !payload ? (
         <div className="space-y-2">
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-8 w-56" />
           <Skeleton className="h-4 w-72 max-w-full" />
         </div>
-        <Card>
-          <CardContent className="grid gap-6 sm:grid-cols-2">
-            <div className="space-y-3">
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-8 w-36" />
-            </div>
-            <div className="space-y-3">
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-8 w-36" />
-            </div>
-            <div className="space-y-3">
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-8 w-36" />
-            </div>
-            <div className="space-y-3">
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-8 w-40" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const { agent } = payload;
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Field agent"
-        title={agent.display_name}
-        description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
-        actions={
-          <>
-            <Button variant="ghost" size="sm" onClick={() => void switchToMerchant()}>
-              Switch to Merchant Dashboard
-            </Button>
-            <DashboardLogoutButton variant="header" />
-          </>
-        }
-      />
+      ) : (
+        <PageHeader
+          eyebrow="Field agent"
+          title={agent.display_name}
+          description={`Code ${agent.referral_code} · cap ${agent.discount_cap_bps / 100}% · status ${agent.status}${agent.referrals_frozen ? " · referrals frozen" : ""}`}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => void switchToMerchant()}>
+                Switch to Merchant Dashboard
+              </Button>
+              <DashboardLogoutButton variant="header" />
+            </>
+          }
+        />
+      )}
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
@@ -368,11 +350,13 @@ export function AgentDashboardView() {
         displayName={agent.display_name}
       />
 
-      {activeTab === "performance" ? <AgentPerformanceTab payload={payload} /> : null}
+      {activeTab === "performance" ? (
+        <AgentPerformanceTab payload={resolvedPayload} onWithdrawComplete={() => void load()} />
+      ) : null}
 
       {activeTab === "leads" ? (
         <AgentLeadsTab
-          payload={payload}
+          payload={resolvedPayload}
           phone={phone}
           shop={shop}
           discountBps={discountBps}
@@ -408,7 +392,8 @@ export function AgentDashboardView() {
 
       {activeTab === "kyc" ? (
         <AgentKycTab
-          payload={payload}
+          payload={resolvedPayload}
+          onVerificationComplete={() => void load()}
           bankAccountName={bankAccountName}
           bankAccountNumber={bankAccountNumber}
           bankIfsc={bankIfsc}

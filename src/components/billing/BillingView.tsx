@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast } from "@/components/ui/Toast";
+import { getAuthHeaders } from "@/lib/auth-headers";
+import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
   FREE_PLAN_LEDGER_LIMIT,
@@ -35,6 +37,7 @@ export function BillingView({ user }: BillingViewProps) {
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
   const [processingPurchase, setProcessingPurchase] = useState<string | null>(null);
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   async function handleSubscriptionPurchase(
@@ -115,7 +118,40 @@ export function BillingView({ user }: BillingViewProps) {
     }
   }
 
+  async function handleCancelSubscription() {
+    setIsManagingSubscription(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/razorpay/subscription/cancel", {
+        method: "POST",
+        headers,
+      });
+      const payload = await parseApiJsonResponse<{ message?: string }>(response);
+
+      bumpUserRefresh();
+      setToast({
+        message: payload.message ?? "Subscription cancelled.",
+        variant: "success",
+      });
+    } catch (error) {
+      setToast({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to cancel subscription.",
+        variant: "error",
+      });
+    } finally {
+      setIsManagingSubscription(false);
+    }
+  }
+
   const activeTier = activeBusiness?.subscription_tier ?? "free";
+  const hasActivePaidSubscription =
+    (activeTier === "business" || activeTier === "premium") &&
+    activeBusiness?.subscription_status === "active";
+  const isStarterOrFree = activeTier === "free" || activeTier === "starter";
 
   const tierCards: Array<{
     key: string;
@@ -193,6 +229,31 @@ export function BillingView({ user }: BillingViewProps) {
         description="Choose a RecoverPe plan for your business workspace and recharge AI voice credits."
       />
 
+      {hasActivePaidSubscription ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-recoverpe-black">
+                AutoPay subscription active
+              </p>
+              <p className="mt-1 text-sm text-recoverpe-muted">
+                {activeBusiness?.business_name ?? "Workspace"} is on the{" "}
+                {activeTier.charAt(0).toUpperCase() + activeTier.slice(1)} plan.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={isManagingSubscription}
+              onClick={() => void handleCancelSubscription()}
+            >
+              {isManagingSubscription ? "Cancelling…" : "Manage Subscription / Cancel"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {tierCards.map((tier) => {
           const isCurrent = activeTier === tier.key;
@@ -249,17 +310,31 @@ export function BillingView({ user }: BillingViewProps) {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        void handleSubscriptionPurchase(tier.monthly!)
-                      }
-                      disabled={processingPurchase === tier.monthly}
-                    >
-                      {processingPurchase === tier.monthly
-                        ? "Processing..."
-                        : "Subscribe Monthly"}
-                    </Button>
+                    {isStarterOrFree && !tier.isFree ? (
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          void handleSubscriptionPurchase(tier.monthly!)
+                        }
+                        disabled={processingPurchase === tier.monthly}
+                      >
+                        {processingPurchase === tier.monthly
+                          ? "Processing…"
+                          : "Subscribe via AutoPay"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          void handleSubscriptionPurchase(tier.monthly!)
+                        }
+                        disabled={processingPurchase === tier.monthly}
+                      >
+                        {processingPurchase === tier.monthly
+                          ? "Processing…"
+                          : "Subscribe Monthly"}
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="secondary"
@@ -267,7 +342,7 @@ export function BillingView({ user }: BillingViewProps) {
                       disabled={processingPurchase === tier.annual}
                     >
                       {processingPurchase === tier.annual
-                        ? "Processing..."
+                        ? "Processing…"
                         : "Subscribe Annually"}
                     </Button>
                   </div>
@@ -310,7 +385,7 @@ export function BillingView({ user }: BillingViewProps) {
                 disabled={processingPurchase === "vapi_recharge_100"}
               >
                 {processingPurchase === "vapi_recharge_100"
-                  ? "Processing..."
+                  ? "Processing…"
                   : "Recharge"}
               </Button>
             </CardContent>

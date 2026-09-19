@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { computeAgentAnalytics } from "@/lib/agent/analytics";
+import { computeAgentAnalytics, createFallbackAgentAnalytics } from "@/lib/agent/analytics";
 import {
   countOpenCashTickets,
   isAgentReferralFrozen,
@@ -24,41 +24,48 @@ export async function GET(request: Request) {
     openCashTickets,
   });
 
-  const [{ data: referrals, error }, { data: profile, error: profileError }, analytics] =
-    await Promise.all([
-      supabase
-        .from("agent_referrals")
-        .select(
-          "id, merchant_phone, business_name, discount_bps, status, activated_at, created_at"
-        )
-        .eq("agent_id", agent.agentId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("agents")
-        .select(
-          "bank_account_name, bank_account_number, bank_ifsc, kyc_document_url"
-        )
-        .eq("id", agent.agentId)
-        .single(),
-      computeAgentAnalytics(
-        supabase,
-        agent.agentId,
-        agent.walletLiabilityInr,
-        agent.discountCapBps
-      ),
-    ]);
+  const [
+    { data: referrals, error: referralsError },
+    { data: profile, error: profileError },
+  ] = await Promise.all([
+    supabase
+      .from("agent_referrals")
+      .select(
+        "id, merchant_phone, business_name, discount_bps, status, activated_at, created_at"
+      )
+      .eq("agent_id", agent.agentId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("agents")
+      .select(
+        "bank_account_name, bank_account_number, bank_ifsc, kyc_document_url, pan_number, pan_verified_at, bank_verified_at, kyc_verified_at"
+      )
+      .eq("id", agent.agentId)
+      .single(),
+  ]);
 
-  if (error) {
-    return NextResponse.json(
-      { error: error.message || "Failed to load referrals." },
-      { status: 500 }
-    );
+  if (referralsError) {
+    console.error("[agent/me] referrals fallback", referralsError);
   }
 
   if (profileError) {
-    return NextResponse.json(
-      { error: profileError.message || "Failed to load agent profile." },
-      { status: 500 }
+    console.error("[agent/me] profile fallback", profileError);
+  }
+
+  let analytics;
+
+  try {
+    analytics = await computeAgentAnalytics(
+      supabase,
+      agent.agentId,
+      agent.walletLiabilityInr,
+      agent.discountCapBps
+    );
+  } catch (analyticsError) {
+    console.error("[agent/me] analytics fallback", analyticsError);
+    analytics = createFallbackAgentAnalytics(
+      agent.discountCapBps,
+      agent.walletLiabilityInr
     );
   }
 
@@ -79,6 +86,10 @@ export async function GET(request: Request) {
       bank_account_name: profile?.bank_account_name ?? null,
       bank_account_number: profile?.bank_account_number ?? null,
       bank_ifsc: profile?.bank_ifsc ?? null,
+      pan_number: profile?.pan_number ?? null,
+      pan_verified_at: profile?.pan_verified_at ?? null,
+      bank_verified_at: profile?.bank_verified_at ?? null,
+      kyc_verified_at: profile?.kyc_verified_at ?? null,
       kyc_documents: kycDocuments,
     },
     analytics,

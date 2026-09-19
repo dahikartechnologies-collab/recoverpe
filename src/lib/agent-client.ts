@@ -1,11 +1,12 @@
 import { getAuthHeaders, getAuthHeadersForUpload } from "@/lib/auth-headers";
 import { readApiJsonBody } from "@/lib/parse-api-response";
 import { AgentKycDocuments } from "@/lib/agent/kyc-storage";
-import type {
-  AgentAnalytics,
-  AgentDiscountStats,
-  AgentFinancials,
-  AgentPayoutRecord,
+import {
+  createFallbackAgentAnalytics,
+  type AgentAnalytics,
+  type AgentDiscountStats,
+  type AgentFinancials,
+  type AgentPayoutRecord,
 } from "@/lib/agent/analytics";
 
 export interface AgentReferralRecord {
@@ -33,6 +34,10 @@ export interface AgentMeResponse {
     bank_account_name: string | null;
     bank_account_number: string | null;
     bank_ifsc: string | null;
+    pan_number: string | null;
+    pan_verified_at: string | null;
+    bank_verified_at: string | null;
+    kyc_verified_at: string | null;
     kyc_documents: AgentKycDocuments;
   };
   analytics: AgentAnalytics;
@@ -63,6 +68,34 @@ async function parseApiJsonResponse<T>(response: Response): Promise<T> {
   }
 
   return body as T;
+}
+
+export function createFallbackAgentMeResponse(
+  overrides?: Partial<AgentMeResponse>
+): AgentMeResponse {
+  return {
+    agent: {
+      id: "",
+      display_name: "Field Agent",
+      status: "active",
+      referral_code: "—",
+      discount_cap_bps: 1200,
+      wallet_liability_inr: 0,
+      open_cash_tickets: 0,
+      referrals_frozen: false,
+      bank_account_name: null,
+      bank_account_number: null,
+      bank_ifsc: null,
+      pan_number: null,
+      pan_verified_at: null,
+      bank_verified_at: null,
+      kyc_verified_at: null,
+      kyc_documents: {},
+    },
+    analytics: createFallbackAgentAnalytics(1200, 0),
+    referrals: [],
+    ...overrides,
+  };
 }
 
 export async function fetchAgentMe(): Promise<AgentMeResponse> {
@@ -202,4 +235,19 @@ export async function uploadAgentKycDocument(input: {
   });
 
   await parseApiJsonResponse(response);
+}
+
+export async function withdrawAgentFunds(): Promise<{
+  ok: boolean;
+  total_inr: number;
+  utr_number: string;
+  settled_at: string;
+}> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/agent/payouts/withdraw", {
+    method: "POST",
+    headers,
+  });
+
+  return parseApiJsonResponse(response);
 }

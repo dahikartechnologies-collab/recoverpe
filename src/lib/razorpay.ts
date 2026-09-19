@@ -220,6 +220,29 @@ export async function downgradePremiumIfExpired(
     .eq("user_id", userId);
 }
 
+export async function downgradeBusinessToStarterOnDunning(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  await supabase
+    .from("users")
+    .update({
+      subscription_plan: "free",
+      premium_expires_at: null,
+    })
+    .eq("id", userId);
+
+  await supabase
+    .from("businesses")
+    .update({
+      subscription_tier: "starter",
+      subscription_status: "past_due",
+      subscription_current_period_end: null,
+      razorpay_subscription_id: null,
+    })
+    .eq("user_id", userId);
+}
+
 export async function createRazorpayOrderRecord(
   supabase: SupabaseClient,
   userId: string,
@@ -404,10 +427,12 @@ export async function createRazorpaySubscriptionRecord(
       plan_id: planId,
       total_count: getSubscriptionTotalCount(purchaseType),
       customer_notify: 1,
+      // e-Mandate / UPI AutoPay is configured on the Razorpay plan; checkout completes mandate auth.
       notes: {
         user_id: userId,
         purchase_type: purchaseType,
         discount_applied: discountApplied,
+        autopay: "true",
       },
     }),
   });
@@ -799,7 +824,10 @@ export async function fulfillRazorpaySubscriptionWebhook(
     }
 
     if (event === "subscription.halted") {
-      await downgradePremiumIfExpired(supabase, subscriptionRow.user_id);
+      await downgradeBusinessToStarterOnDunning(
+        supabase,
+        subscriptionRow.user_id
+      );
     }
 
     return {
@@ -810,6 +838,42 @@ export async function fulfillRazorpaySubscriptionWebhook(
   }
 
   return { handled: false };
+}
+
+export async function handleSubscriptionPaymentFailure(
+  supabase: SupabaseClient,
+  payload: unknown
+): Promise<{ handled: boolean; userId?: string }> {
+  const subscriptionEntity = extractSubscriptionEntityFromWebhook(payload);
+
+  if (!subscriptionEntity?.id) {
+    return { handled: false };
+  }
+
+  const { data: subscriptionRow, error } = await supabase
+    .from("razorpay_subscriptions")
+    .select("id, user_id, status")
+    .eq("razorpay_subscription_id", subscriptionEntity.id)
+    .maybeSingle();
+
+  if (error || !subscriptionRow) {
+    return { handled: false };
+  }
+
+  await supabase
+    .from("razorpay_subscriptions")
+    .update({ status: "halted" })
+    .eq("id", subscriptionRow.id);
+
+  await downgradeBusinessToStarterOnDunning(
+    supabase,
+    subscriptionRow.user_id as string
+  );
+
+  return {
+    handled: true,
+    userId: subscriptionRow.user_id as string,
+  };
 }
 
 export async function fulfillSimulatedSubscription(

@@ -3,6 +3,7 @@ import {
   extractRazorpayOrderIdFromWebhook,
   fulfillRazorpayOrder,
   fulfillRazorpaySubscriptionWebhook,
+  handleSubscriptionPaymentFailure,
   isSubscriptionWebhookEvent,
   verifyRazorpayWebhookSignature,
 } from "@/lib/razorpay";
@@ -70,6 +71,17 @@ export async function POST(request: Request) {
         subscription_handled: result.handled,
         user_id: result.userId ?? null,
         purchase_type: result.purchaseType ?? null,
+        event: payload.event,
+      });
+    }
+
+    if (payload.event === "payment.failed") {
+      const result = await handleSubscriptionPaymentFailure(supabase, payload);
+
+      return NextResponse.json({
+        received: true,
+        dunning_handled: result.handled,
+        user_id: result.userId ?? null,
         event: payload.event,
       });
     }

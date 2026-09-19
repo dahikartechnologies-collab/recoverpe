@@ -349,6 +349,13 @@ export function withWorkspaceMutation<Context extends RouteParamsContext>(
         return authResult.error;
       }
 
+      if (authResult.role === "viewer") {
+        return forbidden(
+          "Forbidden. Viewer accounts are read-only and cannot modify workspace data.",
+          "VIEWER_READ_ONLY"
+        );
+      }
+
       const candidateBusinessId =
         routeBusinessId ?? getRequestedBusinessIdFromRequest(request);
       let businessId: string | null = null;

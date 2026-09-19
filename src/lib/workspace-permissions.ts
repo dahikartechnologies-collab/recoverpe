@@ -13,6 +13,10 @@ export function isFieldStaffRole(role: AppRole | null | undefined): boolean {
   return role === "field_staff";
 }
 
+export function isViewerRole(role: AppRole | null | undefined): boolean {
+  return role === "viewer";
+}
+
 export function getDefaultPermissionsForRole(
   role: Exclude<AppRole, "owner">
 ): CustomPermissions {
@@ -45,6 +49,16 @@ export function getDefaultPermissionsForRole(
         spend_funds: false,
       };
     case "field_staff":
+      return { ...DEFAULT_CUSTOM_PERMISSIONS };
+    case "viewer":
+      return {
+        manage_team: false,
+        edit_settings: false,
+        edit_ledgers: false,
+        send_reminders: false,
+        export_data: true,
+        spend_funds: false,
+      };
     default:
       return { ...DEFAULT_CUSTOM_PERMISSIONS };
   }
@@ -229,6 +243,7 @@ export const DELEGATED_INVITABLE_ROLES = [
   "recovery_agent",
   "accountant",
   "field_staff",
+  "viewer",
 ] as const;
 
 export const INVITABLE_WORKSPACE_ROLES = [
@@ -236,6 +251,7 @@ export const INVITABLE_WORKSPACE_ROLES = [
   "recovery_agent",
   "accountant",
   "field_staff",
+  "viewer",
 ] as const;
 
 export type InvitableWorkspaceRole = (typeof INVITABLE_WORKSPACE_ROLES)[number];

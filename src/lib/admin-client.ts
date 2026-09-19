@@ -234,3 +234,24 @@ export async function triggerDailyEscalationCron(): Promise<unknown> {
 
   return body;
 }
+
+export async function fetchAdminAuditLogs(): Promise<{
+  logs: import("@/components/admin/AdminAuditLogsView").AdminAuditLogRecord[];
+}> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/audit-logs", { headers });
+  const body = (await response.json()) as {
+    logs?: import("@/components/admin/AdminAuditLogsView").AdminAuditLogRecord[];
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.logs) {
+    throw new Error(body.error || "Failed to load audit logs.");
+  }
+
+  return { logs: body.logs };
+}

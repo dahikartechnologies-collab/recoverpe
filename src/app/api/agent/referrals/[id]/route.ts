@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireActiveAgent } from "@/lib/agent/auth";
 import { updateAgentReferralQuote } from "@/lib/agent/referrals";
+import { writeAuditLog } from "@/lib/audit-logs";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,17 @@ export async function PATCH(
       },
       agent.discountCapBps
     );
+
+    await writeAuditLog(supabase, {
+      actorId: agent.userId,
+      action: "agent.referral.quote_updated",
+      resourceType: "agent_referral",
+      resourceId: id,
+      metadata: {
+        discount_bps: body.discount_bps ?? null,
+        business_name: body.business_name ?? null,
+      },
+    });
 
     return NextResponse.json({ referral });
   } catch (error) {

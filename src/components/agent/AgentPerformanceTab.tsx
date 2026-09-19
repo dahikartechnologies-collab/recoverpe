@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -13,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import type { AgentMeResponse } from "@/lib/agent-client";
+import { withdrawAgentFunds } from "@/lib/agent-client";
 import { payoutKindLabel } from "@/lib/agent/discounts";
 import { AGENT_TIERS, resolveAgentTier } from "@/lib/agent/tiers";
 import { Download, Wallet } from "lucide-react";
@@ -86,10 +88,17 @@ function downloadTdsInvoice(payout: {
 
 interface AgentPerformanceTabProps {
   payload: AgentMeResponse;
+  onWithdrawComplete?: () => void;
 }
 
-export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
+export function AgentPerformanceTab({
+  payload,
+  onWithdrawComplete,
+}: AgentPerformanceTabProps) {
   const { analytics } = payload;
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
+  const [withdrawMessage, setWithdrawMessage] = useState("");
 
   if (!analytics?.financials || !analytics.discount_stats) {
     return (
@@ -110,6 +119,26 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
     (discount_stats.quota_used_bps / Math.max(discount_stats.monthly_cap_bps, 1)) *
       100
   );
+
+  async function handleWithdraw() {
+    setWithdrawError("");
+    setWithdrawMessage("");
+    setIsWithdrawing(true);
+
+    try {
+      const result = await withdrawAgentFunds();
+      setWithdrawMessage(
+        `${formatInr(result.total_inr)} sent to your bank · UTR ${result.utr_number}`
+      );
+      onWithdrawComplete?.();
+    } catch (error) {
+      setWithdrawError(
+        error instanceof Error ? error.message : "Failed to withdraw commissions."
+      );
+    } finally {
+      setIsWithdrawing(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -134,6 +163,17 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
             <p className="mt-2 text-xs text-recoverpe-success-ink">
               Approved commissions ready for payout
             </p>
+            {financials.available_to_withdraw_inr > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-4"
+                disabled={isWithdrawing}
+                onClick={() => void handleWithdraw()}
+              >
+                {isWithdrawing ? "Processing…" : "Withdraw Funds"}
+              </Button>
+            ) : null}
           </div>
           <div className="p-6">
             <p className="type-eyebrow">In-clearing / escrow</p>
@@ -155,6 +195,13 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
           </div>
         </CardContent>
       </Card>
+
+      {withdrawError ? (
+        <p className="text-sm text-recoverpe-error">{withdrawError}</p>
+      ) : null}
+      {withdrawMessage ? (
+        <p className="text-sm text-recoverpe-success-ink">{withdrawMessage}</p>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -264,7 +311,8 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
               description="Closed merchant onboardings and trail commissions appear here once settled."
             />
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Settlement</TableHead>
@@ -310,6 +358,7 @@ export function AgentPerformanceTab({ payload }: AgentPerformanceTabProps) {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
