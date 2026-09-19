@@ -725,6 +725,10 @@ export interface AdminAgentRecord {
   created_at: string;
   user_email?: string;
   user_phone?: string;
+  total_referrals?: number;
+  active_merchants?: number;
+  total_commission_earned_inr?: number;
+  pending_commission_inr?: number;
 }
 
 export interface AdminAgentsListResponse {
@@ -738,6 +742,20 @@ export interface AdminAgentCreatePayload {
 }
 
 export interface AdminAgentCreateResponse {
+  success: boolean;
+  message: string;
+  agent: AdminAgentRecord;
+}
+
+export interface AdminAgentUpdatePayload {
+  display_name?: string;
+  phone_number?: string;
+  discount_cap_bps?: number;
+  status?: "active" | "suspended";
+  revoke?: boolean;
+}
+
+export interface AdminAgentUpdateResponse {
   success: boolean;
   message: string;
   agent: AdminAgentRecord;
@@ -841,6 +859,15 @@ export interface AdminPlatformMetrics {
   total_business_profiles: number;
   total_premium_subscriptions: number;
   total_ledgers: number;
+  mrr_inr: number;
+  arr_inr: number;
+  tier_starter_count: number;
+  tier_business_count: number;
+  tier_premium_count: number;
+  total_debt_under_recovery_inr: number;
+  total_smart_collect_collected_inr: number;
+  platform_recovery_rate_percent: number;
+  active_khata_merchants: number;
 }
 
 export interface AdminRecentUser {
@@ -856,7 +883,11 @@ export interface AdminMetricsResponse {
   recent_users: AdminRecentUser[];
 }
 
-export type AdminUserManageAction = "suspend" | "unsuspend" | "grant_discount";
+export type AdminUserManageAction =
+  | "suspend"
+  | "unsuspend"
+  | "grant_discount"
+  | "schedule_deletion";
 
 export interface AdminManageUserPayload {
   user_id: string;

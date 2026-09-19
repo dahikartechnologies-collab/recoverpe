@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireActorIdentity } from "@/lib/identity-auth";
+import { cancelAllActiveSubscriptionsForUser } from "@/lib/subscription-lifecycle";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
 export async function POST(request: Request) {
@@ -11,6 +12,8 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminSupabaseClient();
+
+    await cancelAllActiveSubscriptionsForUser(supabase, identityResult.actorUserId);
 
     const { data, error } = await supabase
       .from("users")
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message:
-        "Your account and data have been scheduled for deletion per DPDP compliance.",
+        "Your subscription has been cancelled and your account is scheduled for deletion per DPDP compliance.",
       account_status: data.account_status,
     });
   } catch (error) {

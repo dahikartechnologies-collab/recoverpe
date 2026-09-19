@@ -16,6 +16,10 @@ export interface AdminAgentRow {
   created_at: string;
   user_email?: string;
   user_phone?: string;
+  total_referrals?: number;
+  active_merchants?: number;
+  total_commission_earned_inr?: number;
+  pending_commission_inr?: number;
 }
 
 interface UserLookupRow {
@@ -196,6 +200,73 @@ export async function createAgentByPhone(
   };
 }
 
+function aggregateAgentMetrics(
+  agentIds: string[],
+  referrals: Array<{ agent_id: string; status: string }>,
+  payouts: Array<{ agent_id: string; amount_inr: number | string; status: string }>
+): Map<
+  string,
+  {
+    total_referrals: number;
+    active_merchants: number;
+    total_commission_earned_inr: number;
+    pending_commission_inr: number;
+  }
+> {
+  const metrics = new Map<
+    string,
+    {
+      total_referrals: number;
+      active_merchants: number;
+      total_commission_earned_inr: number;
+      pending_commission_inr: number;
+    }
+  >();
+
+  for (const agentId of agentIds) {
+    metrics.set(agentId, {
+      total_referrals: 0,
+      active_merchants: 0,
+      total_commission_earned_inr: 0,
+      pending_commission_inr: 0,
+    });
+  }
+
+  for (const referral of referrals) {
+    const entry = metrics.get(referral.agent_id);
+
+    if (!entry) {
+      continue;
+    }
+
+    entry.total_referrals += 1;
+
+    if (referral.status === "activated") {
+      entry.active_merchants += 1;
+    }
+  }
+
+  for (const payout of payouts) {
+    const entry = metrics.get(payout.agent_id);
+
+    if (!entry) {
+      continue;
+    }
+
+    const amount = Number(payout.amount_inr);
+
+    if (payout.status === "paid") {
+      entry.total_commission_earned_inr += amount;
+    }
+
+    if (payout.status === "accrued" || payout.status === "approved" || payout.status === "held") {
+      entry.pending_commission_inr += amount;
+    }
+  }
+
+  return metrics;
+}
+
 export async function listAdminAgents(
   supabase: SupabaseClient,
   limit = 50
@@ -213,16 +284,24 @@ export async function listAdminAgents(
   }
 
   const agents = (data ?? []) as AdminAgentRow[];
+  const agentIds = agents.map((agent) => agent.id);
   const userIds = Array.from(new Set(agents.map((agent) => agent.user_id)));
 
-  if (userIds.length === 0) {
+  if (agentIds.length === 0) {
     return agents;
   }
 
-  const { data: users, error: usersError } = await supabase
-    .from("users")
-    .select("id, email, phone_number")
-    .in("id", userIds);
+  const [{ data: users, error: usersError }, { data: referrals }, { data: payouts }] =
+    await Promise.all([
+      userIds.length > 0
+        ? supabase.from("users").select("id, email, phone_number").in("id", userIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from("agent_referrals").select("agent_id, status").in("agent_id", agentIds),
+      supabase
+        .from("agent_payouts")
+        .select("agent_id, amount_inr, status")
+        .in("agent_id", agentIds),
+    ]);
 
   if (usersError) {
     return agents;
@@ -231,14 +310,98 @@ export async function listAdminAgents(
   const userById = new Map(
     (users ?? []).map((user) => [user.id as string, user as UserLookupRow])
   );
+  const metricsByAgent = aggregateAgentMetrics(
+    agentIds,
+    (referrals ?? []) as Array<{ agent_id: string; status: string }>,
+    (payouts ?? []) as Array<{
+      agent_id: string;
+      amount_inr: number | string;
+      status: string;
+    }>
+  );
 
   return agents.map((agent) => {
     const user = userById.get(agent.user_id);
+    const metrics = metricsByAgent.get(agent.id);
 
     return {
       ...agent,
       user_email: user?.email,
       user_phone: user?.phone_number,
+      total_referrals: metrics?.total_referrals ?? 0,
+      active_merchants: metrics?.active_merchants ?? 0,
+      total_commission_earned_inr: metrics?.total_commission_earned_inr ?? 0,
+      pending_commission_inr: metrics?.pending_commission_inr ?? 0,
     };
   });
+}
+
+export async function updateAdminAgent(
+  supabase: SupabaseClient,
+  agentId: string,
+  input: {
+    displayName?: string;
+    phoneNumber?: string;
+    discountCapBps?: number;
+    status?: "active" | "suspended";
+    revoke?: boolean;
+  }
+): Promise<AdminAgentRow> {
+  const { data: existing, error: existingError } = await supabase
+    .from("agents")
+    .select("id, user_id, display_name, status, referral_code, discount_cap_bps, created_at")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (existingError || !existing) {
+    throw new Error("Agent not found.");
+  }
+
+  if (input.phoneNumber?.trim()) {
+    const { error: phoneError } = await supabase
+      .from("users")
+      .update({ phone_number: input.phoneNumber.trim() })
+      .eq("id", existing.user_id);
+
+    if (phoneError) {
+      throw new Error(phoneError.message || "Failed to update agent phone number.");
+    }
+  }
+
+  const updatePayload: Record<string, string | number> = {};
+
+  if (input.displayName?.trim()) {
+    updatePayload.display_name = input.displayName.trim();
+  }
+
+  if (input.discountCapBps !== undefined) {
+    updatePayload.discount_cap_bps = normalizeDiscountCapBps(input.discountCapBps);
+  }
+
+  if (input.revoke) {
+    updatePayload.status = "offboarded";
+  } else if (input.status) {
+    updatePayload.status = input.status;
+  }
+
+  if (Object.keys(updatePayload).length > 0) {
+    const { error: updateError } = await supabase
+      .from("agents")
+      .update(updatePayload)
+      .eq("id", agentId);
+
+    if (updateError) {
+      throw new Error(updateError.message || "Failed to update agent.");
+    }
+  }
+
+  const refreshed = (await listAdminAgents(supabase, 200)).find(
+    (row) => row.id === agentId
+  );
+
+  if (!refreshed) {
+    throw new Error("Agent updated but refresh failed.");
+  }
+
+  return refreshed;
 }

@@ -7,6 +7,7 @@ const VALID_ACTIONS = new Set<AdminUserManageAction>([
   "suspend",
   "unsuspend",
   "grant_discount",
+  "schedule_deletion",
 ]);
 
 export async function POST(request: Request) {
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
 
     if (!body.action || !VALID_ACTIONS.has(body.action)) {
       return NextResponse.json(
-        { error: "action must be suspend, unsuspend, or grant_discount." },
+        { error: "action must be suspend, unsuspend, grant_discount, or schedule_deletion." },
         { status: 400 }
       );
     }
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
       suspend: "User suspended and automations paused.",
       unsuspend: "User account reactivated.",
       grant_discount: "50% upsell discount eligibility granted.",
+      schedule_deletion:
+        "Active subscriptions cancelled and account scheduled for DPDP purge.",
     };
 
     return NextResponse.json({

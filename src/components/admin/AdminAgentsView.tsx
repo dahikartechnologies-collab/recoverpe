@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   Table,
@@ -17,13 +18,19 @@ import {
 } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import {
+  discountBpsToPercent,
+  discountPercentToBps,
+  formatDiscountCapBps,
+} from "@/lib/agent/discount-cap";
+import {
   AdminAccessDeniedError,
   createAdminAgent,
   createAdminAgentForMe,
   fetchAdminAgents,
+  updateAdminAgent,
 } from "@/lib/admin-client";
 import { AdminAgentRecord } from "@/types";
-import { UserPlus } from "lucide-react";
+import { MoreVertical, UserPlus } from "lucide-react";
 
 interface AdminAgentsViewProps {
   initialAgents: AdminAgentRecord[];
@@ -39,16 +46,21 @@ function agentStatusTone(status: string): BadgeTone {
     case "active":
       return "success";
     case "suspended":
-    case "rejected":
-    case "inactive":
+    case "offboarded":
       return "danger";
-    case "pending":
     case "pending_kyc":
-    case "kyc_pending":
       return "warning";
     default:
       return "neutral";
   }
+}
+
+function formatCurrencyInr(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
@@ -58,11 +70,24 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
   const [discountCapBps, setDiscountCapBps] = useState("1000");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [editingAgent, setEditingAgent] = useState<AdminAgentRecord | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDiscountPercent, setEditDiscountPercent] = useState("10");
+  const [editStatus, setEditStatus] = useState<"active" | "suspended">("active");
 
   const reloadAgents = useCallback(async () => {
     const response = await fetchAdminAgents();
     setAgents(response.agents);
   }, []);
+
+  function openEditDrawer(agent: AdminAgentRecord) {
+    setEditingAgent(agent);
+    setEditDisplayName(agent.display_name);
+    setEditPhone(agent.user_phone ?? "");
+    setEditDiscountPercent(String(discountBpsToPercent(agent.discount_cap_bps)));
+    setEditStatus(agent.status === "suspended" ? "suspended" : "active");
+  }
 
   async function handleCreateByPhone(event: React.FormEvent) {
     event.preventDefault();
@@ -115,12 +140,75 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
     }
   }
 
+  async function handleSaveAgentEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingAgent) {
+      return;
+    }
+
+    setPendingAction(`edit-${editingAgent.id}`);
+    setToast(null);
+
+    try {
+      const result = await updateAdminAgent(editingAgent.id, {
+        display_name: editDisplayName.trim(),
+        phone_number: editPhone.trim() || undefined,
+        discount_cap_bps: discountPercentToBps(Number(editDiscountPercent)),
+        status: editStatus,
+      });
+
+      setToast({ message: result.message, variant: "success" });
+      setEditingAgent(null);
+      await reloadAgents();
+    } catch (error) {
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Failed to update agent.",
+        variant: "error",
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleRevokeAgent() {
+    if (!editingAgent) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Revoke agent access for ${editingAgent.display_name}? This soft-deletes their agent profile.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setPendingAction(`revoke-${editingAgent.id}`);
+
+    try {
+      const result = await updateAdminAgent(editingAgent.id, { revoke: true });
+      setToast({ message: result.message, variant: "success" });
+      setEditingAgent(null);
+      await reloadAgents();
+    } catch (error) {
+      setToast({
+        message:
+          error instanceof Error ? error.message : "Failed to revoke agent.",
+        variant: "error",
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Recoverpe Control Room"
         title="Field Agent Management"
-        description="Promote users to the agent network so they can access the Identity Switcher without manual Supabase edits."
+        description="Promote users, tune discount caps, and review referral performance dossiers."
       />
 
       <Card>
@@ -169,13 +257,17 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
             </label>
             <label className="block text-sm">
               <span className="font-medium text-recoverpe-black">
-                Discount cap (bps)
+                Max discount (%)
               </span>
               <Input
-                className="mt-1"
-                inputMode="numeric"
-                value={discountCapBps}
-                onChange={(event) => setDiscountCapBps(event.target.value)}
+                className="mt-1 tabular-nums"
+                inputMode="decimal"
+                value={String(discountBpsToPercent(Number(discountCapBps) || 0))}
+                onChange={(event) =>
+                  setDiscountCapBps(
+                    String(discountPercentToBps(Number(event.target.value)))
+                  )
+                }
               />
             </label>
             <div className="md:col-span-3">
@@ -190,7 +282,7 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
       <Card>
         <CardHeader>
           <h2 className="type-section-title">
-            Recent agents ({agents.length})
+            Agent performance dossier ({agents.length})
           </h2>
         </CardHeader>
         <CardContent className="p-0">
@@ -205,10 +297,13 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Agent</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Referral code</TableHead>
+                  <TableHead>Referrals</TableHead>
+                  <TableHead>Active merchants</TableHead>
+                  <TableHead>Commission earned</TableHead>
+                  <TableHead>Pending commission</TableHead>
+                  <TableHead>Cap</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Cap (bps)</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -219,22 +314,42 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
                         {agent.display_name}
                       </p>
                       <p className="type-data-secondary mt-0.5">
-                        {agent.user_email ?? agent.user_id}
+                        {agent.user_phone ?? agent.user_email ?? agent.user_id}
+                      </p>
+                      <p className="mt-1 font-mono text-xs text-recoverpe-muted">
+                        {agent.referral_code}
                       </p>
                     </TableCell>
-                    <TableCell className="text-recoverpe-muted">
-                      {agent.user_phone ?? "—"}
+                    <TableCell className="tabular-nums text-recoverpe-black">
+                      {agent.total_referrals ?? 0}
                     </TableCell>
-                    <TableCell className="font-mono text-recoverpe-black">
-                      {agent.referral_code}
+                    <TableCell className="tabular-nums text-recoverpe-black">
+                      {agent.active_merchants ?? 0}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-recoverpe-black">
+                      {formatCurrencyInr(agent.total_commission_earned_inr ?? 0)}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-recoverpe-black">
+                      {formatCurrencyInr(agent.pending_commission_inr ?? 0)}
+                    </TableCell>
+                    <TableCell className="text-recoverpe-black">
+                      {formatDiscountCapBps(agent.discount_cap_bps)}
                     </TableCell>
                     <TableCell>
                       <Badge tone={agentStatusTone(agent.status)}>
                         {agent.status.replace(/_/g, " ")}
                       </Badge>
                     </TableCell>
-                    <TableCell className="tabular-nums text-recoverpe-black">
-                      {agent.discount_cap_bps}
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Edit ${agent.display_name}`}
+                        onClick={() => openEditDrawer(agent)}
+                      >
+                        <MoreVertical className="h-4 w-4" aria-hidden />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -243,6 +358,77 @@ export function AdminAgentsView({ initialAgents }: AdminAgentsViewProps) {
           )}
         </CardContent>
       </Card>
+
+      <Modal
+        isOpen={editingAgent !== null}
+        onClose={() => setEditingAgent(null)}
+        title="Edit field agent"
+      >
+        <form className="space-y-4" onSubmit={(event) => void handleSaveAgentEdit(event)}>
+          <label className="block text-sm">
+            <span className="font-medium text-recoverpe-black">Agent name</span>
+            <Input
+              className="mt-1"
+              value={editDisplayName}
+              onChange={(event) => setEditDisplayName(event.target.value)}
+              required
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-recoverpe-black">Phone</span>
+            <Input
+              className="mt-1"
+              value={editPhone}
+              onChange={(event) => setEditPhone(event.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-recoverpe-black">
+              Max discount (0–12%)
+            </span>
+            <Input
+              className="mt-1 tabular-nums"
+              inputMode="decimal"
+              value={editDiscountPercent}
+              onChange={(event) => setEditDiscountPercent(event.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-recoverpe-black">Status</span>
+            <select
+              className="mt-1 h-10 w-full rounded-md border border-recoverpe-line-strong bg-recoverpe-white px-3 text-sm"
+              value={editStatus}
+              onChange={(event) =>
+                setEditStatus(event.target.value as "active" | "suspended")
+              }
+            >
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </label>
+          <div className="flex flex-wrap justify-between gap-2 pt-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => void handleRevokeAgent()}
+              disabled={Boolean(pendingAction?.startsWith("revoke-"))}
+            >
+              Revoke agent access
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setEditingAgent(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={Boolean(pendingAction?.startsWith("edit-"))}
+              >
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
 
       {toast ? (
         <Toast message={toast.message} variant={toast.variant} onClose={() => setToast(null)} />

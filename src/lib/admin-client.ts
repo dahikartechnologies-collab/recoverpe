@@ -2,6 +2,8 @@ import { getAuthHeaders } from "@/lib/businesses";
 import {
   AdminAgentCreatePayload,
   AdminAgentCreateResponse,
+  AdminAgentUpdatePayload,
+  AdminAgentUpdateResponse,
   AdminAgentsListResponse,
   AdminManageUserPayload,
   AdminManageUserResponse,
@@ -89,6 +91,32 @@ export async function createAdminAgentForMe(): Promise<AdminAgentCreateResponse>
 
   if (!response.ok || !body.success) {
     throw new Error(body.error || "Failed to assign agent row.");
+  }
+
+  return body;
+}
+
+export async function updateAdminAgent(
+  agentId: string,
+  payload: AdminAgentUpdatePayload
+): Promise<AdminAgentUpdateResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`/api/admin/agents/${agentId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as AdminAgentUpdateResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to update agent.");
   }
 
   return body;

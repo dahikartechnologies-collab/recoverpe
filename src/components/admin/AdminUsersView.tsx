@@ -216,6 +216,27 @@ export function AdminUsersView({ initialUsers }: AdminUsersViewProps) {
                                 Grant 50% Upsell Discount
                               </Button>
                             ) : null}
+                            {!user.is_super_admin &&
+                            user.account_status !== "pending_purge" ? (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                disabled={isPending}
+                                onClick={() => {
+                                  const confirmed = window.confirm(
+                                    "This will cancel active subscriptions and schedule permanent account deletion. Continue?"
+                                  );
+
+                                  if (confirmed) {
+                                    void runAction(user.id, "schedule_deletion");
+                                  }
+                                }}
+                                className="w-full justify-start"
+                              >
+                                Schedule Account Deletion
+                              </Button>
+                            ) : null}
                             <Link
                               href={`/dashboard?impersonate=${user.id}`}
                               className="rp-interactive flex h-8 items-center rounded-md px-3 text-xs font-medium text-recoverpe-grey-medium hover:bg-recoverpe-fill hover:text-recoverpe-black"

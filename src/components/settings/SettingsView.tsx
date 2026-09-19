@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { DeleteAccountConfirmModal } from "@/components/settings/DeleteAccountConfirmModal";
 import { IdentitySupportModal } from "@/components/settings/IdentitySupportModal";
 import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
 import { Button } from "@/components/ui/Button";
@@ -86,6 +87,7 @@ export function SettingsView() {
   const [isSavingPersonal, setIsSavingPersonal] = useState(false);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isSavingCompliance, setIsSavingCompliance] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [alert, setAlert] = useState<AlertState | null>(null);
@@ -242,20 +244,13 @@ export function SettingsView() {
   }
 
   async function handleDeleteAccount() {
-    const confirmed = window.confirm(
-      "This will schedule permanent deletion of your account and all associated data per DPDP compliance. Continue?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
     setAlert(null);
     setIsDeleting(true);
 
     try {
       const message = await requestAccountDeletion();
       setAccountStatus("pending_purge");
+      setIsDeleteModalOpen(false);
       setAlert({ message, variant: "success" });
     } catch (deleteError) {
       setAlert({
@@ -583,11 +578,11 @@ export function SettingsView() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void handleDeleteAccount()}
+                  onClick={() => setIsDeleteModalOpen(true)}
                   disabled={isDeleting || isGhostMode}
                   className="border-recoverpe-error text-recoverpe-error hover:bg-recoverpe-error/5"
                 >
-                  {isDeleting ? "Processing..." : "Delete My Account & Data"}
+                  Delete My Account & Data
                 </Button>
               )}
             </CardContent>
@@ -606,6 +601,13 @@ export function SettingsView() {
         isOpen={identityModalField !== null}
         onClose={() => setIdentityModalField(null)}
         fieldLabel={identityModalField ?? "Email"}
+      />
+
+      <DeleteAccountConfirmModal
+        isOpen={isDeleteModalOpen}
+        isDeleting={isDeleting}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={() => void handleDeleteAccount()}
       />
     </div>
   );

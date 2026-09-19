@@ -20,6 +20,7 @@ import { invalidateDashboardCache } from "@/lib/dashboard-request-cache";
 import { fetchDashboardSession } from "@/lib/dashboard-session-client";
 import { getPostLoginRoute, setAppRoleCookie } from "@/lib/kiosk-client";
 import { setActorUserCookie, getActorUserIdFromDocument } from "@/lib/auth-cookies";
+import { setGhostModeCookie } from "@/lib/ghost-mode";
 import {
   canAccessBillingNav,
   canAccessDashboardHome,
@@ -126,6 +127,7 @@ export function DashboardShell({
 
     if (impersonateUserId) {
       setGhostMode(impersonateUserId, null);
+      setGhostModeCookie(impersonateUserId);
     }
   }, [searchParams, setGhostMode]);
 

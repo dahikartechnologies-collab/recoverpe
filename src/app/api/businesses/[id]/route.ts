@@ -4,6 +4,7 @@ import { logAndRespondDatabaseError } from "@/lib/api-error-response";
 import { BUSINESS_SELECT } from "@/lib/business-select";
 import { validateBusinessSettingsUpdate } from "@/lib/business-settings-validation";
 import { parseSmtpSettings } from "@/lib/notification-settings";
+import { cancelBusinessSubscriptionIfActive } from "@/lib/subscription-lifecycle";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { Business, SubscriptionPlan } from "@/types";
 
@@ -139,6 +140,9 @@ export const DELETE = withWorkspaceAuth<RouteContext>(
       }
 
       const adminSupabase = createAdminSupabaseClient();
+
+      await cancelBusinessSubscriptionIfActive(adminSupabase, businessId);
+
       const { data: deletedRow, error } = await adminSupabase
         .from("businesses")
         .delete()

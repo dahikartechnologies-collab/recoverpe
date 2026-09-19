@@ -1,3 +1,4 @@
+import { cancelAllActiveSubscriptionsForUser } from "@/lib/subscription-lifecycle";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { AdminManagedUser, AdminUserManageAction } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -122,6 +123,28 @@ export async function executeAdminUserAction(
 
     if (discountError) {
       throw new Error(discountError.message || "Failed to grant discount eligibility.");
+    }
+  }
+
+  if (action === "schedule_deletion") {
+    if (targetUser.is_super_admin) {
+      throw new Error("Super admin accounts cannot be scheduled for deletion.");
+    }
+
+    await cancelAllActiveSubscriptionsForUser(supabase, targetUserId);
+
+    const { error: purgeError } = await supabase
+      .from("users")
+      .update({
+        account_status: "pending_purge",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", targetUserId);
+
+    if (purgeError) {
+      throw new Error(
+        purgeError.message || "Failed to schedule account deletion."
+      );
     }
   }
 

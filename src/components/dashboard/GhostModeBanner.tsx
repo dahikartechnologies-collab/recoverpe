@@ -1,26 +1,46 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { getAuthHeaders } from "@/lib/auth-headers";
+import { clearGhostModeCookie } from "@/lib/ghost-mode";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 export function GhostModeBanner() {
-  const router = useRouter();
   const ghostModeUserEmail = useWorkspaceStore((state) => state.ghostModeUserEmail);
   const ghostModeUserId = useWorkspaceStore((state) => state.ghostModeUserId);
   const clearGhostMode = useWorkspaceStore((state) => state.clearGhostMode);
   const bumpLedgerRefresh = useWorkspaceStore((state) => state.bumpLedgerRefresh);
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
+  const [isExiting, setIsExiting] = useState(false);
 
   if (!ghostModeUserId) {
     return null;
   }
 
-  function handleExitGhostMode() {
+  async function handleExitGhostMode() {
+    if (isExiting) {
+      return;
+    }
+
+    setIsExiting(true);
     clearGhostMode();
+    clearGhostModeCookie();
     bumpLedgerRefresh();
     bumpUserRefresh();
-    router.replace("/dashboard");
+
+    try {
+      const headers = await getAuthHeaders();
+      await fetch("/api/admin/exit-ghost", {
+        method: "POST",
+        headers,
+      });
+    } catch (error) {
+      console.error("[GhostModeBanner] Failed to clear server ghost session:", error);
+    }
+
+    window.location.assign("/admin");
   }
 
   return (
@@ -32,10 +52,18 @@ export function GhostModeBanner() {
         <Button
           type="button"
           variant="secondary"
-          onClick={handleExitGhostMode}
+          onClick={() => void handleExitGhostMode()}
+          disabled={isExiting}
           className="border-recoverpe-white bg-recoverpe-white text-recoverpe-black hover:bg-recoverpe-grey-light hover:border-recoverpe-grey-light"
         >
-          Exit Ghost Mode
+          {isExiting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Exiting…
+            </>
+          ) : (
+            "Exit Ghost Mode"
+          )}
         </Button>
       </div>
     </div>
