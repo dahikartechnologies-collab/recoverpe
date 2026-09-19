@@ -11,16 +11,9 @@ type GtagFn = (
   params?: Record<string, unknown>
 ) => void;
 
-type FbqFn = (
-  command: "track" | "trackCustom",
-  eventName: string,
-  params?: Record<string, unknown>
-) => void;
-
 declare global {
   interface Window {
     gtag?: GtagFn;
-    fbq?: FbqFn;
   }
 }
 

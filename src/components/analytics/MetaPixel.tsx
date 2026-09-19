@@ -1,32 +1,22 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
 
-function MetaPixelRouteTracker() {
+const META_PIXEL_ID = "28036212349407539";
+
+export function MetaPixel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const fbq = (window as Window & { fbq?: (...args: unknown[]) => void }).fbq;
-
-    if (typeof fbq !== "function") {
+    if (typeof window.fbq !== "function") {
       return;
     }
 
-    fbq("track", "PageView");
+    window.fbq("track", "PageView");
   }, [pathname, searchParams]);
-
-  return null;
-}
-
-export function MetaPixel() {
-  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
-
-  if (!pixelId) {
-    return null;
-  }
 
   return (
     <>
@@ -40,7 +30,8 @@ export function MetaPixel() {
           t.src=v;s=b.getElementsByTagName(e)[0];
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
-          fbq('init', '${pixelId}');
+          fbq('init', '${META_PIXEL_ID}');
+          fbq('track', 'PageView');
         `}
       </Script>
       <noscript>
@@ -50,12 +41,9 @@ export function MetaPixel() {
           height="1"
           width="1"
           style={{ display: "none" }}
-          src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
+          src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
         />
       </noscript>
-      <Suspense fallback={null}>
-        <MetaPixelRouteTracker />
-      </Suspense>
     </>
   );
 }
