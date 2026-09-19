@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { AgentKycTab } from "@/components/agent/AgentKycTab";
 import { AgentLeadsTab } from "@/components/agent/AgentLeadsTab";
 import { AgentMarketingToolkit } from "@/components/agent/AgentMarketingToolkit";
+import { AgentNav } from "@/components/agent/AgentNav";
 import { AgentPerformanceTab } from "@/components/agent/AgentPerformanceTab";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DashboardLogoutButton } from "@/components/dashboard/DashboardLogoutButton";
@@ -27,6 +29,38 @@ import { useAgentTab } from "@/hooks/use-agent-tab";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { persistActiveContext } from "@/lib/post-auth-navigation";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import type { AgentTab } from "@/lib/agent/tab-state";
+
+function AgentTabContentSkeleton({ activeTab }: { activeTab: AgentTab }) {
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-6">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-8 w-56" />
+        {activeTab === "performance" ? (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : null}
+        {activeTab === "leads" ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        ) : null}
+        {activeTab === "kyc" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function AgentDashboardView() {
   const router = useRouter();
@@ -320,14 +354,13 @@ export function AgentDashboardView() {
   const { agent } = resolvedPayload;
 
   return (
-    <div className="space-y-6">
-      {isLoading && !payload ? (
-        <div className="space-y-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-4 w-72 max-w-full" />
-        </div>
-      ) : (
+    <>
+      <AgentNav />
+
+      <div
+        className="mx-auto max-w-5xl space-y-6 px-6 py-8"
+        data-agent-shell="tier-1"
+      >
         <PageHeader
           eyebrow="Field agent"
           title={agent.display_name}
@@ -341,71 +374,82 @@ export function AgentDashboardView() {
             </>
           }
         />
-      )}
 
-      {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+        {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
-      <AgentMarketingToolkit
-        referralCode={agent.referral_code}
-        displayName={agent.display_name}
-      />
-
-      {activeTab === "performance" ? (
-        <AgentPerformanceTab payload={resolvedPayload} onWithdrawComplete={() => void load()} />
-      ) : null}
-
-      {activeTab === "leads" ? (
-        <AgentLeadsTab
-          payload={resolvedPayload}
-          phone={phone}
-          shop={shop}
-          discountBps={discountBps}
-          isSaving={isSaving}
-          highlightedReferralId={highlightedReferralId}
-          duplicateOwnedMessage={duplicateOwnedMessage}
-          duplicateGlobalMessage={duplicateGlobalMessage}
-          otpByReferralId={otpByReferralId}
-          confirmingReferralId={confirmingReferralId}
-          resendingReferralId={resendingReferralId}
-          editingReferralId={editingReferralId}
-          editDiscountBps={editDiscountBps}
-          editBusinessName={editBusinessName}
-          savingReferralId={savingReferralId}
-          cancellingReferralId={cancellingReferralId}
-          setPhone={setPhone}
-          setShop={setShop}
-          setDiscountBps={setDiscountBps}
-          setOtpByReferralId={setOtpByReferralId}
-          setEditingReferralId={setEditingReferralId}
-          setEditDiscountBps={setEditDiscountBps}
-          setEditBusinessName={setEditBusinessName}
-          setDuplicateGlobalMessage={setDuplicateGlobalMessage}
-          referralCardRefs={referralCardRefs}
-          onSubmitReferral={handleReferral}
-          onConfirmOtp={handleConfirmOtp}
-          onResendOtp={handleResendOtp}
-          onBeginEditReferral={beginEditReferral}
-          onSaveReferralEdit={handleSaveReferralEdit}
-          onCancelReferral={handleCancelReferral}
+        <AgentMarketingToolkit
+          referralCode={agent.referral_code}
+          displayName={agent.display_name}
         />
-      ) : null}
 
-      {activeTab === "kyc" ? (
-        <AgentKycTab
-          payload={resolvedPayload}
-          onVerificationComplete={() => void load()}
-          bankAccountName={bankAccountName}
-          bankAccountNumber={bankAccountNumber}
-          bankIfsc={bankIfsc}
-          isSavingProfile={isSavingProfile}
-          uploadingKycSide={uploadingKycSide}
-          setBankAccountName={setBankAccountName}
-          setBankAccountNumber={setBankAccountNumber}
-          setBankIfsc={setBankIfsc}
-          onSaveBankProfile={handleSaveBankProfile}
-          onKycUpload={handleKycUpload}
-        />
-      ) : null}
-    </div>
+        <section aria-label="Agent workspace">
+          {isLoading ? (
+            <AgentTabContentSkeleton activeTab={activeTab} />
+          ) : (
+            <>
+              {activeTab === "performance" ? (
+                <AgentPerformanceTab
+                  payload={resolvedPayload}
+                  onWithdrawComplete={() => void load()}
+                />
+              ) : null}
+
+              {activeTab === "leads" ? (
+                <AgentLeadsTab
+                  payload={resolvedPayload}
+                  phone={phone}
+                  shop={shop}
+                  discountBps={discountBps}
+                  isSaving={isSaving}
+                  highlightedReferralId={highlightedReferralId}
+                  duplicateOwnedMessage={duplicateOwnedMessage}
+                  duplicateGlobalMessage={duplicateGlobalMessage}
+                  otpByReferralId={otpByReferralId}
+                  confirmingReferralId={confirmingReferralId}
+                  resendingReferralId={resendingReferralId}
+                  editingReferralId={editingReferralId}
+                  editDiscountBps={editDiscountBps}
+                  editBusinessName={editBusinessName}
+                  savingReferralId={savingReferralId}
+                  cancellingReferralId={cancellingReferralId}
+                  setPhone={setPhone}
+                  setShop={setShop}
+                  setDiscountBps={setDiscountBps}
+                  setOtpByReferralId={setOtpByReferralId}
+                  setEditingReferralId={setEditingReferralId}
+                  setEditDiscountBps={setEditDiscountBps}
+                  setEditBusinessName={setEditBusinessName}
+                  setDuplicateGlobalMessage={setDuplicateGlobalMessage}
+                  referralCardRefs={referralCardRefs}
+                  onSubmitReferral={handleReferral}
+                  onConfirmOtp={handleConfirmOtp}
+                  onResendOtp={handleResendOtp}
+                  onBeginEditReferral={beginEditReferral}
+                  onSaveReferralEdit={handleSaveReferralEdit}
+                  onCancelReferral={handleCancelReferral}
+                />
+              ) : null}
+
+              {activeTab === "kyc" ? (
+                <AgentKycTab
+                  payload={resolvedPayload}
+                  onVerificationComplete={() => void load()}
+                  bankAccountName={bankAccountName}
+                  bankAccountNumber={bankAccountNumber}
+                  bankIfsc={bankIfsc}
+                  isSavingProfile={isSavingProfile}
+                  uploadingKycSide={uploadingKycSide}
+                  setBankAccountName={setBankAccountName}
+                  setBankAccountNumber={setBankAccountNumber}
+                  setBankIfsc={setBankIfsc}
+                  onSaveBankProfile={handleSaveBankProfile}
+                  onKycUpload={handleKycUpload}
+                />
+              ) : null}
+            </>
+          )}
+        </section>
+      </div>
+    </>
   );
 }

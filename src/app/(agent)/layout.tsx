@@ -1,5 +1,7 @@
 import { RecoverpeLogo } from "@/components/brand/RecoverpeLogo";
-import { AgentNav } from "@/components/agent/AgentNav";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function AgentLayout({
   children,
@@ -11,8 +13,7 @@ export default function AgentLayout({
       <header className="border-b border-recoverpe-line bg-recoverpe-white px-6 py-4">
         <RecoverpeLogo size="sm" href="/agent-dashboard" />
       </header>
-      <AgentNav />
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      {children}
     </div>
   );
 }
