@@ -1,14 +1,30 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { SecureBankLinking } from "@/components/merchant/SecureBankLinking";
 import { getAuthHeaders } from "@/lib/auth-headers";
+import type { MerchantBankAccountRecord } from "@/lib/payments/merchant-bank-verification";
 import { parseApiJsonResponse, readApiJsonBody } from "@/lib/parse-api-response";
 import { useWorkspaceStore } from "@/store/workspace-store";
+
+function formatVerifiedAccountLabel(account: MerchantBankAccountRecord): string {
+  if (account.upi_vpa) {
+    return `UPI · ${account.upi_vpa}`;
+  }
+
+  const masked =
+    account.account_number && account.account_number.length > 4
+      ? `••••${account.account_number.slice(-4)}`
+      : "Account";
+
+  return `${masked} · ${account.ifsc ?? "—"}`;
+}
 
 export function PayoutDetailsCard() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
@@ -16,28 +32,73 @@ export function PayoutDetailsCard() {
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
 
+  const [verifiedAccounts, setVerifiedAccounts] = useState<
+    MerchantBankAccountRecord[]
+  >([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [shopName, setShopName] = useState(activeBusiness?.business_name ?? "");
   const [pan, setPan] = useState(activeBusiness?.payout_pan ?? "");
-  const [accountNumber, setAccountNumber] = useState(
-    activeBusiness?.payout_bank_account_number ?? ""
-  );
-  const [ifsc, setIfsc] = useState(activeBusiness?.payout_bank_ifsc ?? "");
   const [accountHolderName, setAccountHolderName] = useState(
     activeBusiness?.payout_account_holder_name ?? ""
   );
   const [panVerifiedAt, setPanVerifiedAt] = useState<string | null>(null);
-  const [bankVerifiedAt, setBankVerifiedAt] = useState<string | null>(null);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isVerifyingPan, setIsVerifyingPan] = useState(false);
-  const [isVerifyingBank, setIsVerifyingBank] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const loadVerifiedAccounts = useCallback(async () => {
+    if (!activeBusinessId) {
+      setVerifiedAccounts([]);
+      setSelectedAccountId("");
+      return;
+    }
+
+    setIsLoadingAccounts(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `/api/kyc/merchant/verified-accounts?business_id=${encodeURIComponent(activeBusinessId)}`,
+        { headers }
+      );
+      const payload = await parseApiJsonResponse<{ accounts: MerchantBankAccountRecord[] }>(
+        response
+      );
+      setVerifiedAccounts(payload.accounts);
+      setSelectedAccountId((current) => {
+        if (current && payload.accounts.some((account) => account.id === current)) {
+          return current;
+        }
+
+        return payload.accounts[0]?.id ?? "";
+      });
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load verified settlement accounts."
+      );
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  }, [activeBusinessId]);
+
+  useEffect(() => {
+    void loadVerifiedAccounts();
+  }, [loadVerifiedAccounts]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!activeBusinessId) {
       setError("Select a business workspace before saving payout details.");
+      return;
+    }
+
+    if (!selectedAccountId) {
+      setError("Verify a settlement account with the ₹5 Secure Bank Linking flow first.");
       return;
     }
 
@@ -53,9 +114,8 @@ export function PayoutDetailsCard() {
           method: "POST",
           headers,
           body: JSON.stringify({
+            merchant_bank_account_id: selectedAccountId,
             payout_pan: pan,
-            payout_bank_account_number: accountNumber,
-            payout_bank_ifsc: ifsc,
             payout_account_holder_name: accountHolderName || shopName,
           }),
         }
@@ -118,176 +178,129 @@ export function PayoutDetailsCard() {
     }
   }
 
-  async function verifyBank() {
-    if (!activeBusinessId) {
-      setError("Select a business workspace before verifying bank account.");
-      return;
-    }
-
-    setIsVerifyingBank(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch("/api/kyc/penny-drop", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          account_number: accountNumber,
-          ifsc,
-          account_holder_name: accountHolderName || shopName,
-          context: "business",
-          business_id: activeBusinessId,
-        }),
-      });
-      const body = await readApiJsonBody<{
-        bank_verified_at?: string;
-        message?: string;
-        error?: string;
-      }>(response);
-
-      if (!response.ok) {
-        throw new Error(body.error || "Bank verification failed.");
-      }
-
-      setBankVerifiedAt(body.bank_verified_at ?? new Date().toISOString());
-      setMessage(body.message ?? "Bank account verified.");
-    } catch (verifyError) {
-      setError(
-        verifyError instanceof Error
-          ? verifyError.message
-          : "Bank verification failed."
-      );
-    } finally {
-      setIsVerifyingBank(false);
-    }
-  }
-
   const panVerified = Boolean(panVerifiedAt);
-  const bankVerified = Boolean(bankVerifiedAt);
+  const hasVerifiedAccounts = verifiedAccounts.length > 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <h2 className="type-section-title">Payout details</h2>
-        <p className="mt-1 text-sm text-recoverpe-muted">
-          One-time setup so Smart Collect settlements route directly to your bank
-          via Razorpay Route. PAN and bank account only — no net-banking login
-          required.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit}>
-          <label className="block text-sm sm:col-span-2">
-            <span className="font-medium text-recoverpe-black">Shop name</span>
-            <Input
-              className="mt-1"
-              value={shopName}
-              onChange={(event) => setShopName(event.target.value)}
-              required
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="font-medium text-recoverpe-black">PAN</span>
-            <Input
-              className="mt-1 uppercase"
-              value={pan}
-              onChange={(event) => setPan(event.target.value.toUpperCase())}
-              required
-            />
-          </label>
-          <div className="flex items-end gap-2">
-            <Badge tone={panVerified ? "success" : "neutral"}>
-              {panVerified ? "Verified" : "Pending"}
-            </Badge>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={panVerified || isVerifyingPan || !pan.trim()}
-              onClick={() => void verifyPan()}
-            >
-              {isVerifyingPan ? "Verifying…" : "Verify via NSDL"}
-            </Button>
-          </div>
-          <label className="block text-sm">
-            <span className="font-medium text-recoverpe-black">
-              Account holder name
-            </span>
-            <Input
-              className="mt-1"
-              value={accountHolderName}
-              onChange={(event) => setAccountHolderName(event.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="font-medium text-recoverpe-black">
-              Bank account number
-            </span>
-            <Input
-              className="mt-1 font-mono tracking-wide"
-              value={accountNumber}
-              onChange={(event) => setAccountNumber(event.target.value)}
-              required
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="font-medium text-recoverpe-black">IFSC</span>
-            <Input
-              className="mt-1 font-mono uppercase tracking-wide"
-              value={ifsc}
-              onChange={(event) => setIfsc(event.target.value.toUpperCase())}
-              required
-            />
-          </label>
-          <div className="flex items-end gap-2 sm:col-span-2">
-            <Badge tone={bankVerified ? "success" : "neutral"}>
-              {bankVerified ? "Verified" : "Pending verification"}
-            </Badge>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={
-                bankVerified ||
-                isVerifyingBank ||
-                !accountNumber.trim() ||
-                !ifsc.trim()
-              }
-              onClick={() => void verifyBank()}
-            >
-              {isVerifyingBank ? "Verifying…" : "Verify Bank"}
-            </Button>
-          </div>
-          {activeBusiness?.razorpay_route_status ? (
-            <div className="sm:col-span-2">
-              <Badge
-                tone={
-                  activeBusiness.razorpay_route_status === "active"
-                    ? "success"
-                    : "neutral"
-                }
-              >
-                Route {activeBusiness.razorpay_route_status}
+    <div className="space-y-6">
+      <SecureBankLinking onVerified={() => void loadVerifiedAccounts()} />
+
+      <Card>
+        <CardHeader>
+          <h2 className="type-section-title">Settlement account</h2>
+          <p className="mt-1 text-sm text-recoverpe-muted">
+            Settlements can only route to verified accounts captured during Secure
+            Bank Linking. Manual bank entry is disabled for compliance.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit}>
+            <label className="block text-sm sm:col-span-2">
+              <span className="font-medium text-recoverpe-black">Shop name</span>
+              <Input
+                className="mt-1"
+                value={shopName}
+                onChange={(event) => setShopName(event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="block text-sm sm:col-span-2">
+              <span className="font-medium text-recoverpe-black">
+                Verified settlement account
+              </span>
+              {hasVerifiedAccounts ? (
+                <Select
+                  className="mt-1"
+                  value={selectedAccountId}
+                  onChange={(event) => setSelectedAccountId(event.target.value)}
+                  required
+                >
+                  {verifiedAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {formatVerifiedAccountLabel(account)}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <div className="mt-2 rounded-xl border border-recoverpe-line bg-recoverpe-canvas px-3 py-3 text-sm text-recoverpe-muted">
+                  {isLoadingAccounts
+                    ? "Loading verified accounts…"
+                    : "No verified accounts yet. Complete Secure Bank Linking above."}
+                </div>
+              )}
+            </label>
+
+            <label className="block text-sm">
+              <span className="font-medium text-recoverpe-black">PAN</span>
+              <Input
+                className="mt-1 uppercase"
+                value={pan}
+                onChange={(event) => setPan(event.target.value.toUpperCase())}
+                required
+              />
+            </label>
+            <div className="flex items-end gap-2">
+              <Badge tone={panVerified ? "success" : "neutral"}>
+                {panVerified ? "Verified" : "Pending"}
               </Badge>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={panVerified || isVerifyingPan || !pan.trim()}
+                onClick={() => void verifyPan()}
+              >
+                {isVerifyingPan ? "Verifying…" : "Verify via NSDL"}
+              </Button>
             </div>
-          ) : null}
-          {error ? (
-            <Alert tone="danger" className="sm:col-span-2">
-              {error}
-            </Alert>
-          ) : null}
-          {message ? (
-            <Alert tone="success" className="sm:col-span-2">
-              {message}
-            </Alert>
-          ) : null}
-          <Button type="submit" className="sm:col-span-2" disabled={isSaving}>
-            {isSaving ? "Saving…" : "Save payout details"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+
+            <label className="block text-sm sm:col-span-2">
+              <span className="font-medium text-recoverpe-black">
+                Account holder name
+              </span>
+              <Input
+                className="mt-1"
+                value={accountHolderName}
+                onChange={(event) => setAccountHolderName(event.target.value)}
+              />
+            </label>
+
+            {activeBusiness?.razorpay_route_status ? (
+              <div className="sm:col-span-2">
+                <Badge
+                  tone={
+                    activeBusiness.razorpay_route_status === "active"
+                      ? "success"
+                      : "neutral"
+                  }
+                >
+                  Route {activeBusiness.razorpay_route_status}
+                </Badge>
+              </div>
+            ) : null}
+
+            {error ? (
+              <Alert tone="danger" className="sm:col-span-2">
+                {error}
+              </Alert>
+            ) : null}
+            {message ? (
+              <Alert tone="success" className="sm:col-span-2">
+                {message}
+              </Alert>
+            ) : null}
+
+            <Button
+              type="submit"
+              className="sm:col-span-2"
+              disabled={isSaving || !hasVerifiedAccounts}
+            >
+              {isSaving ? "Saving…" : "Save payout details"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

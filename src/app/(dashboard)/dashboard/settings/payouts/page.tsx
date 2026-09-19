@@ -17,7 +17,7 @@ export default function PayoutSettingsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Payouts"
-          description="Configure Razorpay Route bank details so Smart Collect settlements reach your account with zero MDR."
+          description="Verify your settlement account via Secure Bank Linking, then lock Smart Collect payouts to that verified source."
         />
         <PayoutDetailsCard />
       </div>

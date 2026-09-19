@@ -39,9 +39,45 @@ export interface AuditLogInsert {
   created_at?: string;
 }
 
+export interface MerchantBankAccountRow {
+  id: string;
+  business_id: string;
+  account_number: string | null;
+  ifsc: string | null;
+  upi_vpa: string | null;
+  is_verified: boolean;
+  verification_payment_id: string | null;
+  created_at: string;
+}
+
+export interface MerchantBankAccountInsert {
+  id?: string;
+  business_id: string;
+  account_number?: string | null;
+  ifsc?: string | null;
+  upi_vpa?: string | null;
+  is_verified?: boolean;
+  verification_payment_id?: string | null;
+  created_at?: string;
+}
+
 export interface Database {
   public: {
     Tables: {
+      merchant_bank_accounts: {
+        Row: MerchantBankAccountRow;
+        Insert: MerchantBankAccountInsert;
+        Update: Partial<MerchantBankAccountInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "merchant_bank_accounts_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_logs: {
         Row: AuditLogRow;
         Insert: AuditLogInsert;

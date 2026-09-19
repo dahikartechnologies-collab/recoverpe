@@ -13,6 +13,7 @@ import {
   getSubscriptionPlanId,
   getSubscriptionTierFromPurchase,
   getSubscriptionTotalCount,
+  isBankVerificationPurchaseType,
   isBusinessAddonPurchaseType,
   isMicroTransactionPurchaseType,
   PREMIUM_DISCOUNT_RATE,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/razorpay-products";
 import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
+import { fulfillMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
 import { MicroTransactionFulfillment } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -577,6 +579,16 @@ export async function fulfillRazorpayOrder(
     }
 
     const purchaseType = orderRow.purchase_type as PurchaseType;
+
+    if (isBankVerificationPurchaseType(purchaseType)) {
+      return {
+        alreadyFulfilled: true,
+        userId: orderRow.user_id,
+        purchaseType,
+        microFulfillment: null,
+      };
+    }
+
     let microFulfillment: MicroTransactionFulfillment | null = null;
 
     if (
@@ -603,6 +615,29 @@ export async function fulfillRazorpayOrder(
   }
 
   const purchaseType = lockedOrder.purchase_type as PurchaseType;
+
+  if (isBankVerificationPurchaseType(purchaseType)) {
+    if (!lockedOrder.business_id) {
+      throw new Error("Bank verification order is missing business context.");
+    }
+
+    await fulfillMerchantBankVerificationOrder(supabase, razorpayOrderId);
+
+    emitGa4PurchaseEvent({
+      userId: lockedOrder.user_id,
+      transactionId: razorpayOrderId,
+      purchaseType,
+      valueInr: lockedOrder.amount_paise / 100,
+    });
+
+    return {
+      alreadyFulfilled: false,
+      userId: lockedOrder.user_id,
+      purchaseType,
+      microFulfillment: null,
+    };
+  }
+
   const product = getPurchaseProduct(purchaseType);
 
   if (purchaseType === "subscription_premium") {

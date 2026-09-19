@@ -7,6 +7,7 @@ import {
   isSubscriptionWebhookEvent,
   verifyRazorpayWebhookSignature,
 } from "@/lib/razorpay";
+import { handleMerchantBankVerificationWebhook } from "@/lib/payments/merchant-bank-verification";
 import { processRazorpayVirtualAccountCredit } from "@/lib/payments/razorpay-webhook-handler";
 import {
   isRazorpaySmartCollectCreditEvent,
@@ -117,6 +118,21 @@ export async function POST(request: Request) {
         { error: "Unable to resolve Razorpay order ID from webhook payload." },
         { status: 400 }
       );
+    }
+
+    const bankVerificationResult = await handleMerchantBankVerificationWebhook(
+      supabase,
+      payload,
+      razorpayOrderId
+    );
+
+    if (bankVerificationResult.handled) {
+      return NextResponse.json({
+        received: true,
+        bank_verification_handled: true,
+        business_id: bankVerificationResult.businessId ?? null,
+        event: payload.event,
+      });
     }
 
     const result = await fulfillRazorpayOrder(supabase, razorpayOrderId);

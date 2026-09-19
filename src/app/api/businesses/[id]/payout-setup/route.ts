@@ -19,14 +19,25 @@ export const POST = withWorkspaceMutation<RouteContext>(
     }
 
     const body = (await request.json().catch(() => null)) as {
+      merchant_bank_account_id?: string;
       payout_pan?: string;
-      payout_bank_account_number?: string;
-      payout_bank_ifsc?: string;
       payout_account_holder_name?: string;
     } | null;
 
     if (!body) {
       return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    }
+
+    const merchantBankAccountId = body.merchant_bank_account_id?.trim();
+
+    if (!merchantBankAccountId) {
+      return NextResponse.json(
+        {
+          error:
+            "merchant_bank_account_id is required. Verify your bank via Secure Bank Linking first.",
+        },
+        { status: 400 }
+      );
     }
 
     const supabase = createAdminSupabaseClient();
@@ -40,6 +51,31 @@ export const POST = withWorkspaceMutation<RouteContext>(
 
     if (businessError || !business) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
+    }
+
+    const { data: verifiedAccount, error: accountError } = await supabase
+      .from("merchant_bank_accounts")
+      .select("id, account_number, ifsc, upi_vpa, is_verified")
+      .eq("id", merchantBankAccountId)
+      .eq("business_id", businessId)
+      .eq("is_verified", true)
+      .maybeSingle();
+
+    if (accountError || !verifiedAccount) {
+      return NextResponse.json(
+        { error: "Selected settlement account is not verified for this business." },
+        { status: 400 }
+      );
+    }
+
+    if (!verifiedAccount.account_number || !verifiedAccount.ifsc) {
+      return NextResponse.json(
+        {
+          error:
+            "This verified account does not include bank routing details required for Razorpay Route.",
+        },
+        { status: 400 }
+      );
     }
 
     const { data: userRow, error: userError } = await supabase
@@ -56,8 +92,8 @@ export const POST = withWorkspaceMutation<RouteContext>(
       businessId,
       businessName: business.business_name as string,
       payoutPan: body.payout_pan ?? "",
-      payoutBankAccountNumber: body.payout_bank_account_number ?? "",
-      payoutBankIfsc: body.payout_bank_ifsc ?? "",
+      payoutBankAccountNumber: verifiedAccount.account_number as string,
+      payoutBankIfsc: verifiedAccount.ifsc as string,
       payoutAccountHolderName: body.payout_account_holder_name ?? "",
       contactEmail: userRow.email as string,
       contactPhone: (userRow.phone_number as string | null) ?? null,
@@ -98,7 +134,7 @@ export const POST = withWorkspaceMutation<RouteContext>(
 
       return NextResponse.json({
         success: true,
-        message: "Payout details updated.",
+        message: "Payout details updated from verified settlement account.",
         route_status: "active",
       });
     }
@@ -132,8 +168,8 @@ export const POST = withWorkspaceMutation<RouteContext>(
         success: true,
         message:
           linkedAccount.routeStatus === "active"
-            ? "Payout account verified. Smart Collect settlements will route to your bank."
-            : "Payout details submitted. Razorpay is verifying your bank account.",
+            ? "Verified settlement account linked. Smart Collect payouts are locked to this source."
+            : "Verified settlement account submitted. Razorpay is completing verification.",
         route_status: linkedAccount.routeStatus,
       });
     } catch (error) {

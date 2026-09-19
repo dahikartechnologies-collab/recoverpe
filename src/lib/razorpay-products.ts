@@ -87,6 +87,15 @@ export const PURCHASE_PRODUCTS = {
     tier: "micro" as const,
     billingMode: "order" as const,
   },
+  bank_verification_5: {
+    label: "Secure Bank Linking",
+    description:
+      "One-time RBI-compliant reverse penny-drop verification for settlement routing.",
+    amountPaise: 500,
+    amountLabel: "₹5",
+    tier: "micro" as const,
+    billingMode: "order" as const,
+  },
   promise_register_monthly: {
     label: "Promise Register",
     description: "Deprecated — included in Business tier.",
@@ -136,8 +145,14 @@ export function isSubscriptionPurchaseType(
   );
 }
 
+export const MERCHANT_BANK_VERIFICATION_AMOUNT_PAISE = 500;
+
 export function isMicroTransactionPurchaseType(value: PurchaseType): boolean {
   return value === "legal_notice_999" || value === "samadhaan_499";
+}
+
+export function isBankVerificationPurchaseType(value: PurchaseType | string): boolean {
+  return value === "bank_verification_5";
 }
 
 export function isBusinessAddonPurchaseType(
