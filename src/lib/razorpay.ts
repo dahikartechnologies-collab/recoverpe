@@ -224,7 +224,7 @@ export async function downgradeBusinessToStarterOnDunning(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  await supabase
+  const { error: userError } = await supabase
     .from("users")
     .update({
       subscription_plan: "free",
@@ -232,7 +232,13 @@ export async function downgradeBusinessToStarterOnDunning(
     })
     .eq("id", userId);
 
-  await supabase
+  if (userError) {
+    throw new Error(
+      userError.message || "Failed to downgrade user subscription on dunning."
+    );
+  }
+
+  const { error: businessError } = await supabase
     .from("businesses")
     .update({
       subscription_tier: "starter",
@@ -241,6 +247,13 @@ export async function downgradeBusinessToStarterOnDunning(
       razorpay_subscription_id: null,
     })
     .eq("user_id", userId);
+
+  if (businessError) {
+    throw new Error(
+      businessError.message ||
+        "Failed to downgrade business subscription tier on dunning."
+    );
+  }
 }
 
 export async function createRazorpayOrderRecord(
@@ -844,26 +857,37 @@ export async function handleSubscriptionPaymentFailure(
   supabase: SupabaseClient,
   payload: unknown
 ): Promise<{ handled: boolean; userId?: string }> {
-  const subscriptionEntity = extractSubscriptionEntityFromWebhook(payload);
+  const subscriptionId = extractSubscriptionIdFromWebhook(payload);
 
-  if (!subscriptionEntity?.id) {
+  if (!subscriptionId) {
     return { handled: false };
   }
 
   const { data: subscriptionRow, error } = await supabase
     .from("razorpay_subscriptions")
     .select("id, user_id, status")
-    .eq("razorpay_subscription_id", subscriptionEntity.id)
+    .eq("razorpay_subscription_id", subscriptionId)
     .maybeSingle();
 
-  if (error || !subscriptionRow) {
+  if (error) {
+    throw new Error(error.message || "Failed to load subscription for dunning.");
+  }
+
+  if (!subscriptionRow) {
     return { handled: false };
   }
 
-  await supabase
+  const { error: subscriptionUpdateError } = await supabase
     .from("razorpay_subscriptions")
     .update({ status: "halted" })
     .eq("id", subscriptionRow.id);
+
+  if (subscriptionUpdateError) {
+    throw new Error(
+      subscriptionUpdateError.message ||
+        "Failed to mark subscription halted after payment failure."
+    );
+  }
 
   await downgradeBusinessToStarterOnDunning(
     supabase,
@@ -946,6 +970,7 @@ export function extractRazorpayOrderIdFromWebhook(payload: unknown): string | nu
 export function extractPaymentEntityFromWebhook(payload: unknown): {
   id?: string;
   amount?: number;
+  subscription_id?: string;
 } | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -957,12 +982,29 @@ export function extractPaymentEntityFromWebhook(payload: unknown): {
         entity?: {
           id?: string;
           amount?: number;
+          subscription_id?: string;
         };
       };
     };
   };
 
   return body.payload?.payment?.entity ?? null;
+}
+
+export function extractSubscriptionIdFromWebhook(payload: unknown): string | null {
+  const subscriptionEntity = extractSubscriptionEntityFromWebhook(payload);
+
+  if (subscriptionEntity?.id) {
+    return subscriptionEntity.id;
+  }
+
+  const paymentEntity = extractPaymentEntityFromWebhook(payload);
+
+  if (paymentEntity?.subscription_id) {
+    return paymentEntity.subscription_id;
+  }
+
+  return null;
 }
 
 export function extractSubscriptionEntityFromWebhook(payload: unknown): {
