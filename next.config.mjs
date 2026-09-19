@@ -35,7 +35,7 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
   "form-action 'self'",
   [
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
     "https://checkout.razorpay.com",
     "https://*.googletagmanager.com",
     "https://connect.facebook.net",
@@ -43,9 +43,10 @@ const contentSecurityPolicy = [
     "https://www.google.com",
     "https://www.gstatic.com",
     "https://apis.google.com",
+    "https://c.daily.co",
   ].join(" "),
   [
-    "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' blob:",
     "https://checkout.razorpay.com",
     "https://*.googletagmanager.com",
     "https://connect.facebook.net",
@@ -53,6 +54,7 @@ const contentSecurityPolicy = [
     "https://www.google.com",
     "https://www.gstatic.com",
     "https://apis.google.com",
+    "https://c.daily.co",
   ].join(" "),
   [
     "style-src 'self' 'unsafe-inline'",
@@ -62,6 +64,8 @@ const contentSecurityPolicy = [
     "style-src-elem 'self' 'unsafe-inline'",
     "https://fonts.googleapis.com",
   ].join(" "),
+  "worker-src 'self' blob:",
+  "media-src 'self' blob: data:",
   "img-src 'self' data: blob: https:",
   [
     "font-src 'self' data:",
@@ -74,6 +78,8 @@ const contentSecurityPolicy = [
     "https://securetoken.googleapis.com",
     "https://www.google.com",
     "https://www.gstatic.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
     "https://*.google-analytics.com",
     "https://*.analytics.google.com",
     "https://*.googletagmanager.com",
@@ -86,6 +92,9 @@ const contentSecurityPolicy = [
     "https://vitals.vercel-insights.com",
     "https://api.vapi.ai",
     "wss://*.vapi.ai",
+    "https://*.daily.co",
+    "https://*.pluot.blue",
+    "wss://*.daily.co",
   ].join(" "),
   [
     "frame-src 'self'",
@@ -94,6 +103,7 @@ const contentSecurityPolicy = [
     "https://www.google.com",
     "https://recaptcha.google.com",
     "https://www.gstatic.com",
+    "https://*.daily.co",
   ].join(" "),
   "upgrade-insecure-requests",
 ].join("; ");
@@ -117,7 +127,7 @@ const securityHeaders = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value: "camera=(self), microphone=(self), geolocation=(), interest-cohort=()",
   },
   {
     key: "Content-Security-Policy",

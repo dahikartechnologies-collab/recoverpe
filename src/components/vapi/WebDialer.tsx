@@ -6,7 +6,9 @@ import type { AssistantOverrides } from "@vapi-ai/web/dist/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Toast } from "@/components/ui/Toast";
+import { getAuthHeaders } from "@/lib/auth-headers";
 import { formatCurrency } from "@/lib/gst";
+import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { getTodayDateStringInIst } from "@/lib/timezone";
 import {
   buildSnehaAssistantOverrides,
@@ -15,6 +17,13 @@ import {
 import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 
 type DialerState = "idle" | "connecting" | "connected" | "speaking" | "error";
+
+interface VapiWebRtcConfigResponse {
+  publicKey?: string;
+  assistantId?: string;
+  isConfigured?: boolean;
+  error?: string;
+}
 
 const STATE_LABEL: Record<DialerState, string> = {
   idle: "Ready",
@@ -40,10 +49,12 @@ export function WebDialer() {
   const vapiRef = useRef<Vapi | null>(null);
   const [state, setState] = useState<DialerState>("idle");
   const [error, setError] = useState("");
+  const [configError, setConfigError] = useState("");
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
+  const [publicKey, setPublicKey] = useState("");
+  const [assistantId, setAssistantId] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY?.trim() ?? "";
-  const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim() ?? "";
   const isConfigured = Boolean(publicKey && assistantId);
   const snehaOverrides = buildSnehaAssistantOverrides(WEB_DIALER_TEST_CONTEXT);
 
@@ -52,12 +63,72 @@ export function WebDialer() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadConfig() {
+      setIsConfigLoading(true);
+      setConfigError("");
+
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch("/api/admin/vapi-webrtc-config", {
+          headers,
+          cache: "no-store",
+        });
+        const payload = await parseApiJsonResponse<VapiWebRtcConfigResponse>(
+          response
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok || !payload.publicKey || !payload.assistantId) {
+          setPublicKey("");
+          setAssistantId("");
+          setConfigError(
+            payload.error ||
+              "WebRTC dialer is not configured on the server. Add VAPI_PUBLIC_KEY and VAPI_ASSISTANT_ID in Vercel."
+          );
+          return;
+        }
+
+        setPublicKey(payload.publicKey);
+        setAssistantId(payload.assistantId);
+      } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+
+        setPublicKey("");
+        setAssistantId("");
+        setConfigError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load VAPI WebRTC configuration."
+        );
+      } finally {
+        if (!cancelled) {
+          setIsConfigLoading(false);
+        }
+      }
+    }
+
+    void loadConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!publicKey) {
+      vapiRef.current = null;
       return;
     }
 
     try {
-      const client = new Vapi(publicKey);
+      const client = new Vapi(publicKey, undefined, { avoidEval: true });
       vapiRef.current = client;
 
       client.on("call-start", () => {
@@ -67,7 +138,8 @@ export function WebDialer() {
       client.on("speech-start", () => setState("speaking"));
       client.on("speech-end", () => setState("connected"));
       client.on("call-end", () => setState("idle"));
-      client.on("error", () => {
+      client.on("error", (vapiError) => {
+        console.error("[WebDialer] VAPI runtime error:", vapiError);
         setState("error");
         setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
         showUnavailableToast();
@@ -88,8 +160,10 @@ export function WebDialer() {
   async function startCall() {
     if (!vapiRef.current || !assistantId) {
       setState("error");
-      setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
-      showUnavailableToast();
+      setError(
+        configError ||
+          "WebRTC dialer is not configured. Set VAPI_PUBLIC_KEY and VAPI_ASSISTANT_ID in Vercel."
+      );
       return;
     }
 
@@ -101,8 +175,9 @@ export function WebDialer() {
     } catch (permissionError) {
       console.error("[WebDialer] Microphone permission denied:", permissionError);
       setState("error");
-      setError(VAPI_UNAVAILABLE_TOAST_MESSAGE);
-      showUnavailableToast();
+      setError(
+        "Microphone access was blocked. Allow microphone for this site in your browser settings, then retry."
+      );
       return;
     }
 
@@ -144,10 +219,16 @@ export function WebDialer() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isConfigured ? (
+          {isConfigLoading ? (
+            <p className="text-sm text-recoverpe-grey-medium">
+              Loading VAPI WebRTC configuration…
+            </p>
+          ) : null}
+
+          {!isConfigLoading && !isConfigured ? (
             <p className="text-sm text-recoverpe-error">
-              Set `NEXT_PUBLIC_VAPI_PUBLIC_KEY` and `NEXT_PUBLIC_VAPI_ASSISTANT_ID`
-              in your environment to enable the WebRTC dialer.
+              {configError ||
+                "Set VAPI_PUBLIC_KEY (or NEXT_PUBLIC_VAPI_PUBLIC_KEY) and VAPI_ASSISTANT_ID (or NEXT_PUBLIC_VAPI_ASSISTANT_ID) in Vercel."}
             </p>
           ) : null}
 
@@ -168,7 +249,7 @@ export function WebDialer() {
             <Button
               type="button"
               onClick={() => void startCall()}
-              disabled={!isConfigured || isActive}
+              disabled={!isConfigured || isConfigLoading || isActive}
             >
               Start AI Web Call
             </Button>
