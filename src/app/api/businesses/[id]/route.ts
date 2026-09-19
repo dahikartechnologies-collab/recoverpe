@@ -5,7 +5,6 @@ import { BUSINESS_SELECT } from "@/lib/business-select";
 import { validateBusinessSettingsUpdate } from "@/lib/business-settings-validation";
 import { parseSmtpSettings } from "@/lib/notification-settings";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { createAuthenticatedSupabaseClient } from "@/lib/supabase-authenticated";
 import { Business, SubscriptionPlan } from "@/types";
 
 const BUSINESS_SELECT_FIELDS = BUSINESS_SELECT;
@@ -34,7 +33,35 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         autopilot_schedule?: number[];
       };
 
+      console.log("[PATCH /api/businesses] Incoming payload:", JSON.stringify(body));
+      console.log("[PATCH /api/businesses] Auth context:", {
+        actorUserId: auth.actorUserId,
+        workspaceUserId: auth.workspaceUserId,
+        businessId,
+        role: auth.role,
+        isOwner: auth.isOwner,
+      });
+
       const adminSupabase = createAdminSupabaseClient();
+
+      const { data: ownedBusiness, error: ownershipError } = await adminSupabase
+        .from("businesses")
+        .select("id, smtp_settings")
+        .eq("id", businessId)
+        .eq("user_id", auth.workspaceUserId)
+        .maybeSingle();
+
+      if (ownershipError) {
+        return logAndRespondDatabaseError(
+          "businesses PATCH ownership lookup",
+          ownershipError
+        );
+      }
+
+      if (!ownedBusiness) {
+        return NextResponse.json({ error: "Business not found." }, { status: 404 });
+      }
+
       const { data: ownerUser, error: ownerLookupError } = await adminSupabase
         .from("users")
         .select("subscription_plan")
@@ -60,22 +87,7 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
       const updatePayload = { ...validation.data };
 
       if (updatePayload.smtp_settings && !updatePayload.smtp_settings.pass) {
-        const { data: existingBusiness, error: existingBusinessError } =
-          await adminSupabase
-            .from("businesses")
-            .select("smtp_settings")
-            .eq("id", businessId)
-            .eq("user_id", auth.workspaceUserId)
-            .maybeSingle();
-
-        if (existingBusinessError) {
-          return logAndRespondDatabaseError(
-            "businesses PATCH smtp lookup",
-            existingBusinessError
-          );
-        }
-
-        const existingSmtp = parseSmtpSettings(existingBusiness?.smtp_settings);
+        const existingSmtp = parseSmtpSettings(ownedBusiness.smtp_settings);
 
         if (existingSmtp.pass) {
           updatePayload.smtp_settings = {
@@ -85,8 +97,12 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         }
       }
 
-      const userSupabase = createAuthenticatedSupabaseClient(auth.idToken);
-      const { data, error } = await userSupabase
+      console.log(
+        "[PATCH /api/businesses] Sanitized update payload:",
+        JSON.stringify(updatePayload)
+      );
+
+      const { data, error } = await adminSupabase
         .from("businesses")
         .update(updatePayload)
         .eq("id", businessId)
@@ -95,7 +111,10 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         .single();
 
       if (error || !data) {
-        return logAndRespondDatabaseError("businesses PATCH update", error ?? new Error("No business row returned."));
+        return logAndRespondDatabaseError(
+          "businesses PATCH update",
+          error ?? new Error("No business row returned.")
+        );
       }
 
       return NextResponse.json({
@@ -119,40 +138,20 @@ export const DELETE = withWorkspaceAuth<RouteContext>(
         return NextResponse.json({ error: "Business ID is required." }, { status: 400 });
       }
 
-      const userSupabase = createAuthenticatedSupabaseClient(auth.idToken);
-      const { data: deletedRow, error } = await userSupabase
+      const adminSupabase = createAdminSupabaseClient();
+      const { data: deletedRow, error } = await adminSupabase
         .from("businesses")
         .delete()
         .eq("id", businessId)
         .eq("user_id", auth.actorUserId)
         .select("id")
         .maybeSingle();
-
-      if (deletedRow) {
-        return NextResponse.json({
-          success: true,
-          message: "Business deleted successfully.",
-        });
-      }
 
       if (error) {
-        return logAndRespondDatabaseError("businesses DELETE user-scoped", error);
+        return logAndRespondDatabaseError("businesses DELETE", error);
       }
 
-      const adminSupabase = createAdminSupabaseClient();
-      const { data: adminDeletedRow, error: adminError } = await adminSupabase
-        .from("businesses")
-        .delete()
-        .eq("id", businessId)
-        .eq("user_id", auth.actorUserId)
-        .select("id")
-        .maybeSingle();
-
-      if (adminError) {
-        return logAndRespondDatabaseError("businesses DELETE admin fallback", adminError);
-      }
-
-      if (!adminDeletedRow) {
+      if (!deletedRow) {
         return NextResponse.json(
           {
             error:

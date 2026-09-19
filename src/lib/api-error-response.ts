@@ -3,12 +3,25 @@ import { NextResponse } from "next/server";
 const DATABASE_ERROR_MESSAGE =
   "Database verification failed. Please try again.";
 
+export function logStructuredError(scope: string, error: unknown): void {
+  if (error instanceof Error) {
+    console.error(`[${scope}]`, {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+    return;
+  }
+
+  console.error(`[${scope}]`, error);
+}
+
 export function logAndRespondDatabaseError(
   scope: string,
   error: unknown,
   options?: { status?: number; message?: string }
 ): NextResponse {
-  console.error(`[${scope}]`, error);
+  logStructuredError(scope, error);
 
   return NextResponse.json(
     { error: options?.message ?? DATABASE_ERROR_MESSAGE },
