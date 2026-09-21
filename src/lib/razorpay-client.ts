@@ -4,6 +4,7 @@ import {
   CreateRazorpayOrderResponse,
   CreateRazorpaySubscriptionPayload,
   CreateRazorpaySubscriptionResponse,
+  CreateSubscriptionCheckoutPayload,
   DevFulfillRazorpayPayload,
   DevFulfillRazorpayResponse,
   FulfillRazorpayOrderPayload,
@@ -11,9 +12,11 @@ import {
   MicroTransactionFulfillment,
   PurchaseType,
   SubscriptionPurchaseType,
+  Tier,
 } from "@/types";
 import {
   getPurchaseProduct,
+  getSubscriptionTierFromPurchase,
   isSubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import {
@@ -109,6 +112,27 @@ export async function createRazorpaySubscription(
 
   if (!response.ok || !body.success) {
     throw new Error(body.error || "Failed to create Razorpay subscription.");
+  }
+
+  return body;
+}
+
+export async function createSubscriptionCheckout(
+  payload: CreateSubscriptionCheckoutPayload
+): Promise<CreateRazorpaySubscriptionResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/checkout/create-subscription", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as CreateRazorpaySubscriptionResponse & {
+    error?: string;
+  };
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to create subscription checkout.");
   }
 
   return body;
@@ -210,7 +234,12 @@ export async function startRazorpayCheckout({
   });
 
   if (isSubscriptionPurchaseType(purchaseType)) {
-    return startRazorpaySubscriptionCheckout({
+    const tier = getSubscriptionTierFromPurchase(purchaseType);
+    const interval = purchaseType.endsWith("_annual") ? "annual" : "monthly";
+
+    return startTierSubscriptionCheckout({
+      tier,
+      interval,
       purchaseType,
       description,
       prefill,
@@ -311,15 +340,35 @@ interface StartSubscriptionCheckoutInput {
   onDismiss?: () => void;
 }
 
-export async function startRazorpaySubscriptionCheckout({
+interface StartTierSubscriptionCheckoutInput {
+  tier: Tier;
+  interval: "monthly" | "annual";
+  purchaseType: SubscriptionPurchaseType;
+  description: string;
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  onSuccess?: () => void;
+  onDismiss?: () => void;
+}
+
+async function openRazorpaySubscriptionCheckout({
+  subscriptionResponse,
   purchaseType,
   description,
   prefill,
   onSuccess,
   onDismiss,
-}: StartSubscriptionCheckoutInput): Promise<void> {
-  const subscriptionResponse = await createRazorpaySubscription(purchaseType);
-
+}: {
+  subscriptionResponse: CreateRazorpaySubscriptionResponse;
+  purchaseType: SubscriptionPurchaseType;
+  description: string;
+  prefill?: StartSubscriptionCheckoutInput["prefill"];
+  onSuccess?: () => void;
+  onDismiss?: () => void;
+}): Promise<void> {
   if (subscriptionResponse.simulated) {
     console.warn(
       "[Recoverpe Razorpay Dev Bypass] Simulating subscription fulfillment locally."
@@ -374,6 +423,46 @@ export async function startRazorpaySubscriptionCheckout({
     });
 
     checkout.open();
+  });
+}
+
+export async function startRazorpaySubscriptionCheckout({
+  purchaseType,
+  description,
+  prefill,
+  onSuccess,
+  onDismiss,
+}: StartSubscriptionCheckoutInput): Promise<void> {
+  const subscriptionResponse = await createRazorpaySubscription(purchaseType);
+
+  await openRazorpaySubscriptionCheckout({
+    subscriptionResponse,
+    purchaseType,
+    description,
+    prefill,
+    onSuccess,
+    onDismiss,
+  });
+}
+
+export async function startTierSubscriptionCheckout({
+  tier,
+  interval,
+  purchaseType,
+  description,
+  prefill,
+  onSuccess,
+  onDismiss,
+}: StartTierSubscriptionCheckoutInput): Promise<void> {
+  const subscriptionResponse = await createSubscriptionCheckout({ tier, interval });
+
+  await openRazorpaySubscriptionCheckout({
+    subscriptionResponse,
+    purchaseType,
+    description,
+    prefill,
+    onSuccess,
+    onDismiss,
   });
 }
 

@@ -150,10 +150,11 @@ export async function activateBusinessSubscription(
   const { error: businessTierError } = await supabase
     .from("businesses")
     .update({
-      subscription_tier: tier,
+      subscription_tier: tier === "free" ? "starter" : tier,
       subscription_interval: planInterval,
       subscription_status: tier === "free" ? "none" : "active",
       subscription_current_period_end: expiresAt.toISOString(),
+      subscription_expires_at: expiresAt.toISOString(),
       razorpay_subscription_id: razorpaySubscriptionId ?? null,
     })
     .eq("user_id", userId);

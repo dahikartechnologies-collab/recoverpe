@@ -1,5 +1,5 @@
+import { BusinessSubscriptionTier, Tier } from "@/types";
 import { parseBusinessAddons } from "@/lib/business-addons";
-import { BusinessSubscriptionTier } from "@/types";
 
 export type EntitlementKey =
   | "core_khata"
@@ -20,6 +20,7 @@ export type EntitlementKey =
 export interface BusinessEntitlementRow {
   subscription_tier: BusinessSubscriptionTier;
   subscription_status?: string | null;
+  subscription_expires_at?: string | null;
   addons?: unknown;
 }
 
@@ -30,8 +31,8 @@ const TIER_ORDER: BusinessSubscriptionTier[] = [
   "premium",
 ];
 
-const ENTITLEMENT_MATRIX: Record<EntitlementKey, BusinessSubscriptionTier> = {
-  core_khata: "free",
+const ENTITLEMENT_MATRIX: Record<EntitlementKey, Tier> = {
+  core_khata: "starter",
   whatsapp_reminders: "starter",
   inbound_ai_bot: "starter",
   inbox: "starter",
@@ -48,16 +49,46 @@ const ENTITLEMENT_MATRIX: Record<EntitlementKey, BusinessSubscriptionTier> = {
 };
 
 function tierRank(tier: BusinessSubscriptionTier): number {
-  return TIER_ORDER.indexOf(tier);
+  const normalized = tier === "free" ? "starter" : tier;
+  return TIER_ORDER.indexOf(normalized);
+}
+
+function normalizeBaseTier(
+  tier: BusinessSubscriptionTier | null | undefined
+): Tier {
+  if (!tier || tier === "free") {
+    return "starter";
+  }
+
+  return tier;
+}
+
+function isSubscriptionExpired(
+  subscriptionExpiresAt: string | null | undefined
+): boolean {
+  if (!subscriptionExpiresAt) {
+    return false;
+  }
+
+  const expiresAt = new Date(subscriptionExpiresAt);
+
+  if (Number.isNaN(expiresAt.getTime())) {
+    return false;
+  }
+
+  return expiresAt.getTime() < Date.now();
 }
 
 export function resolveEffectiveTier(
   business: BusinessEntitlementRow | null | undefined
-): BusinessSubscriptionTier {
-  const baseTier = business?.subscription_tier ?? "free";
+): Tier {
+  const baseTier = normalizeBaseTier(business?.subscription_tier);
 
-  if (baseTier !== "free" && baseTier !== "premium") {
-    return baseTier;
+  if (
+    (baseTier === "business" || baseTier === "premium") &&
+    isSubscriptionExpired(business?.subscription_expires_at)
+  ) {
+    return "starter";
   }
 
   const addons = parseBusinessAddons(business?.addons);
@@ -103,7 +134,7 @@ export function requireEntitlement(
 export function isPaidBusinessTier(
   business: BusinessEntitlementRow | null | undefined
 ): boolean {
-  return resolveEffectiveTier(business) !== "free";
+  return resolveEffectiveTier(business) !== "starter";
 }
 
 export function isPremiumTierBusiness(
@@ -116,4 +147,15 @@ export function isZeroMdrCheckoutEligible(
   business: BusinessEntitlementRow | null | undefined
 ): boolean {
   return hasEntitlement(business, "zero_mdr_checkout");
+}
+
+export function getEffectiveVapiMinutesQuota(tier: Tier): number {
+  switch (tier) {
+    case "starter":
+      return 0;
+    case "business":
+      return 60;
+    case "premium":
+      return 300;
+  }
 }

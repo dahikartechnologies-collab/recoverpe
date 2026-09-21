@@ -1,3 +1,5 @@
+import { Tier } from "@/types";
+
 export const FREE_PLAN_LEDGER_LIMIT = 15;
 
 export const PREMIUM_DISCOUNT_RATE = 0.5;
@@ -233,4 +235,28 @@ export function getSubscriptionTotalCount(
   purchaseType: SubscriptionPurchaseType
 ): number {
   return purchaseType.endsWith("_annual") ? 1 : 120;
+}
+
+export function resolveSubscriptionPurchaseType(
+  tier: Tier,
+  interval: "monthly" | "annual"
+): SubscriptionPurchaseType {
+  switch (tier) {
+    case "starter":
+      return interval === "annual"
+        ? "subscription_starter_annual"
+        : "subscription_starter_monthly";
+    case "business":
+      return interval === "annual"
+        ? "subscription_business_annual"
+        : "subscription_business_monthly";
+    case "premium":
+      return interval === "annual"
+        ? "subscription_premium_annual"
+        : "subscription_premium";
+    default: {
+      const _exhaustive: never = tier;
+      throw new Error(`Unsupported subscription tier: ${String(_exhaustive)}`);
+    }
+  }
 }

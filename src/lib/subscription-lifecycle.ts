@@ -128,6 +128,10 @@ export async function cancelBusinessSubscriptionIfActive(
     return;
   }
 
+  if (business.razorpay_subscription_id === "admin_granted") {
+    return;
+  }
+
   const status = (business.subscription_status as string | null) ?? "";
 
   if (status !== "active" && !ACTIVE_SUBSCRIPTION_STATUSES.has(status)) {

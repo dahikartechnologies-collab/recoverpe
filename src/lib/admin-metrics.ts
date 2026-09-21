@@ -21,6 +21,8 @@ function monthlyRevenueInr(input: {
   const isAnnual = input.subscription_interval === "annual";
 
   switch (input.subscription_tier) {
+    case "starter":
+      return isAnnual ? 4999 / 12 : 499;
     case "business":
       return isAnnual ? 9999 / 12 : 999;
     case "premium":

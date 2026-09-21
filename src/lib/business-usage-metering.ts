@@ -8,12 +8,13 @@ import { BusinessSubscriptionTier } from "@/types";
 export const UNLIMITED_USAGE_QUOTA = 99_999;
 
 export const USAGE_METERING_SELECT =
-  "id, subscription_tier, subscription_status, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
+  "id, subscription_tier, subscription_status, subscription_expires_at, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
 
 export interface BusinessUsageMeteringRow {
   id: string;
   subscription_tier: BusinessSubscriptionTier;
   subscription_status?: string | null;
+  subscription_expires_at?: string | null;
   addons?: unknown;
   quota_smart_collect: number;
   usage_smart_collect: number;
@@ -121,12 +122,13 @@ function toNumber(value: unknown, fallback = 0): number {
 function toEntitlementRow(
   row: Pick<
     BusinessUsageMeteringRow,
-    "subscription_tier" | "subscription_status" | "addons"
+    "subscription_tier" | "subscription_status" | "subscription_expires_at" | "addons"
   >
 ): BusinessEntitlementRow {
   return {
     subscription_tier: row.subscription_tier,
     subscription_status: row.subscription_status,
+    subscription_expires_at: row.subscription_expires_at,
     addons: row.addons,
   };
 }
@@ -150,8 +152,9 @@ export function normalizeUsageMeteringRow(
   return {
     id: data.id as string,
     subscription_tier:
-      (data.subscription_tier as BusinessSubscriptionTier) ?? "free",
+      (data.subscription_tier as BusinessSubscriptionTier) ?? "starter",
     subscription_status: (data.subscription_status as string | null) ?? null,
+    subscription_expires_at: (data.subscription_expires_at as string | null) ?? null,
     addons: data.addons,
     quota_smart_collect: toNumber(data.quota_smart_collect),
     usage_smart_collect: toNumber(data.usage_smart_collect),
@@ -282,7 +285,7 @@ export function buildUsageDashboardPayload(
         effectiveTier === "business" ||
         effectiveTier === "premium",
       overageLabel:
-        effectiveTier === "free" ? "Upgrade for unlimited" : null,
+        effectiveTier === "starter" ? "Upgrade for unlimited" : null,
     },
   ];
 

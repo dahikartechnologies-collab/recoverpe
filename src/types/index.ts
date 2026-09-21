@@ -2,7 +2,11 @@ export type WorkspaceMode = "personal" | "business";
 
 export type SubscriptionPlan = "free" | "premium";
 
-export type BusinessSubscriptionTier = "free" | "starter" | "business" | "premium";
+/** Canonical RecoverPe SaaS tiers (paid + base). */
+export type Tier = "starter" | "business" | "premium";
+
+/** Includes legacy `free` from older rows; always normalize via resolveEffectiveTier(). */
+export type BusinessSubscriptionTier = Tier | "free";
 
 export type PaymentReliabilityTier =
   | "excellent"
@@ -134,6 +138,7 @@ export interface Business {
   subscription_status?: "none" | "active" | "past_due" | "cancelled";
   razorpay_subscription_id?: string | null;
   subscription_current_period_end?: string | null;
+  subscription_expires_at?: string | null;
   payout_pan?: string | null;
   payout_bank_account_number?: string | null;
   payout_bank_ifsc?: string | null;
@@ -779,6 +784,11 @@ export interface CreateRazorpaySubscriptionPayload {
   purchase_type: SubscriptionPurchaseType;
 }
 
+export interface CreateSubscriptionCheckoutPayload {
+  tier: Tier;
+  interval: "monthly" | "annual";
+}
+
 export interface CreateRazorpaySubscriptionResponse {
   success: boolean;
   simulated: boolean;
@@ -913,6 +923,33 @@ export interface AdminUsersListResponse {
 export interface AdminManageUserResponse {
   success: boolean;
   user: AdminManagedUser;
+  message: string;
+}
+
+export interface AdminManagedBusiness {
+  id: string;
+  business_name: string;
+  owner_user_id: string;
+  owner_email: string;
+  subscription_tier: BusinessSubscriptionTier;
+  subscription_status: Business["subscription_status"];
+  subscription_expires_at: string | null;
+  razorpay_subscription_id: string | null;
+  created_at: string;
+}
+
+export interface AdminBusinessesListResponse {
+  businesses: AdminManagedBusiness[];
+}
+
+export interface AdminGrantBusinessTierPayload {
+  tier: Extract<Tier, "business" | "premium">;
+  days: number;
+}
+
+export interface AdminGrantBusinessTierResponse {
+  success: boolean;
+  business: AdminManagedBusiness;
   message: string;
 }
 

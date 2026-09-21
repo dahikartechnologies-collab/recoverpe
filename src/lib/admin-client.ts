@@ -5,6 +5,9 @@ import {
   AdminAgentUpdatePayload,
   AdminAgentUpdateResponse,
   AdminAgentsListResponse,
+  AdminBusinessesListResponse,
+  AdminGrantBusinessTierPayload,
+  AdminGrantBusinessTierResponse,
   AdminManageUserPayload,
   AdminManageUserResponse,
   AdminMetricsResponse,
@@ -282,4 +285,48 @@ export async function fetchAdminAuditLogs(): Promise<{
   }
 
   return { logs: body.logs };
+}
+
+export async function fetchAdminBusinesses(): Promise<AdminBusinessesListResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/businesses", { headers });
+  const body = (await response.json()) as AdminBusinessesListResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.businesses) {
+    throw new Error(body.error || "Failed to load admin businesses.");
+  }
+
+  return body;
+}
+
+export async function grantAdminBusinessTier(
+  businessId: string,
+  payload: AdminGrantBusinessTierPayload
+): Promise<AdminGrantBusinessTierResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`/api/admin/businesses/${businessId}/grant-tier`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as AdminGrantBusinessTierResponse & {
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to grant tier access.");
+  }
+
+  return body;
 }

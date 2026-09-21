@@ -173,11 +173,13 @@ export function BillingView({ user }: BillingViewProps) {
     }
   }
 
-  const activeTier = activeBusiness?.subscription_tier ?? "free";
+  const activeTier = activeBusiness?.subscription_tier ?? "starter";
+  const normalizedActiveTier =
+    activeTier === "free" ? "starter" : activeTier;
   const hasActivePaidSubscription =
-    (activeTier === "business" || activeTier === "premium") &&
+    (normalizedActiveTier === "business" || normalizedActiveTier === "premium") &&
     activeBusiness?.subscription_status === "active";
-  const isStarterOrFree = activeTier === "free" || activeTier === "starter";
+  const isStarterTier = normalizedActiveTier === "starter";
 
   const tierCards: Array<{
     key: string;
@@ -264,7 +266,9 @@ export function BillingView({ user }: BillingViewProps) {
               </p>
               <p className="mt-1 text-sm text-recoverpe-muted">
                 {activeBusiness?.business_name ?? "Workspace"} is on the{" "}
-                {activeTier.charAt(0).toUpperCase() + activeTier.slice(1)} plan.
+                {normalizedActiveTier.charAt(0).toUpperCase() +
+                  normalizedActiveTier.slice(1)}{" "}
+                plan.
               </p>
             </div>
             <Button
@@ -282,7 +286,7 @@ export function BillingView({ user }: BillingViewProps) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {tierCards.map((tier) => {
-          const isCurrent = activeTier === tier.key;
+          const isCurrent = normalizedActiveTier === tier.key || (tier.key === "free" && normalizedActiveTier === "starter");
 
           return (
             <Card
@@ -336,7 +340,7 @@ export function BillingView({ user }: BillingViewProps) {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {isStarterOrFree && !tier.isFree ? (
+                    {isStarterTier && !tier.isFree ? (
                       <Button
                         type="button"
                         onClick={() =>

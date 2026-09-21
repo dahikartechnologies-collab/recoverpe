@@ -28,6 +28,30 @@ describe("entitlements", () => {
     ).toBe(false);
   });
 
+  it("degrades expired business and premium tiers to starter", () => {
+    expect(
+      resolveEffectiveTier({
+        subscription_tier: "business",
+        subscription_expires_at: "2020-01-01T00:00:00.000Z",
+      })
+    ).toBe("starter");
+    expect(
+      resolveEffectiveTier({
+        subscription_tier: "premium",
+        subscription_expires_at: "2020-01-01T00:00:00.000Z",
+      })
+    ).toBe("starter");
+    expect(
+      hasEntitlement(
+        {
+          subscription_tier: "premium",
+          subscription_expires_at: "2020-01-01T00:00:00.000Z",
+        },
+        "ai_voice_calls"
+      )
+    ).toBe(false);
+  });
+
   it("grandfathers legacy add-ons to business", () => {
     expect(
       resolveEffectiveTier({
