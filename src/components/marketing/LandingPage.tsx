@@ -17,6 +17,7 @@ import {
   staggerContainer,
 } from "@/components/marketing/motion";
 import { Button } from "@/components/ui/Button";
+import { AI_VOICE_BILLING_TRANSPARENCY_COPY } from "@/lib/vapi-pricing";
 
 const TRUST_ITEMS = [
   "Compliant with MSMED Act, 2006",
@@ -80,6 +81,7 @@ const PRICING_PLANS = [
     features: [
       "Full WhatsApp automation",
       "AI voice calling (Sneha)",
+      AI_VOICE_BILLING_TRANSPARENCY_COPY,
       "Zero watermarks on invoices",
       "Priority support",
     ],

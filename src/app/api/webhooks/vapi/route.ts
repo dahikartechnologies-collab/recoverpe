@@ -9,6 +9,10 @@ import {
   incrementVapiMinutesUsageSafely,
 } from "@/lib/business-usage-metering";
 import {
+  fetchLiveUsdToInrRate,
+  fetchPlatformSettings,
+} from "@/lib/platform-settings";
+import {
   calculateVapiBillFromProviderCost,
   getPremiumTrialMinutesRemaining,
   splitVapiBillAcrossTrialAndWallet,
@@ -42,16 +46,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
+    const supabase = createAdminSupabaseClient();
+    const platformSettings = await fetchPlatformSettings(supabase);
+    const liveUsdToInr = await fetchLiveUsdToInrRate(
+      platformSettings.fallback_usd_to_inr
+    );
     const bill = calculateVapiBillFromProviderCost(
       report.vapi_cost_usd,
-      report.duration_seconds
+      report.duration_seconds,
+      {
+        settings: platformSettings,
+        liveUsdToInr,
+      }
     );
     const insights = buildVapiInsightsFromReport(report);
-    const supabase = createAdminSupabaseClient();
 
     const { data: existingLog, error: logLookupError } = await supabase
       .from("communication_logs")
-      .select("id, ledger_id, cost_deducted, billed_amount_inr, status, vapi_call_id")
+      .select(
+        "id, ledger_id, cost_deducted, billed_amount_inr, applied_fx_rate, applied_margin_pct, status, vapi_call_id"
+      )
       .eq("vapi_call_id", report.vapi_call_id)
       .maybeSingle();
 
@@ -97,6 +111,12 @@ export async function POST(request: Request) {
     let billedAmountInr = alreadyReconciled
       ? Number(existingLog?.billed_amount_inr ?? existingLog?.cost_deducted ?? 0)
       : bill.customer_charge_inr;
+    let appliedFxRate = alreadyReconciled
+      ? Number(existingLog?.applied_fx_rate ?? bill.applied_fx_rate)
+      : bill.applied_fx_rate;
+    let appliedMarginPct = alreadyReconciled
+      ? Number(existingLog?.applied_margin_pct ?? bill.applied_margin_pct)
+      : bill.applied_margin_pct;
 
     if (!alreadyReconciled && businessId) {
       const usageRow = await fetchBusinessUsageMeteringRow(supabase, businessId);
@@ -113,6 +133,8 @@ export async function POST(request: Request) {
       trialMinutesApplied = split.trial_minutes_applied;
       walletChargeInr = split.wallet_charge_inr;
       billedAmountInr = split.customer_charge_inr;
+      appliedFxRate = bill.applied_fx_rate;
+      appliedMarginPct = bill.applied_margin_pct;
 
       if (trialMinutesApplied > 0) {
         await incrementVapiMinutesUsageSafely(
@@ -151,6 +173,8 @@ export async function POST(request: Request) {
       cost_deducted: billedAmountInr,
       billed_amount_inr: billedAmountInr,
       vapi_cost_usd: bill.vapi_cost_usd,
+      applied_fx_rate: appliedFxRate,
+      applied_margin_pct: appliedMarginPct,
       recording_url: report.recording_url,
       sentiment: insights.sentiment,
       executive_summary: insights.executive_summary,
@@ -193,6 +217,9 @@ export async function POST(request: Request) {
       ledger_id: ledgerId,
       duration_seconds: report.duration_seconds,
       vapi_cost_usd: bill.vapi_cost_usd,
+      live_usd_to_inr: bill.live_usd_to_inr,
+      applied_fx_rate: appliedFxRate,
+      applied_margin_pct: appliedMarginPct,
       billed_amount_inr: billedAmountInr,
       provider_cost_inr: bill.provider_cost_inr,
       margin_inr: bill.margin_inr,
@@ -210,6 +237,9 @@ export async function POST(request: Request) {
       wallet_charge_inr: walletChargeInr,
       trial_minutes_applied: trialMinutesApplied,
       vapi_cost_usd: bill.vapi_cost_usd,
+      live_usd_to_inr: bill.live_usd_to_inr,
+      applied_fx_rate: appliedFxRate,
+      applied_margin_pct: appliedMarginPct,
       provider_cost_inr: bill.provider_cost_inr,
       margin_inr: bill.margin_inr,
       sentiment: insights.sentiment,

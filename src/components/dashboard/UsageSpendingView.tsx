@@ -27,7 +27,10 @@ import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { UsageDashboardPayload } from "@/lib/business-usage-metering";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
-import { USD_TO_INR, VAPI_VOICE_MARGIN_RATE } from "@/lib/vapi-pricing";
+import {
+  AI_VOICE_BILLING_TRANSPARENCY_COPY,
+  PREMIUM_VAPI_TRIAL_MINUTES,
+} from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 const METRIC_ICONS: Record<string, typeof Wallet> = {
@@ -233,11 +236,10 @@ export function UsageSpendingView() {
                       {formatInr(payload.vapi_wallet_balance_inr)}
                     </p>
                     <p className="mt-1 text-xs text-recoverpe-muted">
-                      Dynamic billing: VAPI USD cost × {USD_TO_INR} FX ×{" "}
-                      {(1 + VAPI_VOICE_MARGIN_RATE).toFixed(2)} margin.
+                      {AI_VOICE_BILLING_TRANSPARENCY_COPY}
                       {payload.vapi_trial_minutes_remaining > 0
-                        ? ` Premium trial remaining: ${payload.vapi_trial_minutes_remaining} min.`
-                        : " Premium trial exhausted — wallet billing applies."}
+                        ? ` Premium includes a ${PREMIUM_VAPI_TRIAL_MINUTES}-minute trial; ${payload.vapi_trial_minutes_remaining} min remaining.`
+                        : ` Premium ${PREMIUM_VAPI_TRIAL_MINUTES}-minute trial exhausted — wallet billing applies.`}
                     </p>
                   </div>
                 </div>
@@ -267,8 +269,8 @@ export function UsageSpendingView() {
                   AI Voice Call History
                 </p>
                 <p className="mt-1 text-xs text-recoverpe-muted">
-                  Each row shows the exact INR deducted for that call after VAPI reports
-                  the true provider cost.
+                  Each row shows the provider USD cost, buffered FX rate applied, and
+                  final INR deducted for that call.
                 </p>
               </div>
 
@@ -283,8 +285,9 @@ export function UsageSpendingView() {
                       <TableHead>When</TableHead>
                       <TableHead>Debtor</TableHead>
                       <TableHead>Duration</TableHead>
-                      <TableHead>VAPI Cost</TableHead>
-                      <TableHead className="text-right">You Paid</TableHead>
+                      <TableHead>Base USD Cost</TableHead>
+                      <TableHead>Applied FX Rate</TableHead>
+                      <TableHead className="text-right">Final Billed INR</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -302,6 +305,11 @@ export function UsageSpendingView() {
                         <TableCell className="tabular-nums text-recoverpe-muted">
                           {call.vapi_cost_usd !== null
                             ? `$${call.vapi_cost_usd.toFixed(4)}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="tabular-nums text-recoverpe-muted">
+                          {call.applied_fx_rate !== null
+                            ? `₹${call.applied_fx_rate.toFixed(2)}/USD`
                             : "—"}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums text-recoverpe-black">

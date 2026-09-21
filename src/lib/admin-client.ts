@@ -305,6 +305,53 @@ export async function fetchAdminBusinesses(): Promise<AdminBusinessesListRespons
   return body;
 }
 
+export async function fetchAdminPlatformSettings(): Promise<{
+  settings: import("@/lib/platform-settings").PlatformSettings;
+}> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/platform-settings", { headers });
+  const body = (await response.json()) as {
+    settings?: import("@/lib/platform-settings").PlatformSettings;
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.settings) {
+    throw new Error(body.error || "Failed to load platform settings.");
+  }
+
+  return { settings: body.settings };
+}
+
+export async function updateAdminPlatformSettings(
+  payload: import("@/lib/platform-settings").PlatformSettingsPatch
+): Promise<{ settings: import("@/lib/platform-settings").PlatformSettings }> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/admin/platform-settings", {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as {
+    settings?: import("@/lib/platform-settings").PlatformSettings;
+    error?: string;
+  };
+
+  if (response.status === 403) {
+    throw new AdminAccessDeniedError(body.error || "Forbidden.");
+  }
+
+  if (!response.ok || !body.settings) {
+    throw new Error(body.error || "Failed to update platform settings.");
+  }
+
+  return { settings: body.settings };
+}
+
 export async function grantAdminBusinessTier(
   businessId: string,
   payload: AdminGrantBusinessTierPayload

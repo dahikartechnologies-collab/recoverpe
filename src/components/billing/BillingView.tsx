@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { trackMetaEvent } from "@/lib/analytics-events";
+import {
+  getEffectiveVapiMinutesQuota,
+} from "@/lib/entitlements";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import {
@@ -19,7 +22,7 @@ import {
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
-import { USD_TO_INR, VAPI_VOICE_MARGIN_RATE } from "@/lib/vapi-pricing";
+import { AI_VOICE_BILLING_TRANSPARENCY_COPY } from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
 
@@ -145,6 +148,8 @@ export function BillingView({ user }: BillingViewProps) {
     activeBusiness?.subscription_status === "active";
   const isStarterTier = normalizedActiveTier === "starter";
 
+  const premiumTrialMinutes = getEffectiveVapiMinutesQuota("premium");
+
   const tierCards: Array<{
     key: string;
     name: string;
@@ -209,6 +214,7 @@ export function BillingView({ user }: BillingViewProps) {
         "Everything in Business",
         "Morning AI briefing",
         "Debtor Health Score",
+        `Includes a ${premiumTrialMinutes}-minute AI voice trial`,
         "Field Agent + omnichannel escalation",
       ],
     },
@@ -218,7 +224,7 @@ export function BillingView({ user }: BillingViewProps) {
     <div className="space-y-8">
       <PageHeader
         title="Billing"
-        description="Choose a RecoverPe plan for your business workspace and recharge AI voice credits."
+        description="Choose a RecoverPe plan for your business workspace and recharge your AI Voice Wallet."
       />
 
       {hasActivePaidSubscription ? (
@@ -351,9 +357,8 @@ export function BillingView({ user }: BillingViewProps) {
         <div>
           <h2 className="text-lg font-semibold text-recoverpe-black">AI Voice Wallet</h2>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Calls bill dynamically from VAPI&apos;s actual USD cost × {USD_TO_INR} FX ×{" "}
-            {(1 + VAPI_VOICE_MARGIN_RATE).toFixed(2)} margin. Recharges include 18% GST;
-            only the base amount is credited.
+            {AI_VOICE_BILLING_TRANSPARENCY_COPY} Recharges include 18% GST; only
+            the base amount is credited to your wallet.
           </p>
         </div>
 

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const ADMIN_LINKS = [
   { href: "/admin", label: "Overview" },
+  { href: "/admin/settings", label: "Platform Economics" },
   { href: "/admin/businesses", label: "Business God Mode" },
   { href: "/admin/diagnostics", label: "Diagnostics" },
   { href: "/admin/users", label: "User Management" },

@@ -1,25 +1,37 @@
 import {
   BusinessEntitlementRow,
+  PREMIUM_VAPI_TRIAL_MINUTES,
   resolveEffectiveTier,
 } from "@/lib/entitlements";
+import {
+  DEFAULT_PLATFORM_SETTINGS,
+  PlatformSettings,
+} from "@/lib/platform-settings";
 
-/** Fixed FX rate for converting VAPI USD costs to INR. */
-export const USD_TO_INR = 84;
+/** @deprecated Use platform_settings.fallback_usd_to_inr via billing engine. */
+export const USD_TO_INR = DEFAULT_PLATFORM_SETTINGS.fallback_usd_to_inr;
 
-/** Target gross margin on actual VAPI provider cost. */
-export const VAPI_VOICE_MARGIN_RATE = 0.3;
+/** @deprecated Use platform_settings.vapi_margin_percentage via billing engine. */
+export const VAPI_VOICE_MARGIN_RATE =
+  DEFAULT_PLATFORM_SETTINGS.vapi_margin_percentage / 100;
 
 export const WALLET_RECHARGE_GST_RATE = 0.18;
 export const WALLET_RECHARGE_MIN_INR = 100;
 export const WALLET_RECHARGE_MAX_INR = 20_000;
 
-export const PREMIUM_VAPI_TRIAL_MINUTES = 10;
+export { PREMIUM_VAPI_TRIAL_MINUTES } from "@/lib/entitlements";
 
 export const ADMIN_GRANTED_SUBSCRIPTION_ID = "admin_granted";
+
+export const AI_VOICE_BILLING_TRANSPARENCY_COPY =
+  "AI Voice calls are billed dynamically based on exact seconds used, real-time USD/INR exchange rates, network provider costs, and a platform margin.";
 
 export interface VapiDynamicCallBill {
   duration_seconds: number;
   vapi_cost_usd: number | null;
+  live_usd_to_inr: number;
+  applied_fx_rate: number;
+  applied_margin_pct: number;
   provider_cost_inr: number;
   customer_charge_inr: number;
   margin_inr: number;
@@ -45,6 +57,10 @@ function roundUsd(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
 
+function roundRate(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
 export function calculateWalletRechargeBreakdown(
   baseAmountInr: number
 ): WalletRechargeBreakdown {
@@ -66,25 +82,66 @@ export function calculateWalletRechargeTotalPaise(baseAmountInr: number): number
 
 export function calculateVapiBillFromProviderCost(
   vapiCostUsd: number | null | undefined,
-  durationSeconds = 0
+  durationSeconds = 0,
+  options: {
+    settings?: Pick<
+      PlatformSettings,
+      "vapi_margin_percentage" | "fx_risk_buffer_percentage" | "fallback_usd_to_inr"
+    >;
+    liveUsdToInr?: number;
+  } = {}
 ): VapiDynamicCallBill {
+  const settings = {
+    vapi_margin_percentage:
+      options.settings?.vapi_margin_percentage ??
+      DEFAULT_PLATFORM_SETTINGS.vapi_margin_percentage,
+    fx_risk_buffer_percentage:
+      options.settings?.fx_risk_buffer_percentage ??
+      DEFAULT_PLATFORM_SETTINGS.fx_risk_buffer_percentage,
+    fallback_usd_to_inr:
+      options.settings?.fallback_usd_to_inr ??
+      DEFAULT_PLATFORM_SETTINGS.fallback_usd_to_inr,
+  };
+
   const duration_seconds = Math.max(0, durationSeconds);
   const normalizedUsd =
     typeof vapiCostUsd === "number" && Number.isFinite(vapiCostUsd) && vapiCostUsd > 0
       ? roundUsd(vapiCostUsd)
       : null;
 
-  const provider_cost_inr = normalizedUsd
-    ? roundInr(normalizedUsd * USD_TO_INR)
-    : 0;
+  const live_usd_to_inr = roundRate(
+    options.liveUsdToInr ?? settings.fallback_usd_to_inr
+  );
+  const applied_fx_rate = roundRate(
+    live_usd_to_inr * (1 + settings.fx_risk_buffer_percentage / 100)
+  );
+  const applied_margin_pct = settings.vapi_margin_percentage;
+
+  if (!normalizedUsd) {
+    return {
+      duration_seconds,
+      vapi_cost_usd: null,
+      live_usd_to_inr,
+      applied_fx_rate,
+      applied_margin_pct,
+      provider_cost_inr: 0,
+      customer_charge_inr: 0,
+      margin_inr: 0,
+    };
+  }
+
+  const provider_cost_inr = roundInr(normalizedUsd * applied_fx_rate);
   const customer_charge_inr = roundInr(
-    provider_cost_inr * (1 + VAPI_VOICE_MARGIN_RATE)
+    provider_cost_inr * (1 + applied_margin_pct / 100)
   );
   const margin_inr = roundInr(customer_charge_inr - provider_cost_inr);
 
   return {
     duration_seconds,
     vapi_cost_usd: normalizedUsd,
+    live_usd_to_inr,
+    applied_fx_rate,
+    applied_margin_pct,
     provider_cost_inr,
     customer_charge_inr,
     margin_inr,

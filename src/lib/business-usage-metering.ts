@@ -62,6 +62,8 @@ export interface VapiCallUsageRecord {
   duration_seconds: number | null;
   billed_amount_inr: number;
   vapi_cost_usd: number | null;
+  applied_fx_rate: number | null;
+  applied_margin_pct: number | null;
   summary: string | null;
   debtor_name: string | null;
 }
@@ -277,6 +279,8 @@ export async function fetchVapiCallUsageHistory(
         billed_amount_inr,
         cost_deducted,
         vapi_cost_usd,
+        applied_fx_rate,
+        applied_margin_pct,
         summary,
         contacts (
           name
@@ -308,6 +312,14 @@ export async function fetchVapiCallUsageHistory(
         row.vapi_cost_usd === null || row.vapi_cost_usd === undefined
           ? null
           : Number(row.vapi_cost_usd),
+      applied_fx_rate:
+        row.applied_fx_rate === null || row.applied_fx_rate === undefined
+          ? null
+          : Number(row.applied_fx_rate),
+      applied_margin_pct:
+        row.applied_margin_pct === null || row.applied_margin_pct === undefined
+          ? null
+          : Number(row.applied_margin_pct),
       summary: (row.summary as string | null) ?? null,
       debtor_name: (contact?.name as string | null) ?? null,
     };

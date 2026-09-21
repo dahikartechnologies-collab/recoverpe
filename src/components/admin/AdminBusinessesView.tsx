@@ -264,8 +264,8 @@ export function AdminBusinessesView({
                   setGrantTier(event.target.value as GrantTier)
                 }
               >
-                <option value="business">Business — 60 AI minutes, advanced Khata</option>
-                <option value="premium">Premium — 300 AI minutes, all features</option>
+                <option value="business">Business — advanced Khata, Smart Checkout</option>
+                <option value="premium">Premium — AI voice trial, all features</option>
               </select>
             </div>
 

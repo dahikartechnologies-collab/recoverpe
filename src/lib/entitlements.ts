@@ -215,6 +215,8 @@ export function isZeroMdrCheckoutEligible(
 }
 
 /** Included AI voice trial minutes bundled with SaaS tiers (wallet billed thereafter). */
+export const PREMIUM_VAPI_TRIAL_MINUTES = 10;
+
 export function getEffectiveVapiMinutesQuota(tier: Tier): number {
   switch (tier) {
     case "starter":
@@ -222,6 +224,6 @@ export function getEffectiveVapiMinutesQuota(tier: Tier): number {
     case "business":
       return 0;
     case "premium":
-      return 10;
+      return PREMIUM_VAPI_TRIAL_MINUTES;
   }
 }
