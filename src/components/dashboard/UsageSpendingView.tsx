@@ -14,24 +14,35 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { UsageDashboardPayload } from "@/lib/business-usage-metering";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
+import {
+  PURCHASE_PRODUCTS,
+  VapiWalletRechargePurchaseType,
+} from "@/lib/razorpay-products";
+import { startRazorpayCheckout } from "@/lib/razorpay-client";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 const METRIC_ICONS: Record<string, typeof Wallet> = {
   smart_collect: Wallet,
   sms: MessageCircle,
   whatsapp: Sparkles,
-  vapi_minutes: Phone,
   invoices: FileText,
 };
+
+const WALLET_RECHARGE_PACKAGES: VapiWalletRechargePurchaseType[] = [
+  "vapi_recharge_500",
+  "vapi_recharge_1000",
+  "vapi_recharge_5000",
+];
 
 function formatInr(value: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -106,11 +117,16 @@ function CircularProgress({
 export function UsageSpendingView() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const businesses = useWorkspaceStore((state) => state.businesses);
+  const bumpWalletRefresh = useWorkspaceStore((state) => state.bumpWalletRefresh);
+  const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
   const [payload, setPayload] = useState<UsageDashboardPayload | null>(null);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [processingPurchase, setProcessingPurchase] =
+    useState<VapiWalletRechargePurchaseType | null>(null);
 
   const loadUsage = useCallback(async () => {
     if (!activeBusinessId) {
@@ -153,6 +169,35 @@ export function UsageSpendingView() {
     void loadUsage();
   }, [loadUsage]);
 
+  async function handleWalletRecharge(purchaseType: VapiWalletRechargePurchaseType) {
+    setProcessingPurchase(purchaseType);
+    setToast("");
+
+    try {
+      const product = PURCHASE_PRODUCTS[purchaseType];
+
+      await startRazorpayCheckout({
+        purchaseType,
+        description: product.description,
+        onSuccess: () => {
+          setToast(`${product.amountLabel} added to your AI Voice Wallet.`);
+          bumpWalletRefresh();
+          bumpUserRefresh();
+          void loadUsage();
+        },
+      });
+    } catch (checkoutError) {
+      if (
+        checkoutError instanceof Error &&
+        checkoutError.message !== "Payment cancelled."
+      ) {
+        setToast(checkoutError.message);
+      }
+    } finally {
+      setProcessingPurchase(null);
+    }
+  }
+
   if (!activeBusinessId) {
     return (
       <Card>
@@ -183,6 +228,56 @@ export function UsageSpendingView() {
         </div>
       ) : payload ? (
         <>
+          <Card className="border-recoverpe-black">
+            <CardContent className="space-y-5 p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-recoverpe-line bg-recoverpe-fill text-recoverpe-black">
+                    <Phone className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div>
+                    <p className="type-eyebrow">AI Voice Wallet</p>
+                    <p className="type-stat mt-2">
+                      {formatInr(payload.vapi_wallet_balance_inr)}
+                    </p>
+                    <p className="mt-1 text-xs text-recoverpe-muted">
+                      Pay-as-you-go at {formatInr(payload.vapi_customer_rate_per_minute_inr)}
+                      /min (30% margin over ₹20/min provider cost).
+                      {payload.vapi_trial_minutes_remaining > 0
+                        ? ` Premium trial remaining: ${payload.vapi_trial_minutes_remaining} min.`
+                        : " Premium trial exhausted — wallet billing applies."}
+                    </p>
+                  </div>
+                </div>
+                <Link href="/dashboard/billing">
+                  <Button variant="secondary" size="sm">
+                    Billing settings
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {WALLET_RECHARGE_PACKAGES.map((purchaseType) => {
+                  const product = PURCHASE_PRODUCTS[purchaseType];
+
+                  return (
+                    <Button
+                      key={purchaseType}
+                      type="button"
+                      variant="primary"
+                      disabled={processingPurchase === purchaseType}
+                      onClick={() => void handleWalletRecharge(purchaseType)}
+                    >
+                      {processingPurchase === purchaseType
+                        ? "Processing…"
+                        : `Recharge ${product.amountLabel}`}
+                    </Button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="rounded-xl border border-recoverpe-success-line bg-recoverpe-success-fill p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
@@ -242,7 +337,7 @@ export function UsageSpendingView() {
                           ? `Coming soon · ${metric.overageLabel}`
                           : metric.overageLabel
                             ? `Overage: ${metric.overageLabel}`
-                            : "Included in all tiers"}
+                            : "Included in your plan"}
                       </p>
                     </div>
                     <CircularProgress
@@ -262,6 +357,10 @@ export function UsageSpendingView() {
             </p>
           ) : null}
         </>
+      ) : null}
+
+      {toast ? (
+        <Toast message={toast} variant="success" onClose={() => setToast("")} />
       ) : null}
     </div>
   );

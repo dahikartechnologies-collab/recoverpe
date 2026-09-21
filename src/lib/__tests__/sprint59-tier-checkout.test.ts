@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getEffectiveVapiMinutesQuota,
   hasEntitlement,
   resolveEffectiveTier,
 } from "@/lib/entitlements";
@@ -8,6 +9,11 @@ import {
   resolveSmartCheckout,
   ZERO_MDR_THRESHOLD_INR,
 } from "@/lib/payments/smart-checkout-router";
+import {
+  calculateVapiCallBill,
+  splitVapiBillAcrossTrialAndWallet,
+  VAPI_CUSTOMER_RATE_PER_MINUTE_INR,
+} from "@/lib/vapi-pricing";
 
 describe("entitlements", () => {
   it("grants business features on business tier", () => {
@@ -28,17 +34,43 @@ describe("entitlements", () => {
     ).toBe(false);
   });
 
-  it("degrades expired business and premium tiers to starter", () => {
-    expect(
-      resolveEffectiveTier({
-        subscription_tier: "business",
-        subscription_expires_at: "2020-01-01T00:00:00.000Z",
-      })
-    ).toBe("starter");
+  it("only bundles a 10-minute premium AI trial, not flat SaaS minutes", () => {
+    expect(getEffectiveVapiMinutesQuota("starter")).toBe(0);
+    expect(getEffectiveVapiMinutesQuota("business")).toBe(0);
+    expect(getEffectiveVapiMinutesQuota("premium")).toBe(10);
+  });
+
+  it("restores active Razorpay tier after an expired admin grant", () => {
     expect(
       resolveEffectiveTier({
         subscription_tier: "premium",
         subscription_expires_at: "2020-01-01T00:00:00.000Z",
+        razorpay_subscription_id: "sub_live_123",
+        subscription_status: "active",
+        subscription_billing_tier: "business",
+      })
+    ).toBe("premium");
+  });
+
+  it("falls back to stored billing tier when admin grant expires without live Razorpay", () => {
+    expect(
+      resolveEffectiveTier({
+        subscription_tier: "premium",
+        subscription_expires_at: "2020-01-01T00:00:00.000Z",
+        razorpay_subscription_id: "admin_granted",
+        subscription_status: "active",
+        subscription_billing_tier: "business",
+      })
+    ).toBe("business");
+  });
+
+  it("degrades to starter when no paid subscription remains", () => {
+    expect(
+      resolveEffectiveTier({
+        subscription_tier: "premium",
+        subscription_expires_at: "2020-01-01T00:00:00.000Z",
+        razorpay_subscription_id: "admin_granted",
+        subscription_status: "active",
       })
     ).toBe("starter");
     expect(
@@ -46,6 +78,7 @@ describe("entitlements", () => {
         {
           subscription_tier: "premium",
           subscription_expires_at: "2020-01-01T00:00:00.000Z",
+          razorpay_subscription_id: "admin_granted",
         },
         "ai_voice_calls"
       )
@@ -65,6 +98,24 @@ describe("entitlements", () => {
         },
       })
     ).toBe("business");
+  });
+});
+
+describe("vapi pricing", () => {
+  it("charges a 30% margin over the ₹20/min provider cost", () => {
+    const bill = calculateVapiCallBill(60);
+
+    expect(bill.customer_charge_inr).toBe(VAPI_CUSTOMER_RATE_PER_MINUTE_INR);
+    expect(bill.provider_cost_inr).toBe(20);
+    expect(bill.margin_inr).toBe(6);
+  });
+
+  it("applies premium trial minutes before wallet billing", () => {
+    const bill = calculateVapiCallBill(120);
+    const split = splitVapiBillAcrossTrialAndWallet(bill, 10);
+
+    expect(split.trial_minutes_applied).toBe(2);
+    expect(split.wallet_charge_inr).toBe(0);
   });
 });
 

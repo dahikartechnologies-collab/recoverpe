@@ -139,6 +139,7 @@ export interface Business {
   razorpay_subscription_id?: string | null;
   subscription_current_period_end?: string | null;
   subscription_expires_at?: string | null;
+  subscription_billing_tier?: BusinessSubscriptionTier | null;
   payout_pan?: string | null;
   payout_bank_account_number?: string | null;
   payout_bank_ifsc?: string | null;
@@ -690,6 +691,9 @@ export type PurchaseType =
   | "subscription_business_annual"
   | "subscription_premium"
   | "subscription_premium_annual"
+  | "vapi_recharge_500"
+  | "vapi_recharge_1000"
+  | "vapi_recharge_5000"
   | "vapi_recharge_100"
   | "legal_notice_999"
   | "samadhaan_499"

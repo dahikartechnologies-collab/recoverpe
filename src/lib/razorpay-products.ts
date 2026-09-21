@@ -64,12 +64,39 @@ export const PURCHASE_PRODUCTS = {
     billingMode: "subscription" as const,
     planInterval: "annual" as const,
   },
-  vapi_recharge_100: {
-    label: "100 AI Credits",
-    description: "Recharge your Sneha AI voice wallet with 100 call credits.",
+  vapi_recharge_500: {
+    label: "AI Voice Wallet — ₹500",
+    description: "Top up Sneha AI voice minutes (~19 min at ₹26/min incl. margin).",
+    amountPaise: 50_000,
+    amountLabel: "₹500",
+    walletAmountInr: 500,
+    tier: "wallet" as const,
+    billingMode: "order" as const,
+  },
+  vapi_recharge_1000: {
+    label: "AI Voice Wallet — ₹1,000",
+    description: "Top up Sneha AI voice minutes (~38 min at ₹26/min incl. margin).",
     amountPaise: 100_000,
     amountLabel: "₹1,000",
-    credits: 100,
+    walletAmountInr: 1_000,
+    tier: "wallet" as const,
+    billingMode: "order" as const,
+  },
+  vapi_recharge_5000: {
+    label: "AI Voice Wallet — ₹5,000",
+    description: "Top up Sneha AI voice minutes (~192 min at ₹26/min incl. margin).",
+    amountPaise: 500_000,
+    amountLabel: "₹5,000",
+    walletAmountInr: 5_000,
+    tier: "wallet" as const,
+    billingMode: "order" as const,
+  },
+  vapi_recharge_100: {
+    label: "AI Voice Wallet — ₹1,000",
+    description: "Legacy top-up SKU mapped to ₹1,000 wallet credit.",
+    amountPaise: 100_000,
+    amountLabel: "₹1,000",
+    walletAmountInr: 1_000,
     tier: "wallet" as const,
     billingMode: "order" as const,
   },
@@ -163,6 +190,29 @@ export function isBusinessAddonPurchaseType(
   return (
     value === "promise_register_monthly" || value === "settlement_desk_monthly"
   );
+}
+
+export type VapiWalletRechargePurchaseType =
+  | "vapi_recharge_500"
+  | "vapi_recharge_1000"
+  | "vapi_recharge_5000"
+  | "vapi_recharge_100";
+
+export function isVapiWalletRechargePurchaseType(
+  value: PurchaseType
+): value is VapiWalletRechargePurchaseType {
+  return (
+    value === "vapi_recharge_500" ||
+    value === "vapi_recharge_1000" ||
+    value === "vapi_recharge_5000" ||
+    value === "vapi_recharge_100"
+  );
+}
+
+export function getVapiWalletRechargeAmountInr(
+  purchaseType: VapiWalletRechargePurchaseType
+): number {
+  return PURCHASE_PRODUCTS[purchaseType].walletAmountInr;
 }
 
 export function getPurchaseProduct(purchaseType: PurchaseType) {

@@ -51,7 +51,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
 
-    return NextResponse.json(buildUsageDashboardPayload(row), {
+    const { data: userRow, error: userError } = await supabase
+      .from("users")
+      .select("vapi_wallet_balance")
+      .eq("id", authResult.effectiveUserId)
+      .maybeSingle();
+
+    if (userError) {
+      return NextResponse.json(
+        { error: userError.message || "Failed to load wallet balance." },
+        { status: 500 }
+      );
+    }
+
+    const payload = buildUsageDashboardPayload(row, {
+      vapi_wallet_balance_inr: Number(userRow?.vapi_wallet_balance ?? 0),
+    });
+
+    return NextResponse.json(payload, {
       headers: {
         "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
       },

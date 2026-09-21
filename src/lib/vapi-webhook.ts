@@ -5,9 +5,9 @@ import {
 } from "@/lib/crypto-env";
 import {
   analyzeVapiTranscript,
-  calculateVapiCreditCost,
   sentimentEmoji,
 } from "@/lib/vapi-insights";
+import { calculateVapiCallBill } from "@/lib/vapi-pricing";
 
 export interface ParsedVapiEndOfCallReport {
   vapi_call_id: string;
@@ -216,11 +216,14 @@ export function parseVapiEndOfCallReport(
 
 export function buildVapiInsightsFromReport(report: ParsedVapiEndOfCallReport) {
   const insights = analyzeVapiTranscript(report.transcript, report.summary);
-  const creditCost = calculateVapiCreditCost(report.duration_seconds);
+  const bill = calculateVapiCallBill(report.duration_seconds);
 
   return {
     ...insights,
     sentiment_display: `${sentimentEmoji(insights.sentiment)} ${insights.sentiment_label}`,
-    credit_cost: creditCost,
+    credit_cost: bill.customer_charge_inr,
+    customer_charge_inr: bill.customer_charge_inr,
+    provider_cost_inr: bill.provider_cost_inr,
+    margin_inr: bill.margin_inr,
   };
 }

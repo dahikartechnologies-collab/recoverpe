@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
-import {
-  fetchBusinessUsageMeteringRow,
-  isUnlimitedQuota,
-} from "@/lib/business-usage-metering";
+import { fetchBusinessUsageMeteringRow } from "@/lib/business-usage-metering";
 import { hasEntitlement } from "@/lib/entitlements";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { canInitiateAiCallForLedger } from "@/lib/ledger-status";
 import { enforceVapiCallRateLimit } from "@/lib/rate-limit";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
+import {
+  canInitiateVapiCall,
+  getPremiumTrialMinutesRemaining,
+  vapiCallBlockedMessage,
+} from "@/lib/vapi-pricing";
 import {
   draftVapiCall,
   initiateVapiOutboundCall,
@@ -74,14 +76,14 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
         supabase
           .from("businesses")
           .select(
-            "id, business_name, subscription_tier, subscription_status, addons, quota_vapi_minutes, usage_vapi_minutes"
+            "id, business_name, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons, usage_vapi_minutes"
           )
           .eq("id", ledger.business_id)
           .eq("user_id", auth.effectiveUserId)
           .maybeSingle(),
         supabase
           .from("users")
-          .select("id, phone_number")
+          .select("id, phone_number, vapi_wallet_balance")
           .eq("id", auth.effectiveUserId)
           .single(),
       ]);
@@ -100,6 +102,9 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     const businessEntitlements = {
       subscription_tier: business.subscription_tier,
       subscription_status: business.subscription_status,
+      subscription_expires_at: business.subscription_expires_at,
+      subscription_billing_tier: business.subscription_billing_tier,
+      razorpay_subscription_id: business.razorpay_subscription_id,
       addons: business.addons,
     };
 
@@ -119,15 +124,27 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
       ledger.business_id
     );
 
+    const trialMinutesRemaining = getPremiumTrialMinutesRemaining({
+      subscription_tier: business.subscription_tier,
+      subscription_status: business.subscription_status,
+      subscription_expires_at: business.subscription_expires_at,
+      subscription_billing_tier: business.subscription_billing_tier,
+      razorpay_subscription_id: business.razorpay_subscription_id,
+      usage_vapi_minutes:
+        usageRow?.usage_vapi_minutes ?? Number(business.usage_vapi_minutes ?? 0),
+    });
+    const walletBalanceInr = Number(userRow.vapi_wallet_balance ?? 0);
+
     if (
-      usageRow &&
-      !isUnlimitedQuota(usageRow.quota_vapi_minutes) &&
-      usageRow.usage_vapi_minutes >= usageRow.quota_vapi_minutes
+      !canInitiateVapiCall({
+        wallet_balance_inr: walletBalanceInr,
+        trial_minutes_remaining: trialMinutesRemaining,
+      })
     ) {
       return NextResponse.json(
         {
-          error:
-            "Your included AI voice minutes for this billing period are exhausted. Upgrade or wait for the next cycle.",
+          error: vapiCallBlockedMessage(),
+          recharge_required: true,
         },
         { status: 402 }
       );

@@ -45,7 +45,7 @@ export async function grantBusinessTierAccess(
   const { data: business, error: businessError } = await supabase
     .from("businesses")
     .select(
-      "id, user_id, business_name, subscription_tier, subscription_status, subscription_expires_at, razorpay_subscription_id, created_at"
+      "id, user_id, business_name, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, created_at"
     )
     .eq("id", businessId)
     .maybeSingle();
@@ -66,6 +66,13 @@ export async function grantBusinessTierAccess(
 
   await cancelBusinessSubscriptionIfActive(supabase, businessId);
 
+  const billingTierToPreserve =
+    business.subscription_billing_tier ??
+    (business.razorpay_subscription_id &&
+    business.razorpay_subscription_id !== ADMIN_GRANTED_SUBSCRIPTION_ID
+      ? business.subscription_tier
+      : null);
+
   const expiresAt = new Date();
   expiresAt.setUTCDate(expiresAt.getUTCDate() + Math.trunc(input.days));
 
@@ -73,6 +80,7 @@ export async function grantBusinessTierAccess(
     .from("businesses")
     .update({
       subscription_tier: input.tier,
+      subscription_billing_tier: billingTierToPreserve,
       subscription_status: "active",
       subscription_interval: input.days >= 365 ? "annual" : "monthly",
       razorpay_subscription_id: ADMIN_GRANTED_SUBSCRIPTION_ID,
@@ -81,7 +89,7 @@ export async function grantBusinessTierAccess(
     })
     .eq("id", businessId)
     .select(
-      "id, user_id, business_name, subscription_tier, subscription_status, subscription_expires_at, razorpay_subscription_id, created_at"
+      "id, user_id, business_name, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, created_at"
     )
     .single();
 

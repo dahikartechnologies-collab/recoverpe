@@ -4,8 +4,15 @@ import {
   parseVapiEndOfCallReport,
   verifyVapiWebhookSecret,
 } from "@/lib/vapi-webhook";
-import { incrementVapiMinutesUsageSafely } from "@/lib/business-usage-metering";
-import { VAPI_CALL_CREDIT_COST } from "@/lib/vapi";
+import {
+  fetchBusinessUsageMeteringRow,
+  incrementVapiMinutesUsageSafely,
+} from "@/lib/business-usage-metering";
+import {
+  calculateVapiCallBill,
+  getPremiumTrialMinutesRemaining,
+  splitVapiBillAcrossTrialAndWallet,
+} from "@/lib/vapi-pricing";
 import { reserveVapiCredits } from "@/lib/vapi-wallet";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -35,9 +42,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
+    const bill = calculateVapiCallBill(report.duration_seconds);
     const insights = buildVapiInsightsFromReport(report);
     const supabase = createAdminSupabaseClient();
-    const totalCreditCost = insights.credit_cost;
 
     const { data: existingLog, error: logLookupError } = await supabase
       .from("communication_logs")
@@ -74,45 +81,65 @@ export async function POST(request: Request) {
     const userId = report.user_id ?? ledgerRow.user_id;
     const businessId = (ledgerRow.business_id as string | null) ?? null;
     const contactId = (ledgerRow.contact_id as string | null) ?? null;
-    const billedMinutes = Math.max(1, Math.ceil(report.duration_seconds / 60));
     const callSummary =
       report.summary?.trim() ||
       insights.executive_summary?.trim() ||
       "AI voice recovery call completed.";
 
-    const reservedCredits = Number(existingLog?.cost_deducted ?? 0);
     const alreadyReconciled =
-      Boolean(existingLog) &&
-      existingLog!.status === "call_completed" &&
-      reservedCredits >= totalCreditCost;
+      Boolean(existingLog) && existingLog!.status === "call_completed";
 
-    let additionalCreditsCharged = 0;
+    let walletChargeInr = 0;
+    let trialMinutesApplied = 0;
 
-    if (!alreadyReconciled) {
-      const baselineReserved =
-        reservedCredits > 0 ? reservedCredits : VAPI_CALL_CREDIT_COST;
-      const additionalCost = Math.max(0, totalCreditCost - baselineReserved);
+    if (!alreadyReconciled && businessId) {
+      const usageRow = await fetchBusinessUsageMeteringRow(supabase, businessId);
+      const trialMinutesRemaining = getPremiumTrialMinutesRemaining({
+        subscription_tier: usageRow?.subscription_tier,
+        subscription_status: usageRow?.subscription_status,
+        subscription_expires_at: usageRow?.subscription_expires_at,
+        subscription_billing_tier: usageRow?.subscription_billing_tier,
+        razorpay_subscription_id: usageRow?.razorpay_subscription_id,
+        usage_vapi_minutes: usageRow?.usage_vapi_minutes ?? 0,
+      });
 
-      if (additionalCost > 0) {
+      const split = splitVapiBillAcrossTrialAndWallet(
+        bill,
+        trialMinutesRemaining
+      );
+      trialMinutesApplied = split.trial_minutes_applied;
+      walletChargeInr = split.wallet_charge_inr;
+
+      if (trialMinutesApplied > 0) {
+        await incrementVapiMinutesUsageSafely(
+          supabase,
+          businessId,
+          trialMinutesApplied
+        );
+      }
+
+      if (walletChargeInr > 0) {
         const newBalance = await reserveVapiCredits(
           supabase,
           userId as string,
-          additionalCost
+          walletChargeInr
         );
 
         if (newBalance === null) {
           return NextResponse.json(
             {
               error:
-                "Insufficient AI credits to reconcile extended call duration.",
+                "Insufficient AI Voice Wallet balance to reconcile call usage.",
             },
             { status: 402 }
           );
         }
-
-        additionalCreditsCharged = additionalCost;
       }
     }
+
+    const totalChargeInr = alreadyReconciled
+      ? Number(existingLog?.cost_deducted ?? 0)
+      : bill.customer_charge_inr;
 
     const logUpdate = {
       user_id: userId as string,
@@ -121,7 +148,7 @@ export async function POST(request: Request) {
       channel: "voice_ai" as const,
       direction: "outbound" as const,
       status: "call_completed" as const,
-      cost_deducted: totalCreditCost,
+      cost_deducted: totalChargeInr,
       recording_url: report.recording_url,
       sentiment: insights.sentiment,
       executive_summary: insights.executive_summary,
@@ -159,18 +186,15 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!alreadyReconciled && businessId) {
-      await incrementVapiMinutesUsageSafely(supabase, businessId, billedMinutes);
-    }
-
     console.log("[Recoverpe VAPI Webhook]", {
       vapi_call_id: report.vapi_call_id,
       ledger_id: ledgerId,
       duration_seconds: report.duration_seconds,
-      billed_minutes: billedMinutes,
-      total_credit_cost: totalCreditCost,
-      reserved_credits: reservedCredits,
-      additional_credits_charged: additionalCreditsCharged,
+      customer_charge_inr: totalChargeInr,
+      provider_cost_inr: bill.provider_cost_inr,
+      margin_inr: bill.margin_inr,
+      trial_minutes_applied: trialMinutesApplied,
+      wallet_charge_inr: walletChargeInr,
       sentiment: insights.sentiment_display,
       already_reconciled: alreadyReconciled,
     });
@@ -179,8 +203,11 @@ export async function POST(request: Request) {
       received: true,
       vapi_call_id: report.vapi_call_id,
       ledger_id: ledgerId,
-      credit_cost: totalCreditCost,
-      additional_credits_charged: additionalCreditsCharged,
+      customer_charge_inr: totalChargeInr,
+      wallet_charge_inr: walletChargeInr,
+      trial_minutes_applied: trialMinutesApplied,
+      provider_cost_inr: bill.provider_cost_inr,
+      margin_inr: bill.margin_inr,
       sentiment: insights.sentiment,
       executive_summary: insights.executive_summary,
       already_reconciled: alreadyReconciled,

@@ -17,7 +17,9 @@ import {
   getPremiumOrderAmountPaise,
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
+  VapiWalletRechargePurchaseType,
 } from "@/lib/razorpay-products";
+import { VAPI_CUSTOMER_RATE_PER_MINUTE_INR } from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
 
@@ -28,6 +30,14 @@ interface BillingViewProps {
 interface ToastState {
   message: string;
   variant: "success" | "error";
+}
+
+function formatInr(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function getSubscriptionMetaParams(
@@ -106,15 +116,15 @@ export function BillingView({ user }: BillingViewProps) {
     }
   }
 
-  async function handleWalletRecharge() {
-    setProcessingPurchase("vapi_recharge_100");
+  async function handleWalletRecharge(purchaseType: VapiWalletRechargePurchaseType) {
+    setProcessingPurchase(purchaseType);
 
     try {
-      const product = PURCHASE_PRODUCTS.vapi_recharge_100;
+      const product = PURCHASE_PRODUCTS[purchaseType];
 
       await startRazorpayCheckout({
-        purchaseType: "vapi_recharge_100",
-        description: product.label,
+        purchaseType,
+        description: product.description,
         prefill: {
           email: user.email,
           contact: user.phone_number,
@@ -122,9 +132,8 @@ export function BillingView({ user }: BillingViewProps) {
         onSuccess: () => {
           bumpWalletRefresh();
           bumpUserRefresh();
-          const creditsAdded = PURCHASE_PRODUCTS.vapi_recharge_100.credits ?? 0;
           setToast({
-            message: `${creditsAdded} AI credits added to your wallet.`,
+            message: `${product.amountLabel} added to your AI Voice Wallet.`,
             variant: "success",
           });
         },
@@ -385,48 +394,65 @@ export function BillingView({ user }: BillingViewProps) {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-recoverpe-black">Recharge Wallet</h2>
+          <h2 className="text-lg font-semibold text-recoverpe-black">AI Voice Wallet</h2>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
             Current balance:{" "}
             <span className="font-medium text-recoverpe-black">
-              {Math.trunc(user.vapi_wallet_balance)} AI credits
+              {new Intl.NumberFormat("en-IN", {
+                style: "currency",
+                currency: "INR",
+                maximumFractionDigits: 0,
+              }).format(user.vapi_wallet_balance)}
             </span>
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardContent className="space-y-4 pt-6">
-              <div>
-                <p className="text-sm font-medium text-recoverpe-black">
-                  {PURCHASE_PRODUCTS.vapi_recharge_100.label}
-                </p>
-                <p className="mt-1 text-sm text-recoverpe-grey-medium">
-                  {PURCHASE_PRODUCTS.vapi_recharge_100.description}
-                </p>
-              </div>
-              <p className="text-2xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
-                {PURCHASE_PRODUCTS.vapi_recharge_100.amountLabel}
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void handleWalletRecharge()}
-                disabled={processingPurchase === "vapi_recharge_100"}
-              >
-                {processingPurchase === "vapi_recharge_100"
-                  ? "Processing…"
-                  : "Recharge"}
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {(["vapi_recharge_500", "vapi_recharge_1000", "vapi_recharge_5000"] as const).map(
+            (purchaseType) => {
+              const product = PURCHASE_PRODUCTS[purchaseType];
+
+              return (
+                <Card key={purchaseType}>
+                  <CardContent className="space-y-4 pt-6">
+                    <div>
+                      <p className="text-sm font-medium text-recoverpe-black">
+                        {product.label}
+                      </p>
+                      <p className="mt-1 text-sm text-recoverpe-grey-medium">
+                        {product.description}
+                      </p>
+                    </div>
+                    <p className="text-2xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
+                      {product.amountLabel}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void handleWalletRecharge(purchaseType)}
+                      disabled={processingPurchase === purchaseType}
+                    >
+                      {processingPurchase === purchaseType
+                        ? "Processing…"
+                        : "Recharge Wallet"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            }
+          )}
 
           <Card>
             <CardContent className="space-y-3 pt-6">
-              <p className="text-sm font-medium text-recoverpe-black">How credits work</p>
+              <p className="text-sm font-medium text-recoverpe-black">How billing works</p>
               <ul className="space-y-2 text-sm text-recoverpe-grey-medium">
-                <li>Each AI call bills 3 credits per minute (rounded up).</li>
-                <li>Credits are deducted when a call completes.</li>
+                <li>
+                  Premium includes a one-time {10}-minute trial, then pay-as-you-go.
+                </li>
+                <li>
+                  Calls bill at {formatInr(VAPI_CUSTOMER_RATE_PER_MINUTE_INR)}/min based on exact
+                  seconds used.
+                </li>
                 <li>Recharges apply instantly after successful payment.</li>
               </ul>
             </CardContent>

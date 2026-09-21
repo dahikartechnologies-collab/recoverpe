@@ -1,3 +1,5 @@
+import { calculateVapiCallBill } from "@/lib/vapi-pricing";
+
 export type VapiSentimentBadge = "cooperative" | "evasive" | "hostile";
 
 export interface VapiCallInsights {
@@ -143,7 +145,7 @@ function buildExecutiveSummary(
   return `${sentimentSentence} Key moment: "${snippet}${cleaned.length > 220 ? "..." : ""}"`;
 }
 
+/** @deprecated Use calculateVapiCallBill from vapi-pricing for INR wallet billing. */
 export function calculateVapiCreditCost(durationSeconds: number): number {
-  const minutes = Math.max(1, Math.ceil(durationSeconds / 60));
-  return minutes * 3;
+  return calculateVapiCallBill(durationSeconds).customer_charge_inr;
 }

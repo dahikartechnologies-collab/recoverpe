@@ -70,8 +70,10 @@ interface DashboardShellProps {
   hasSessionHint?: boolean;
 }
 
-function formatWalletCredits(balance: number): string {
+function formatWalletBalance(balance: number): string {
   return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
     maximumFractionDigits: 0,
   }).format(balance);
 }
@@ -456,11 +458,11 @@ export function DashboardShell({
                     }
                   />
                   <div className="rounded-md border border-recoverpe-grey-light px-4 py-3 text-right">
-                    <p className="type-eyebrow">AI Credits</p>
+                    <p className="type-eyebrow">AI Voice Wallet</p>
                     <p className="type-data-primary mt-1 text-base">
                       {walletBalance === null
                         ? "—"
-                        : `${formatWalletCredits(walletBalance)} left`}
+                        : formatWalletBalance(walletBalance)}
                     </p>
                   </div>
                   <Button

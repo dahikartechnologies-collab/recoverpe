@@ -16,6 +16,8 @@ import {
   isBankVerificationPurchaseType,
   isBusinessAddonPurchaseType,
   isMicroTransactionPurchaseType,
+  isVapiWalletRechargePurchaseType,
+  getVapiWalletRechargeAmountInr,
   PREMIUM_DISCOUNT_RATE,
   PURCHASE_PRODUCTS,
   PurchaseType,
@@ -151,6 +153,8 @@ export async function activateBusinessSubscription(
     .from("businesses")
     .update({
       subscription_tier: tier === "free" ? "starter" : tier,
+      subscription_billing_tier:
+        tier === "free" || tier === "starter" ? null : tier,
       subscription_interval: planInterval,
       subscription_status: tier === "free" ? "none" : "active",
       subscription_current_period_end: expiresAt.toISOString(),
@@ -658,7 +662,7 @@ export async function fulfillRazorpayOrder(
     await activatePremiumForUser(supabase, lockedOrder.user_id, "monthly");
   }
 
-  if (purchaseType === "vapi_recharge_100") {
+  if (isVapiWalletRechargePurchaseType(purchaseType)) {
     const { data: userRow, error: userError } = await supabase
       .from("users")
       .select("vapi_wallet_balance")
@@ -670,11 +674,11 @@ export async function fulfillRazorpayOrder(
     }
 
     const currentBalance = Number(userRow.vapi_wallet_balance);
-    const creditsToAdd = PURCHASE_PRODUCTS.vapi_recharge_100.credits;
+    const walletCreditInr = getVapiWalletRechargeAmountInr(purchaseType);
 
     const { error: updateError } = await supabase
       .from("users")
-      .update({ vapi_wallet_balance: currentBalance + creditsToAdd })
+      .update({ vapi_wallet_balance: currentBalance + walletCreditInr })
       .eq("id", lockedOrder.user_id);
 
     if (updateError) {

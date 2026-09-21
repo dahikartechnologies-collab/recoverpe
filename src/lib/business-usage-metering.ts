@@ -3,18 +3,21 @@ import {
   BusinessEntitlementRow,
   resolveEffectiveTier,
 } from "@/lib/entitlements";
+import { VAPI_CUSTOMER_RATE_PER_MINUTE_INR } from "@/lib/vapi-pricing";
 import { BusinessSubscriptionTier } from "@/types";
 
 export const UNLIMITED_USAGE_QUOTA = 99_999;
 
 export const USAGE_METERING_SELECT =
-  "id, subscription_tier, subscription_status, subscription_expires_at, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
+  "id, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
 
 export interface BusinessUsageMeteringRow {
   id: string;
   subscription_tier: BusinessSubscriptionTier;
   subscription_status?: string | null;
   subscription_expires_at?: string | null;
+  subscription_billing_tier?: BusinessSubscriptionTier | null;
+  razorpay_subscription_id?: string | null;
   addons?: unknown;
   quota_smart_collect: number;
   usage_smart_collect: number;
@@ -48,6 +51,9 @@ export interface UsageDashboardPayload {
   mdr_tax_saved_inr: number;
   total_volume_collected_inr: number;
   total_gateway_fees_inr: number;
+  vapi_wallet_balance_inr: number;
+  vapi_trial_minutes_remaining: number;
+  vapi_customer_rate_per_minute_inr: number;
   metrics: UsageMetricSnapshot[];
 }
 
@@ -95,7 +101,7 @@ const TIER_QUOTAS: Record<
     usage_sms: 0,
     quota_whatsapp: 2_000,
     usage_whatsapp: 0,
-    quota_vapi_minutes: 60,
+    quota_vapi_minutes: 0,
     usage_vapi_minutes: 0,
     quota_invoices: UNLIMITED_USAGE_QUOTA,
     usage_invoices: 0,
@@ -107,7 +113,7 @@ const TIER_QUOTAS: Record<
     usage_sms: 0,
     quota_whatsapp: UNLIMITED_USAGE_QUOTA,
     usage_whatsapp: 0,
-    quota_vapi_minutes: 300,
+    quota_vapi_minutes: 10,
     usage_vapi_minutes: 0,
     quota_invoices: UNLIMITED_USAGE_QUOTA,
     usage_invoices: 0,
@@ -122,13 +128,20 @@ function toNumber(value: unknown, fallback = 0): number {
 function toEntitlementRow(
   row: Pick<
     BusinessUsageMeteringRow,
-    "subscription_tier" | "subscription_status" | "subscription_expires_at" | "addons"
+    | "subscription_tier"
+    | "subscription_status"
+    | "subscription_expires_at"
+    | "subscription_billing_tier"
+    | "razorpay_subscription_id"
+    | "addons"
   >
 ): BusinessEntitlementRow {
   return {
     subscription_tier: row.subscription_tier,
     subscription_status: row.subscription_status,
     subscription_expires_at: row.subscription_expires_at,
+    subscription_billing_tier: row.subscription_billing_tier,
+    razorpay_subscription_id: row.razorpay_subscription_id,
     addons: row.addons,
   };
 }
@@ -155,6 +168,9 @@ export function normalizeUsageMeteringRow(
       (data.subscription_tier as BusinessSubscriptionTier) ?? "starter",
     subscription_status: (data.subscription_status as string | null) ?? null,
     subscription_expires_at: (data.subscription_expires_at as string | null) ?? null,
+    subscription_billing_tier:
+      (data.subscription_billing_tier as BusinessSubscriptionTier | null) ?? null,
+    razorpay_subscription_id: (data.razorpay_subscription_id as string | null) ?? null,
     addons: data.addons,
     quota_smart_collect: toNumber(data.quota_smart_collect),
     usage_smart_collect: toNumber(data.usage_smart_collect),
@@ -238,9 +254,16 @@ export async function syncBusinessUsageQuotas(
 }
 
 export function buildUsageDashboardPayload(
-  row: BusinessUsageMeteringRow
+  row: BusinessUsageMeteringRow,
+  options: {
+    vapi_wallet_balance_inr?: number;
+  } = {}
 ): UsageDashboardPayload {
   const effectiveTier = resolveEffectiveTier(toEntitlementRow(row));
+  const trialMinutesRemaining = Math.max(
+    0,
+    row.quota_vapi_minutes - row.usage_vapi_minutes
+  );
 
   const metrics: UsageMetricSnapshot[] = [
     {
@@ -268,14 +291,6 @@ export function buildUsageDashboardPayload(
       overageLabel: null,
     },
     {
-      key: "vapi_minutes",
-      label: "AI Voice Calls",
-      usage: row.usage_vapi_minutes,
-      quota: row.quota_vapi_minutes,
-      unlimited: isUnlimitedQuota(row.quota_vapi_minutes),
-      overageLabel: "₹2 / minute",
-    },
-    {
       key: "invoices",
       label: "Invoices Generated",
       usage: row.usage_invoices,
@@ -299,6 +314,9 @@ export function buildUsageDashboardPayload(
     ),
     total_volume_collected_inr: row.total_volume_collected_inr,
     total_gateway_fees_inr: row.total_gateway_fees_inr,
+    vapi_wallet_balance_inr: options.vapi_wallet_balance_inr ?? 0,
+    vapi_trial_minutes_remaining: trialMinutesRemaining,
+    vapi_customer_rate_per_minute_inr: VAPI_CUSTOMER_RATE_PER_MINUTE_INR,
     metrics,
   };
 }
@@ -364,7 +382,12 @@ export async function incrementVapiMinutesUsage(
     return;
   }
 
-  await incrementCounter(supabase, businessId, "usage_vapi_minutes", minutes);
+  await incrementCounter(
+    supabase,
+    businessId,
+    "usage_vapi_minutes",
+    Math.ceil(minutes)
+  );
 }
 
 export async function recordSmartCollectSettlement(

@@ -1,5 +1,6 @@
 import { BusinessSubscriptionTier, Tier } from "@/types";
 import { parseBusinessAddons } from "@/lib/business-addons";
+import { ADMIN_GRANTED_SUBSCRIPTION_ID } from "@/lib/vapi-pricing";
 
 export type EntitlementKey =
   | "core_khata"
@@ -21,6 +22,8 @@ export interface BusinessEntitlementRow {
   subscription_tier: BusinessSubscriptionTier;
   subscription_status?: string | null;
   subscription_expires_at?: string | null;
+  subscription_billing_tier?: BusinessSubscriptionTier | null;
+  razorpay_subscription_id?: string | null;
   addons?: unknown;
 }
 
@@ -47,6 +50,11 @@ const ENTITLEMENT_MATRIX: Record<EntitlementKey, Tier> = {
   team_management: "business",
   ai_voice_calls: "premium",
 };
+
+const ACTIVE_RAZORPAY_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "authenticated",
+]);
 
 function tierRank(tier: BusinessSubscriptionTier): number {
   const normalized = tier === "free" ? "starter" : tier;
@@ -79,6 +87,59 @@ function isSubscriptionExpired(
   return expiresAt.getTime() < Date.now();
 }
 
+function resolvePaidRazorpayTier(
+  business: BusinessEntitlementRow
+): Tier | null {
+  const subscriptionId = business.razorpay_subscription_id?.trim();
+  const status = business.subscription_status?.trim().toLowerCase() ?? "";
+
+  if (
+    !subscriptionId ||
+    subscriptionId === ADMIN_GRANTED_SUBSCRIPTION_ID ||
+    !ACTIVE_RAZORPAY_SUBSCRIPTION_STATUSES.has(status)
+  ) {
+    return null;
+  }
+
+  const paidTier = normalizeBaseTier(business.subscription_tier);
+
+  if (paidTier === "business" || paidTier === "premium") {
+    return paidTier;
+  }
+
+  return null;
+}
+
+function resolveBillingTierFallback(
+  business: BusinessEntitlementRow
+): Tier | null {
+  const billingTier = normalizeBaseTier(business.subscription_billing_tier);
+
+  if (billingTier === "business" || billingTier === "premium") {
+    return billingTier;
+  }
+
+  return null;
+}
+
+function resolveTierAfterGrantExpiry(
+  business: BusinessEntitlementRow
+): Tier {
+  const paidRazorpayTier = resolvePaidRazorpayTier(business);
+
+  if (paidRazorpayTier) {
+    return paidRazorpayTier;
+  }
+
+  const billingFallback = resolveBillingTierFallback(business);
+
+  if (billingFallback) {
+    return billingFallback;
+  }
+
+  return "starter";
+}
+
 export function resolveEffectiveTier(
   business: BusinessEntitlementRow | null | undefined
 ): Tier {
@@ -88,7 +149,11 @@ export function resolveEffectiveTier(
     (baseTier === "business" || baseTier === "premium") &&
     isSubscriptionExpired(business?.subscription_expires_at)
   ) {
-    return "starter";
+    if (!business) {
+      return "starter";
+    }
+
+    return resolveTierAfterGrantExpiry(business);
   }
 
   const addons = parseBusinessAddons(business?.addons);
@@ -149,13 +214,14 @@ export function isZeroMdrCheckoutEligible(
   return hasEntitlement(business, "zero_mdr_checkout");
 }
 
+/** Included AI voice trial minutes bundled with SaaS tiers (wallet billed thereafter). */
 export function getEffectiveVapiMinutesQuota(tier: Tier): number {
   switch (tier) {
     case "starter":
       return 0;
     case "business":
-      return 60;
+      return 0;
     case "premium":
-      return 300;
+      return 10;
   }
 }
