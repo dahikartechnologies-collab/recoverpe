@@ -3,7 +3,6 @@ import {
   BusinessEntitlementRow,
   resolveEffectiveTier,
 } from "@/lib/entitlements";
-import { VAPI_CUSTOMER_RATE_PER_MINUTE_INR } from "@/lib/vapi-pricing";
 import { BusinessSubscriptionTier } from "@/types";
 
 export const UNLIMITED_USAGE_QUOTA = 99_999;
@@ -53,8 +52,18 @@ export interface UsageDashboardPayload {
   total_gateway_fees_inr: number;
   vapi_wallet_balance_inr: number;
   vapi_trial_minutes_remaining: number;
-  vapi_customer_rate_per_minute_inr: number;
+  vapi_call_history: VapiCallUsageRecord[];
   metrics: UsageMetricSnapshot[];
+}
+
+export interface VapiCallUsageRecord {
+  id: string;
+  executed_at: string;
+  duration_seconds: number | null;
+  billed_amount_inr: number;
+  vapi_cost_usd: number | null;
+  summary: string | null;
+  debtor_name: string | null;
 }
 
 const TIER_QUOTAS: Record<
@@ -253,10 +262,63 @@ export async function syncBusinessUsageQuotas(
   return normalizeUsageMeteringRow(data as Record<string, unknown>);
 }
 
+export async function fetchVapiCallUsageHistory(
+  supabase: SupabaseClient,
+  businessId: string,
+  limit = 25
+): Promise<VapiCallUsageRecord[]> {
+  const { data, error } = await supabase
+    .from("communication_logs")
+    .select(
+      `
+        id,
+        executed_at,
+        duration_seconds,
+        billed_amount_inr,
+        cost_deducted,
+        vapi_cost_usd,
+        summary,
+        contacts (
+          name
+        )
+      `
+    )
+    .eq("business_id", businessId)
+    .eq("type", "vapi_call")
+    .eq("status", "call_completed")
+    .order("executed_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load AI voice call history.");
+  }
+
+  return (data ?? []).map((row) => {
+    const contact = Array.isArray(row.contacts) ? row.contacts[0] : row.contacts;
+
+    return {
+      id: row.id as string,
+      executed_at: row.executed_at as string,
+      duration_seconds:
+        row.duration_seconds === null || row.duration_seconds === undefined
+          ? null
+          : Number(row.duration_seconds),
+      billed_amount_inr: Number(row.billed_amount_inr ?? row.cost_deducted ?? 0),
+      vapi_cost_usd:
+        row.vapi_cost_usd === null || row.vapi_cost_usd === undefined
+          ? null
+          : Number(row.vapi_cost_usd),
+      summary: (row.summary as string | null) ?? null,
+      debtor_name: (contact?.name as string | null) ?? null,
+    };
+  });
+}
+
 export function buildUsageDashboardPayload(
   row: BusinessUsageMeteringRow,
   options: {
     vapi_wallet_balance_inr?: number;
+    vapi_call_history?: VapiCallUsageRecord[];
   } = {}
 ): UsageDashboardPayload {
   const effectiveTier = resolveEffectiveTier(toEntitlementRow(row));
@@ -316,7 +378,7 @@ export function buildUsageDashboardPayload(
     total_gateway_fees_inr: row.total_gateway_fees_inr,
     vapi_wallet_balance_inr: options.vapi_wallet_balance_inr ?? 0,
     vapi_trial_minutes_remaining: trialMinutesRemaining,
-    vapi_customer_rate_per_minute_inr: VAPI_CUSTOMER_RATE_PER_MINUTE_INR,
+    vapi_call_history: options.vapi_call_history ?? [],
     metrics,
   };
 }

@@ -561,7 +561,7 @@ export async function fulfillRazorpayOrder(
     })
     .eq("razorpay_order_id", razorpayOrderId)
     .eq("status", "created")
-    .select("id, user_id, purchase_type, status, amount_paise, ledger_id, business_id")
+    .select("id, user_id, purchase_type, status, amount_paise, ledger_id, business_id, wallet_base_credit_inr")
     .maybeSingle();
 
   if (lockError) {
@@ -619,9 +619,36 @@ export async function fulfillRazorpayOrder(
     };
   }
 
-  const purchaseType = lockedOrder.purchase_type as PurchaseType;
+  const purchaseType = lockedOrder.purchase_type as PurchaseType | "wallet_recharge";
 
-  if (isBankVerificationPurchaseType(purchaseType)) {
+  if (purchaseType === "wallet_recharge") {
+    const baseCreditInr = Number(lockedOrder.wallet_base_credit_inr);
+
+    if (!Number.isFinite(baseCreditInr) || baseCreditInr <= 0) {
+      throw new Error("Wallet recharge order is missing base credit amount.");
+    }
+
+    const { creditVapiWalletBalance } = await import("@/lib/wallet-recharge");
+    await creditVapiWalletBalance(supabase, lockedOrder.user_id, baseCreditInr);
+
+    emitGa4PurchaseEvent({
+      userId: lockedOrder.user_id,
+      transactionId: razorpayOrderId,
+      purchaseType: "wallet_recharge",
+      valueInr: lockedOrder.amount_paise / 100,
+    });
+
+    return {
+      alreadyFulfilled: false,
+      userId: lockedOrder.user_id,
+      purchaseType: purchaseType as PurchaseType,
+      microFulfillment: null,
+    };
+  }
+
+  const normalizedPurchaseType = purchaseType as PurchaseType;
+
+  if (isBankVerificationPurchaseType(normalizedPurchaseType)) {
     if (!lockedOrder.business_id) {
       throw new Error("Bank verification order is missing business context.");
     }
@@ -631,21 +658,21 @@ export async function fulfillRazorpayOrder(
     emitGa4PurchaseEvent({
       userId: lockedOrder.user_id,
       transactionId: razorpayOrderId,
-      purchaseType,
+      purchaseType: normalizedPurchaseType,
       valueInr: lockedOrder.amount_paise / 100,
     });
 
     return {
       alreadyFulfilled: false,
       userId: lockedOrder.user_id,
-      purchaseType,
+      purchaseType: normalizedPurchaseType,
       microFulfillment: null,
     };
   }
 
-  const product = getPurchaseProduct(purchaseType);
+  const product = getPurchaseProduct(normalizedPurchaseType);
 
-  if (purchaseType === "subscription_premium") {
+  if (normalizedPurchaseType === "subscription_premium") {
     const allowedPremiumAmounts = new Set([
       product.amountPaise,
       Math.round(product.amountPaise * (1 - PREMIUM_DISCOUNT_RATE)),
@@ -658,11 +685,11 @@ export async function fulfillRazorpayOrder(
     throw new Error("Order amount mismatch. Fulfillment blocked.");
   }
 
-  if (purchaseType === "subscription_premium") {
+  if (normalizedPurchaseType === "subscription_premium") {
     await activatePremiumForUser(supabase, lockedOrder.user_id, "monthly");
   }
 
-  if (isVapiWalletRechargePurchaseType(purchaseType)) {
+  if (isVapiWalletRechargePurchaseType(normalizedPurchaseType)) {
     const { data: userRow, error: userError } = await supabase
       .from("users")
       .select("vapi_wallet_balance")
@@ -674,7 +701,7 @@ export async function fulfillRazorpayOrder(
     }
 
     const currentBalance = Number(userRow.vapi_wallet_balance);
-    const walletCreditInr = getVapiWalletRechargeAmountInr(purchaseType);
+    const walletCreditInr = getVapiWalletRechargeAmountInr(normalizedPurchaseType);
 
     const { error: updateError } = await supabase
       .from("users")
@@ -686,25 +713,25 @@ export async function fulfillRazorpayOrder(
     }
   }
 
-  if (isMicroTransactionPurchaseType(purchaseType) && !lockedOrder.ledger_id) {
+  if (isMicroTransactionPurchaseType(normalizedPurchaseType) && !lockedOrder.ledger_id) {
     throw new Error("Micro-transaction order is missing ledger context.");
   }
 
   let microFulfillment: MicroTransactionFulfillment | null = null;
 
-  if (isMicroTransactionPurchaseType(purchaseType) && lockedOrder.ledger_id) {
+  if (isMicroTransactionPurchaseType(normalizedPurchaseType) && lockedOrder.ledger_id) {
     microFulfillment = await fulfillMicroTransaction(
       supabase,
       lockedOrder.user_id,
       lockedOrder.ledger_id as string,
-      purchaseType as Extract<
+      normalizedPurchaseType as Extract<
         PurchaseType,
         "legal_notice_999" | "samadhaan_499"
       >
     );
   }
 
-  if (isBusinessAddonPurchaseType(purchaseType)) {
+  if (isBusinessAddonPurchaseType(normalizedPurchaseType)) {
     if (!lockedOrder.business_id) {
       throw new Error("Business add-on order is missing business context.");
     }
@@ -712,7 +739,7 @@ export async function fulfillRazorpayOrder(
     await activateBusinessAddon(
       supabase,
       lockedOrder.business_id as string,
-      purchaseType
+      normalizedPurchaseType
     );
   }
 
@@ -721,14 +748,14 @@ export async function fulfillRazorpayOrder(
   emitGa4PurchaseEvent({
     userId: lockedOrder.user_id,
     transactionId: razorpayOrderId,
-    purchaseType,
+    purchaseType: normalizedPurchaseType,
     valueInr: lockedOrder.amount_paise / 100,
   });
 
   return {
     alreadyFulfilled: false,
     userId: lockedOrder.user_id,
-    purchaseType,
+    purchaseType: normalizedPurchaseType,
     microFulfillment,
   };
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { WalletRechargePanel } from "@/components/billing/WalletRechargePanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
@@ -17,9 +18,8 @@ import {
   getPremiumOrderAmountPaise,
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
-  VapiWalletRechargePurchaseType,
 } from "@/lib/razorpay-products";
-import { VAPI_CUSTOMER_RATE_PER_MINUTE_INR } from "@/lib/vapi-pricing";
+import { USD_TO_INR, VAPI_VOICE_MARGIN_RATE } from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
 
@@ -30,14 +30,6 @@ interface BillingViewProps {
 interface ToastState {
   message: string;
   variant: "success" | "error";
-}
-
-function formatInr(value: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 function getSubscriptionMetaParams(
@@ -97,43 +89,6 @@ export function BillingView({ user }: BillingViewProps) {
           setUserBillingState("premium", user.ledger_count);
           setToast({
             message: `${product.label} activated successfully.`,
-            variant: "success",
-          });
-        },
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === "Payment cancelled.") {
-        return;
-      }
-
-      setToast({
-        message:
-          error instanceof Error ? error.message : "Payment could not be completed.",
-        variant: "error",
-      });
-    } finally {
-      setProcessingPurchase(null);
-    }
-  }
-
-  async function handleWalletRecharge(purchaseType: VapiWalletRechargePurchaseType) {
-    setProcessingPurchase(purchaseType);
-
-    try {
-      const product = PURCHASE_PRODUCTS[purchaseType];
-
-      await startRazorpayCheckout({
-        purchaseType,
-        description: product.description,
-        prefill: {
-          email: user.email,
-          contact: user.phone_number,
-        },
-        onSuccess: () => {
-          bumpWalletRefresh();
-          bumpUserRefresh();
-          setToast({
-            message: `${product.amountLabel} added to your AI Voice Wallet.`,
             variant: "success",
           });
         },
@@ -396,68 +351,31 @@ export function BillingView({ user }: BillingViewProps) {
         <div>
           <h2 className="text-lg font-semibold text-recoverpe-black">AI Voice Wallet</h2>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
-            Current balance:{" "}
-            <span className="font-medium text-recoverpe-black">
-              {new Intl.NumberFormat("en-IN", {
-                style: "currency",
-                currency: "INR",
-                maximumFractionDigits: 0,
-              }).format(user.vapi_wallet_balance)}
-            </span>
+            Calls bill dynamically from VAPI&apos;s actual USD cost × {USD_TO_INR} FX ×{" "}
+            {(1 + VAPI_VOICE_MARGIN_RATE).toFixed(2)} margin. Recharges include 18% GST;
+            only the base amount is credited.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {(["vapi_recharge_500", "vapi_recharge_1000", "vapi_recharge_5000"] as const).map(
-            (purchaseType) => {
-              const product = PURCHASE_PRODUCTS[purchaseType];
-
-              return (
-                <Card key={purchaseType}>
-                  <CardContent className="space-y-4 pt-6">
-                    <div>
-                      <p className="text-sm font-medium text-recoverpe-black">
-                        {product.label}
-                      </p>
-                      <p className="mt-1 text-sm text-recoverpe-grey-medium">
-                        {product.description}
-                      </p>
-                    </div>
-                    <p className="text-2xl font-semibold tracking-tight tabular-nums text-recoverpe-black">
-                      {product.amountLabel}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void handleWalletRecharge(purchaseType)}
-                      disabled={processingPurchase === purchaseType}
-                    >
-                      {processingPurchase === purchaseType
-                        ? "Processing…"
-                        : "Recharge Wallet"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            }
-          )}
-
-          <Card>
-            <CardContent className="space-y-3 pt-6">
-              <p className="text-sm font-medium text-recoverpe-black">How billing works</p>
-              <ul className="space-y-2 text-sm text-recoverpe-grey-medium">
-                <li>
-                  Premium includes a one-time {10}-minute trial, then pay-as-you-go.
-                </li>
-                <li>
-                  Calls bill at {formatInr(VAPI_CUSTOMER_RATE_PER_MINUTE_INR)}/min based on exact
-                  seconds used.
-                </li>
-                <li>Recharges apply instantly after successful payment.</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <WalletRechargePanel
+              currentBalanceInr={user.vapi_wallet_balance}
+              prefill={{
+                email: user.email,
+                contact: user.phone_number,
+              }}
+              onSuccess={(baseAmountInr) => {
+                bumpWalletRefresh();
+                bumpUserRefresh();
+                setToast({
+                  message: `₹${baseAmountInr.toLocaleString("en-IN")} credited to your AI Voice Wallet.`,
+                  variant: "success",
+                });
+              }}
+            />
+          </CardContent>
+        </Card>
       </section>
 
       {toast ? (

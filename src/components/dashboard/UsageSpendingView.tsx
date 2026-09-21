@@ -10,19 +10,24 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import { WalletRechargePanel } from "@/components/billing/WalletRechargePanel";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import { UsageDashboardPayload } from "@/lib/business-usage-metering";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
-import {
-  PURCHASE_PRODUCTS,
-  VapiWalletRechargePurchaseType,
-} from "@/lib/razorpay-products";
-import { startRazorpayCheckout } from "@/lib/razorpay-client";
+import { USD_TO_INR, VAPI_VOICE_MARGIN_RATE } from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 const METRIC_ICONS: Record<string, typeof Wallet> = {
@@ -32,18 +37,36 @@ const METRIC_ICONS: Record<string, typeof Wallet> = {
   invoices: FileText,
 };
 
-const WALLET_RECHARGE_PACKAGES: VapiWalletRechargePurchaseType[] = [
-  "vapi_recharge_500",
-  "vapi_recharge_1000",
-  "vapi_recharge_5000",
-];
-
 function formatInr(value: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds || seconds <= 0) {
+    return "—";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainder}s`;
+  }
+
+  return remainder > 0 ? `${minutes}m ${remainder}s` : `${minutes}m`;
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function formatQuotaLabel(usage: number, quota: number, unlimited: boolean): string {
@@ -125,8 +148,6 @@ export function UsageSpendingView() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [processingPurchase, setProcessingPurchase] =
-    useState<VapiWalletRechargePurchaseType | null>(null);
 
   const loadUsage = useCallback(async () => {
     if (!activeBusinessId) {
@@ -169,35 +190,6 @@ export function UsageSpendingView() {
     void loadUsage();
   }, [loadUsage]);
 
-  async function handleWalletRecharge(purchaseType: VapiWalletRechargePurchaseType) {
-    setProcessingPurchase(purchaseType);
-    setToast("");
-
-    try {
-      const product = PURCHASE_PRODUCTS[purchaseType];
-
-      await startRazorpayCheckout({
-        purchaseType,
-        description: product.description,
-        onSuccess: () => {
-          setToast(`${product.amountLabel} added to your AI Voice Wallet.`);
-          bumpWalletRefresh();
-          bumpUserRefresh();
-          void loadUsage();
-        },
-      });
-    } catch (checkoutError) {
-      if (
-        checkoutError instanceof Error &&
-        checkoutError.message !== "Payment cancelled."
-      ) {
-        setToast(checkoutError.message);
-      }
-    } finally {
-      setProcessingPurchase(null);
-    }
-  }
-
   if (!activeBusinessId) {
     return (
       <Card>
@@ -215,7 +207,7 @@ export function UsageSpendingView() {
       <PageHeader
         eyebrow="Unit economics"
         title="Usage & Spending"
-        description={`Track Smart Collect settlements, omnichannel alerts, and invoice quotas for ${activeBusiness?.business_name ?? "your business"} this billing period.`}
+        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}.`}
       />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
@@ -229,8 +221,8 @@ export function UsageSpendingView() {
       ) : payload ? (
         <>
           <Card className="border-recoverpe-black">
-            <CardContent className="space-y-5 p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <CardContent className="space-y-6 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-recoverpe-line bg-recoverpe-fill text-recoverpe-black">
                     <Phone className="h-5 w-5" aria-hidden />
@@ -241,8 +233,8 @@ export function UsageSpendingView() {
                       {formatInr(payload.vapi_wallet_balance_inr)}
                     </p>
                     <p className="mt-1 text-xs text-recoverpe-muted">
-                      Pay-as-you-go at {formatInr(payload.vapi_customer_rate_per_minute_inr)}
-                      /min (30% margin over ₹20/min provider cost).
+                      Dynamic billing: VAPI USD cost × {USD_TO_INR} FX ×{" "}
+                      {(1 + VAPI_VOICE_MARGIN_RATE).toFixed(2)} margin.
                       {payload.vapi_trial_minutes_remaining > 0
                         ? ` Premium trial remaining: ${payload.vapi_trial_minutes_remaining} min.`
                         : " Premium trial exhausted — wallet billing applies."}
@@ -256,25 +248,72 @@ export function UsageSpendingView() {
                 </Link>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {WALLET_RECHARGE_PACKAGES.map((purchaseType) => {
-                  const product = PURCHASE_PRODUCTS[purchaseType];
+              <WalletRechargePanel
+                currentBalanceInr={payload.vapi_wallet_balance_inr}
+                onSuccess={(baseAmountInr) => {
+                  setToast(`₹${baseAmountInr.toLocaleString("en-IN")} credited to your AI Voice Wallet.`);
+                  bumpWalletRefresh();
+                  bumpUserRefresh();
+                  void loadUsage();
+                }}
+              />
+            </CardContent>
+          </Card>
 
-                  return (
-                    <Button
-                      key={purchaseType}
-                      type="button"
-                      variant="primary"
-                      disabled={processingPurchase === purchaseType}
-                      onClick={() => void handleWalletRecharge(purchaseType)}
-                    >
-                      {processingPurchase === purchaseType
-                        ? "Processing…"
-                        : `Recharge ${product.amountLabel}`}
-                    </Button>
-                  );
-                })}
+          <Card>
+            <CardContent className="space-y-4 p-5">
+              <div>
+                <p className="text-sm font-medium text-recoverpe-black">
+                  AI Voice Call History
+                </p>
+                <p className="mt-1 text-xs text-recoverpe-muted">
+                  Each row shows the exact INR deducted for that call after VAPI reports
+                  the true provider cost.
+                </p>
               </div>
+
+              {payload.vapi_call_history.length === 0 ? (
+                <p className="text-sm text-recoverpe-muted">
+                  No completed AI voice calls yet.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>When</TableHead>
+                      <TableHead>Debtor</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>VAPI Cost</TableHead>
+                      <TableHead className="text-right">You Paid</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payload.vapi_call_history.map((call) => (
+                      <TableRow key={call.id}>
+                        <TableCell className="text-recoverpe-muted">
+                          {formatDateTime(call.executed_at)}
+                        </TableCell>
+                        <TableCell className="font-medium text-recoverpe-black">
+                          {call.debtor_name ?? "Unknown debtor"}
+                        </TableCell>
+                        <TableCell className="tabular-nums text-recoverpe-muted">
+                          {formatDuration(call.duration_seconds)}
+                        </TableCell>
+                        <TableCell className="tabular-nums text-recoverpe-muted">
+                          {call.vapi_cost_usd !== null
+                            ? `$${call.vapi_cost_usd.toFixed(4)}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums text-recoverpe-black">
+                          {call.billed_amount_inr > 0
+                            ? formatInr(call.billed_amount_inr)
+                            : "₹0.00 (trial)"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
 

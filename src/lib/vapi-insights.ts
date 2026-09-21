@@ -1,4 +1,4 @@
-import { calculateVapiCallBill } from "@/lib/vapi-pricing";
+import { calculateVapiBillFromProviderCost } from "@/lib/vapi-pricing";
 
 export type VapiSentimentBadge = "cooperative" | "evasive" | "hostile";
 
@@ -145,7 +145,7 @@ function buildExecutiveSummary(
   return `${sentimentSentence} Key moment: "${snippet}${cleaned.length > 220 ? "..." : ""}"`;
 }
 
-/** @deprecated Use calculateVapiCallBill from vapi-pricing for INR wallet billing. */
+/** @deprecated Use calculateVapiBillFromProviderCost from vapi-pricing. */
 export function calculateVapiCreditCost(durationSeconds: number): number {
-  return calculateVapiCallBill(durationSeconds).customer_charge_inr;
+  return calculateVapiBillFromProviderCost(null, durationSeconds).customer_charge_inr;
 }

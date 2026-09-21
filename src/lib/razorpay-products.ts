@@ -158,7 +158,7 @@ export type BusinessAddonPurchaseType =
   | "settlement_desk_monthly";
 
 export function isPurchaseType(value: string): value is PurchaseType {
-  return value in PURCHASE_PRODUCTS;
+  return value in PURCHASE_PRODUCTS || value === "wallet_recharge";
 }
 
 export function isSubscriptionPurchaseType(

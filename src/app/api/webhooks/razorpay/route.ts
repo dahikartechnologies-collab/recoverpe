@@ -9,6 +9,7 @@ import {
 } from "@/lib/razorpay";
 import { handleMerchantBankVerificationWebhook } from "@/lib/payments/merchant-bank-verification";
 import { processRazorpayVirtualAccountCredit } from "@/lib/payments/razorpay-webhook-handler";
+import { tryFulfillWalletRechargeWebhook } from "@/lib/wallet-recharge";
 import {
   isRazorpaySmartCollectCreditEvent,
   RazorpaySmartCollectWebhookPayload,
@@ -118,6 +119,24 @@ export async function POST(request: Request) {
         { error: "Unable to resolve Razorpay order ID from webhook payload." },
         { status: 400 }
       );
+    }
+
+    const walletRechargeResult = await tryFulfillWalletRechargeWebhook(
+      supabase,
+      payload,
+      razorpayOrderId
+    );
+
+    if (walletRechargeResult.handled) {
+      return NextResponse.json({
+        received: true,
+        wallet_recharge_handled: true,
+        user_id: walletRechargeResult.userId ?? null,
+        base_credit_inr: walletRechargeResult.baseCreditInr ?? null,
+        wallet_balance: walletRechargeResult.walletBalance ?? null,
+        already_fulfilled: walletRechargeResult.alreadyFulfilled ?? false,
+        event: payload.event,
+      });
     }
 
     const bankVerificationResult = await handleMerchantBankVerificationWebhook(

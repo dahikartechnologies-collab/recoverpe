@@ -9,7 +9,7 @@ import {
   incrementVapiMinutesUsageSafely,
 } from "@/lib/business-usage-metering";
 import {
-  calculateVapiCallBill,
+  calculateVapiBillFromProviderCost,
   getPremiumTrialMinutesRemaining,
   splitVapiBillAcrossTrialAndWallet,
 } from "@/lib/vapi-pricing";
@@ -42,13 +42,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
-    const bill = calculateVapiCallBill(report.duration_seconds);
+    const bill = calculateVapiBillFromProviderCost(
+      report.vapi_cost_usd,
+      report.duration_seconds
+    );
     const insights = buildVapiInsightsFromReport(report);
     const supabase = createAdminSupabaseClient();
 
     const { data: existingLog, error: logLookupError } = await supabase
       .from("communication_logs")
-      .select("id, ledger_id, cost_deducted, status, vapi_call_id")
+      .select("id, ledger_id, cost_deducted, billed_amount_inr, status, vapi_call_id")
       .eq("vapi_call_id", report.vapi_call_id)
       .maybeSingle();
 
@@ -91,6 +94,9 @@ export async function POST(request: Request) {
 
     let walletChargeInr = 0;
     let trialMinutesApplied = 0;
+    let billedAmountInr = alreadyReconciled
+      ? Number(existingLog?.billed_amount_inr ?? existingLog?.cost_deducted ?? 0)
+      : bill.customer_charge_inr;
 
     if (!alreadyReconciled && businessId) {
       const usageRow = await fetchBusinessUsageMeteringRow(supabase, businessId);
@@ -103,12 +109,10 @@ export async function POST(request: Request) {
         usage_vapi_minutes: usageRow?.usage_vapi_minutes ?? 0,
       });
 
-      const split = splitVapiBillAcrossTrialAndWallet(
-        bill,
-        trialMinutesRemaining
-      );
+      const split = splitVapiBillAcrossTrialAndWallet(bill, trialMinutesRemaining);
       trialMinutesApplied = split.trial_minutes_applied;
       walletChargeInr = split.wallet_charge_inr;
+      billedAmountInr = split.customer_charge_inr;
 
       if (trialMinutesApplied > 0) {
         await incrementVapiMinutesUsageSafely(
@@ -137,10 +141,6 @@ export async function POST(request: Request) {
       }
     }
 
-    const totalChargeInr = alreadyReconciled
-      ? Number(existingLog?.cost_deducted ?? 0)
-      : bill.customer_charge_inr;
-
     const logUpdate = {
       user_id: userId as string,
       business_id: businessId,
@@ -148,7 +148,9 @@ export async function POST(request: Request) {
       channel: "voice_ai" as const,
       direction: "outbound" as const,
       status: "call_completed" as const,
-      cost_deducted: totalChargeInr,
+      cost_deducted: billedAmountInr,
+      billed_amount_inr: billedAmountInr,
+      vapi_cost_usd: bill.vapi_cost_usd,
       recording_url: report.recording_url,
       sentiment: insights.sentiment,
       executive_summary: insights.executive_summary,
@@ -190,7 +192,8 @@ export async function POST(request: Request) {
       vapi_call_id: report.vapi_call_id,
       ledger_id: ledgerId,
       duration_seconds: report.duration_seconds,
-      customer_charge_inr: totalChargeInr,
+      vapi_cost_usd: bill.vapi_cost_usd,
+      billed_amount_inr: billedAmountInr,
       provider_cost_inr: bill.provider_cost_inr,
       margin_inr: bill.margin_inr,
       trial_minutes_applied: trialMinutesApplied,
@@ -203,9 +206,10 @@ export async function POST(request: Request) {
       received: true,
       vapi_call_id: report.vapi_call_id,
       ledger_id: ledgerId,
-      customer_charge_inr: totalChargeInr,
+      billed_amount_inr: billedAmountInr,
       wallet_charge_inr: walletChargeInr,
       trial_minutes_applied: trialMinutesApplied,
+      vapi_cost_usd: bill.vapi_cost_usd,
       provider_cost_inr: bill.provider_cost_inr,
       margin_inr: bill.margin_inr,
       sentiment: insights.sentiment,

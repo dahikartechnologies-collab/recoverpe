@@ -5,6 +5,8 @@ import {
   CreateRazorpaySubscriptionPayload,
   CreateRazorpaySubscriptionResponse,
   CreateSubscriptionCheckoutPayload,
+  CreateWalletRechargeCheckoutPayload,
+  CreateWalletRechargeCheckoutResponse,
   DevFulfillRazorpayPayload,
   DevFulfillRazorpayResponse,
   FulfillRazorpayOrderPayload,
@@ -25,6 +27,10 @@ import {
 } from "@/lib/analytics-events";
 
 function purchaseValueInr(purchaseType: PurchaseType): number {
+  if (purchaseType === "wallet_recharge") {
+    return 0;
+  }
+
   return getPurchaseProduct(purchaseType).amountPaise / 100;
 }
 
@@ -136,6 +142,117 @@ export async function createSubscriptionCheckout(
   }
 
   return body;
+}
+
+export async function createWalletRechargeCheckout(
+  baseAmount: number
+): Promise<CreateWalletRechargeCheckoutResponse> {
+  const headers = await getAuthHeaders();
+  const response = await fetch("/api/checkout/create-wallet-recharge", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ baseAmount } satisfies CreateWalletRechargeCheckoutPayload),
+  });
+
+  const body = (await response.json()) as CreateWalletRechargeCheckoutResponse & {
+    error?: string;
+  };
+
+  if (!response.ok || !body.success) {
+    throw new Error(body.error || "Failed to create wallet recharge checkout.");
+  }
+
+  return body;
+}
+
+export async function startWalletRechargeCheckout({
+  baseAmount,
+  prefill,
+  onSuccess,
+  onDismiss,
+}: {
+  baseAmount: number;
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  onSuccess?: () => void;
+  onDismiss?: () => void;
+}): Promise<void> {
+  const orderResponse = await createWalletRechargeCheckout(baseAmount);
+
+  trackCheckoutStarted({
+    purchaseType: "wallet_recharge",
+    valueInr: orderResponse.total_payable_inr,
+  });
+
+  if (orderResponse.simulated) {
+    console.warn(
+      "[Recoverpe Razorpay Dev Bypass] Simulating wallet recharge fulfillment locally."
+    );
+
+    await devFulfillRazorpayOrder({ order_id: orderResponse.order.id });
+    onSuccess?.();
+    return;
+  }
+
+  if (!orderResponse.key) {
+    throw new Error("Razorpay public key is not configured.");
+  }
+
+  const publicKey = orderResponse.key;
+
+  await loadRazorpayScript();
+
+  if (!window.Razorpay) {
+    throw new Error("Razorpay checkout is unavailable.");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const checkout = new window.Razorpay!({
+      key: publicKey,
+      amount: orderResponse.order.amount,
+      currency: orderResponse.order.currency,
+      name: "Recoverpe",
+      description: `AI Voice Wallet recharge (₹${orderResponse.base_amount_inr} + GST)`,
+      order_id: orderResponse.order.id,
+      prefill,
+      theme: {
+        color: "#0A0A0A",
+      },
+      handler: async () => {
+        try {
+          await fulfillRazorpayOrderAfterCheckout(orderResponse.order.id);
+          trackPurchaseClientSide({
+            purchaseType: "wallet_recharge",
+            valueInr: orderResponse.total_payable_inr,
+            transactionId: orderResponse.order.id,
+          });
+          onSuccess?.();
+          resolve();
+        } catch (fulfillError) {
+          reject(
+            fulfillError instanceof Error
+              ? fulfillError
+              : new Error("Failed to fulfill wallet recharge after payment.")
+          );
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          onDismiss?.();
+          reject(new Error("Payment cancelled."));
+        },
+      },
+    });
+
+    checkout.on("payment.failed", () => {
+      reject(new Error("Payment failed. Please try again."));
+    });
+
+    checkout.open();
+  });
 }
 
 export async function devFulfillRazorpayOrder(

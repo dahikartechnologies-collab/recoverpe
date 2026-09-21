@@ -7,13 +7,14 @@ import {
   analyzeVapiTranscript,
   sentimentEmoji,
 } from "@/lib/vapi-insights";
-import { calculateVapiCallBill } from "@/lib/vapi-pricing";
+import { calculateVapiBillFromProviderCost } from "@/lib/vapi-pricing";
 
 export interface ParsedVapiEndOfCallReport {
   vapi_call_id: string;
   ledger_id: string | null;
   user_id: string | null;
   duration_seconds: number;
+  vapi_cost_usd: number | null;
   recording_url: string | null;
   transcript: string;
   summary: string | null;
@@ -181,6 +182,16 @@ export function parseVapiEndOfCallReport(
     readNumber(call.duration) ||
     0;
 
+  const vapi_cost_usd =
+    readNumber(call.cost) ||
+    readNumber(message.cost) ||
+    readNumber(
+      call.costBreakdown && typeof call.costBreakdown === "object"
+        ? (call.costBreakdown as Record<string, unknown>).total
+        : null
+    ) ||
+    null;
+
   const recording_url =
     readString(message.recordingUrl) ||
     readString(call.recordingUrl) ||
@@ -208,6 +219,7 @@ export function parseVapiEndOfCallReport(
     ledger_id: readString(metadata.ledger_id),
     user_id: readString(metadata.recoverpe_user_id),
     duration_seconds: Math.max(0, Math.round(duration_seconds)),
+    vapi_cost_usd,
     recording_url,
     transcript,
     summary,
@@ -216,7 +228,10 @@ export function parseVapiEndOfCallReport(
 
 export function buildVapiInsightsFromReport(report: ParsedVapiEndOfCallReport) {
   const insights = analyzeVapiTranscript(report.transcript, report.summary);
-  const bill = calculateVapiCallBill(report.duration_seconds);
+  const bill = calculateVapiBillFromProviderCost(
+    report.vapi_cost_usd,
+    report.duration_seconds
+  );
 
   return {
     ...insights,
@@ -225,5 +240,6 @@ export function buildVapiInsightsFromReport(report: ParsedVapiEndOfCallReport) {
     customer_charge_inr: bill.customer_charge_inr,
     provider_cost_inr: bill.provider_cost_inr,
     margin_inr: bill.margin_inr,
+    vapi_cost_usd: bill.vapi_cost_usd,
   };
 }

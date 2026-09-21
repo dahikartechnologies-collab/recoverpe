@@ -3,24 +3,25 @@ import {
   resolveEffectiveTier,
 } from "@/lib/entitlements";
 
-/** RecoverPe's all-in cost to VAPI / telephony providers. */
-export const VAPI_BASE_COST_PER_MINUTE_INR = 20;
+/** Fixed FX rate for converting VAPI USD costs to INR. */
+export const USD_TO_INR = 84;
 
-/** Target gross margin on AI voice usage. */
+/** Target gross margin on actual VAPI provider cost. */
 export const VAPI_VOICE_MARGIN_RATE = 0.3;
 
-/** Customer-facing rate: ₹20/min cost + 30% margin = ₹26/min. */
-export const VAPI_CUSTOMER_RATE_PER_MINUTE_INR =
-  VAPI_BASE_COST_PER_MINUTE_INR * (1 + VAPI_VOICE_MARGIN_RATE);
+export const WALLET_RECHARGE_GST_RATE = 0.18;
+export const WALLET_RECHARGE_MIN_INR = 100;
+export const WALLET_RECHARGE_MAX_INR = 20_000;
 
 export const PREMIUM_VAPI_TRIAL_MINUTES = 10;
 
 export const ADMIN_GRANTED_SUBSCRIPTION_ID = "admin_granted";
 
-export interface VapiCallBill {
+export interface VapiDynamicCallBill {
   duration_seconds: number;
-  customer_charge_inr: number;
+  vapi_cost_usd: number | null;
   provider_cost_inr: number;
+  customer_charge_inr: number;
   margin_inr: number;
 }
 
@@ -30,21 +31,62 @@ export interface VapiBillSplit {
   customer_charge_inr: number;
 }
 
+export interface WalletRechargeBreakdown {
+  base_amount_inr: number;
+  gst_amount_inr: number;
+  total_payable_inr: number;
+}
+
 function roundInr(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function calculateVapiCallBill(durationSeconds: number): VapiCallBill {
+function roundUsd(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+export function calculateWalletRechargeBreakdown(
+  baseAmountInr: number
+): WalletRechargeBreakdown {
+  const base_amount_inr = roundInr(baseAmountInr);
+  const gst_amount_inr = roundInr(base_amount_inr * WALLET_RECHARGE_GST_RATE);
+  const total_payable_inr = roundInr(base_amount_inr + gst_amount_inr);
+
+  return {
+    base_amount_inr,
+    gst_amount_inr,
+    total_payable_inr,
+  };
+}
+
+export function calculateWalletRechargeTotalPaise(baseAmountInr: number): number {
+  const breakdown = calculateWalletRechargeBreakdown(baseAmountInr);
+  return Math.round(breakdown.total_payable_inr * 100);
+}
+
+export function calculateVapiBillFromProviderCost(
+  vapiCostUsd: number | null | undefined,
+  durationSeconds = 0
+): VapiDynamicCallBill {
   const duration_seconds = Math.max(0, durationSeconds);
-  const minutes = duration_seconds / 60;
-  const customer_charge_inr = roundInr(minutes * VAPI_CUSTOMER_RATE_PER_MINUTE_INR);
-  const provider_cost_inr = roundInr(minutes * VAPI_BASE_COST_PER_MINUTE_INR);
+  const normalizedUsd =
+    typeof vapiCostUsd === "number" && Number.isFinite(vapiCostUsd) && vapiCostUsd > 0
+      ? roundUsd(vapiCostUsd)
+      : null;
+
+  const provider_cost_inr = normalizedUsd
+    ? roundInr(normalizedUsd * USD_TO_INR)
+    : 0;
+  const customer_charge_inr = roundInr(
+    provider_cost_inr * (1 + VAPI_VOICE_MARGIN_RATE)
+  );
   const margin_inr = roundInr(customer_charge_inr - provider_cost_inr);
 
   return {
     duration_seconds,
-    customer_charge_inr,
+    vapi_cost_usd: normalizedUsd,
     provider_cost_inr,
+    customer_charge_inr,
     margin_inr,
   };
 }
@@ -74,7 +116,7 @@ export function getPremiumTrialMinutesRemaining(input: {
 }
 
 export function splitVapiBillAcrossTrialAndWallet(
-  bill: VapiCallBill,
+  bill: VapiDynamicCallBill,
   trialMinutesRemaining: number
 ): VapiBillSplit {
   if (bill.customer_charge_inr <= 0) {
@@ -86,14 +128,17 @@ export function splitVapiBillAcrossTrialAndWallet(
   }
 
   const billedMinutes = bill.duration_seconds / 60;
-  const trialMinutesApplied = Math.min(
-    Math.max(0, trialMinutesRemaining),
-    billedMinutes
-  );
-  const walletMinutes = Math.max(0, billedMinutes - trialMinutesApplied);
-  const wallet_charge_inr = roundInr(
-    walletMinutes * VAPI_CUSTOMER_RATE_PER_MINUTE_INR
-  );
+  const trialMinutesApplied =
+    billedMinutes > 0
+      ? Math.min(Math.max(0, trialMinutesRemaining), billedMinutes)
+      : Math.min(Math.max(0, trialMinutesRemaining), 1);
+  const walletFraction =
+    billedMinutes > 0
+      ? Math.max(0, 1 - trialMinutesApplied / billedMinutes)
+      : trialMinutesRemaining > 0
+        ? 0
+        : 1;
+  const wallet_charge_inr = roundInr(bill.customer_charge_inr * walletFraction);
 
   return {
     trial_minutes_applied: roundInr(trialMinutesApplied),
@@ -115,4 +160,22 @@ export function canInitiateVapiCall(input: {
 
 export function vapiCallBlockedMessage(): string {
   return "Your AI Voice Wallet is empty and your Premium trial minutes are used up. Recharge the wallet to continue outbound calls.";
+}
+
+export function validateWalletRechargeBaseAmount(baseAmount: number): string | null {
+  if (!Number.isFinite(baseAmount)) {
+    return "Recharge amount must be a valid number.";
+  }
+
+  const normalized = Math.trunc(baseAmount);
+
+  if (normalized < WALLET_RECHARGE_MIN_INR) {
+    return `Minimum recharge is ₹${WALLET_RECHARGE_MIN_INR}.`;
+  }
+
+  if (normalized > WALLET_RECHARGE_MAX_INR) {
+    return `Maximum recharge is ₹${WALLET_RECHARGE_MAX_INR.toLocaleString("en-IN")}.`;
+  }
+
+  return null;
 }

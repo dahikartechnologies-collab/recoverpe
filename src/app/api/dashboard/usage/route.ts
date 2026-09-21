@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   buildUsageDashboardPayload,
+  fetchVapiCallUsageHistory,
   syncBusinessUsageQuotas,
 } from "@/lib/business-usage-metering";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
@@ -66,6 +67,7 @@ export async function GET(request: Request) {
 
     const payload = buildUsageDashboardPayload(row, {
       vapi_wallet_balance_inr: Number(userRow?.vapi_wallet_balance ?? 0),
+      vapi_call_history: await fetchVapiCallUsageHistory(supabase, businessId),
     });
 
     return NextResponse.json(payload, {

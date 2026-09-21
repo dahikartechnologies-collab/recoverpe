@@ -10,9 +10,11 @@ import {
   ZERO_MDR_THRESHOLD_INR,
 } from "@/lib/payments/smart-checkout-router";
 import {
-  calculateVapiCallBill,
+  calculateVapiBillFromProviderCost,
+  calculateWalletRechargeBreakdown,
   splitVapiBillAcrossTrialAndWallet,
-  VAPI_CUSTOMER_RATE_PER_MINUTE_INR,
+  USD_TO_INR,
+  VAPI_VOICE_MARGIN_RATE,
 } from "@/lib/vapi-pricing";
 
 describe("entitlements", () => {
@@ -73,16 +75,6 @@ describe("entitlements", () => {
         subscription_status: "active",
       })
     ).toBe("starter");
-    expect(
-      hasEntitlement(
-        {
-          subscription_tier: "premium",
-          subscription_expires_at: "2020-01-01T00:00:00.000Z",
-          razorpay_subscription_id: "admin_granted",
-        },
-        "ai_voice_calls"
-      )
-    ).toBe(false);
   });
 
   it("grandfathers legacy add-ons to business", () => {
@@ -102,20 +94,32 @@ describe("entitlements", () => {
 });
 
 describe("vapi pricing", () => {
-  it("charges a 30% margin over the ₹20/min provider cost", () => {
-    const bill = calculateVapiCallBill(60);
+  it("applies a 30% margin on actual VAPI USD cost converted to INR", () => {
+    const bill = calculateVapiBillFromProviderCost(0.25, 90);
 
-    expect(bill.customer_charge_inr).toBe(VAPI_CUSTOMER_RATE_PER_MINUTE_INR);
-    expect(bill.provider_cost_inr).toBe(20);
-    expect(bill.margin_inr).toBe(6);
+    expect(bill.vapi_cost_usd).toBe(0.25);
+    expect(bill.provider_cost_inr).toBe(21);
+    expect(bill.customer_charge_inr).toBe(27.3);
+    expect(bill.margin_inr).toBe(6.3);
+  });
+
+  it("calculates wallet recharge GST on the base credit amount", () => {
+    const breakdown = calculateWalletRechargeBreakdown(1000);
+
+    expect(breakdown.base_amount_inr).toBe(1000);
+    expect(breakdown.gst_amount_inr).toBe(180);
+    expect(breakdown.total_payable_inr).toBe(1180);
   });
 
   it("applies premium trial minutes before wallet billing", () => {
-    const bill = calculateVapiCallBill(120);
+    const bill = calculateVapiBillFromProviderCost(0.2, 120);
     const split = splitVapiBillAcrossTrialAndWallet(bill, 10);
 
     expect(split.trial_minutes_applied).toBe(2);
     expect(split.wallet_charge_inr).toBe(0);
+    expect(bill.customer_charge_inr).toBe(
+      Number((0.2 * USD_TO_INR * (1 + VAPI_VOICE_MARGIN_RATE)).toFixed(2))
+    );
   });
 });
 

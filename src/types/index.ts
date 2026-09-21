@@ -348,6 +348,8 @@ export interface CommunicationLog {
   vapi_call_id?: string | null;
   transcript?: string | null;
   duration_seconds?: number | null;
+  billed_amount_inr?: number | null;
+  vapi_cost_usd?: number | null;
 }
 
 export interface Expense {
@@ -695,6 +697,7 @@ export type PurchaseType =
   | "vapi_recharge_1000"
   | "vapi_recharge_5000"
   | "vapi_recharge_100"
+  | "wallet_recharge"
   | "legal_notice_999"
   | "samadhaan_499"
   | "promise_register_monthly"
@@ -791,6 +794,27 @@ export interface CreateRazorpaySubscriptionPayload {
 export interface CreateSubscriptionCheckoutPayload {
   tier: Tier;
   interval: "monthly" | "annual";
+}
+
+export interface CreateWalletRechargeCheckoutPayload {
+  baseAmount: number;
+}
+
+export interface CreateWalletRechargeCheckoutResponse {
+  success: boolean;
+  simulated: boolean;
+  order: {
+    id: string;
+    amount: number;
+    currency: string;
+    receipt: string;
+  };
+  key: string | null;
+  base_amount_inr: number;
+  gst_amount_inr: number;
+  total_payable_inr: number;
+  amount_paise: number;
+  message: string;
 }
 
 export interface CreateRazorpaySubscriptionResponse {
