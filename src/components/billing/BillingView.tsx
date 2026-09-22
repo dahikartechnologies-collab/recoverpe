@@ -19,6 +19,7 @@ import {
   FREE_PLAN_LEDGER_LIMIT,
   getPremiumAmountLabel,
   getPremiumOrderAmountPaise,
+  getSubscriptionTierFromPurchase,
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
@@ -59,6 +60,7 @@ export function BillingView({ user }: BillingViewProps) {
   const bumpWalletRefresh = useWorkspaceStore((state) => state.bumpWalletRefresh);
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
   const setUserBillingState = useWorkspaceStore((state) => state.setUserBillingState);
+  const setBusinesses = useWorkspaceStore((state) => state.setBusinesses);
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const businesses = useWorkspaceStore((state) => state.businesses);
   const activeBusiness =
@@ -83,13 +85,37 @@ export function BillingView({ user }: BillingViewProps) {
           contact: user.phone_number,
         },
         onSuccess: () => {
+          const purchasedTier = getSubscriptionTierFromPurchase(purchaseType);
+
           trackMetaEvent(
             "Subscribe",
             getSubscriptionMetaParams(purchaseType, user.eligible_for_discount)
           );
           bumpWalletRefresh();
           bumpUserRefresh();
-          setUserBillingState("premium", user.ledger_count);
+
+          if (activeBusinessId) {
+            setBusinesses(
+              businesses.map((business) =>
+                business.id === activeBusinessId
+                  ? {
+                      ...business,
+                      subscription_tier: purchasedTier,
+                      subscription_status: "active",
+                    }
+                  : business
+              )
+            );
+          }
+
+          setUserBillingState(
+            purchasedTier === "starter" ||
+              purchasedTier === "business" ||
+              purchasedTier === "premium"
+              ? "premium"
+              : "free",
+            user.ledger_count
+          );
           setToast({
             message: `${product.label} activated successfully.`,
             variant: "success",

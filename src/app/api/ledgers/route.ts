@@ -19,9 +19,16 @@ import { scheduleContactVirtualAccountProvisioning } from "@/lib/payments/provis
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { revalidateDashboardData } from "@/lib/dashboard-cache";
 import { incrementInvoiceUsageSafely } from "@/lib/business-usage-metering";
+import {
+  shouldApplyFreeInvoiceLimits,
+  shouldShowRecoverpeBranding,
+} from "@/lib/tier-fulfillment";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { fireUdhaarReceiptMessage } from "@/lib/whatsapp/udhaar-receipt";
 import { Business, Contact, CreateLedgerPayload, Ledger, WorkspaceMode } from "@/types";
+
+const BUSINESS_INVOICE_POLICY_SELECT =
+  "id, user_id, business_name, gstin, logo_url, msme_reg_no, invoice_prefix, financial_year_suffix, next_invoice_sequence, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons, created_at";
 
 interface UpsertContactResult {
   contact: Contact;
@@ -201,7 +208,7 @@ export async function POST(request: Request) {
 
     const { data: userRow, error: userError } = await supabase
       .from("users")
-      .select("subscription_plan, default_upi_vpa, email")
+      .select("default_upi_vpa, email")
       .eq("id", contextResult.effectiveUserId)
       .single();
 
@@ -243,20 +250,43 @@ export async function POST(request: Request) {
     );
     const isFirstLedger = priorLedgerCount === 0;
 
-    if (userRow.subscription_plan === "free") {
-      const ledgerCount = priorLedgerCount;
+    let business: Business | null = null;
+    let invoiceNumber: string | null = null;
 
-      if (ledgerCount >= FREE_PLAN_LEDGER_LIMIT) {
+    if (body.workspace_mode === "business" && body.business_id) {
+      const { data: businessData, error: businessError } = await supabase
+        .from("businesses")
+        .select(BUSINESS_INVOICE_POLICY_SELECT)
+        .eq("id", body.business_id)
+        .eq("user_id", contextResult.effectiveUserId)
+        .single();
+
+      if (businessError || !businessData) {
+        return NextResponse.json(
+          { error: "Business profile not found." },
+          { status: 404 }
+        );
+      }
+
+      business = businessData as unknown as Business;
+    }
+
+    if (shouldApplyFreeInvoiceLimits(business)) {
+      if (priorLedgerCount >= FREE_PLAN_LEDGER_LIMIT) {
         return NextResponse.json(
           {
-            error: `Free plan is limited to ${FREE_PLAN_LEDGER_LIMIT} invoices. Upgrade to Premium to add more.`,
+            error: `Free plan is limited to ${FREE_PLAN_LEDGER_LIMIT} invoices. Upgrade to a paid plan to add more.`,
             upgrade_required: true,
-            ledger_count: ledgerCount,
+            ledger_count: priorLedgerCount,
             ledger_limit: FREE_PLAN_LEDGER_LIMIT,
           },
           { status: 402 }
         );
       }
+    }
+
+    if (business && body.generate_tax_invoice) {
+      invoiceNumber = buildInvoiceNumber(business);
     }
 
     const { contact, isNew: isNewContact } = await upsertContact(
@@ -273,33 +303,6 @@ export async function POST(request: Request) {
         contactId: contact.id,
         contactName: contact.name,
       });
-    }
-
-    let business: Business | null = null;
-    let invoiceNumber: string | null = null;
-
-    if (body.workspace_mode === "business" && body.business_id) {
-      const { data: businessData, error: businessError } = await supabase
-        .from("businesses")
-        .select(
-          "id, user_id, business_name, gstin, logo_url, msme_reg_no, invoice_prefix, financial_year_suffix, next_invoice_sequence, created_at"
-        )
-        .eq("id", body.business_id)
-        .eq("user_id", contextResult.effectiveUserId)
-        .single();
-
-      if (businessError || !businessData) {
-        return NextResponse.json(
-          { error: "Business profile not found." },
-          { status: 404 }
-        );
-      }
-
-      business = businessData as Business;
-
-      if (body.generate_tax_invoice) {
-        invoiceNumber = buildInvoiceNumber(business);
-      }
     }
 
     const shouldGeneratePdf =
@@ -455,7 +458,7 @@ export async function POST(request: Request) {
         upiVpa: body.upi_vpa.trim(),
         ledgerId: finalLedger.id,
         msmeRegNo: business.msme_reg_no,
-        showRecoverpeBranding: userRow.subscription_plan !== "premium",
+        showRecoverpeBranding: shouldShowRecoverpeBranding(business),
       });
 
       pdfUrl = await uploadSecureInvoicePdf(ledger.id, pdfBuffer);

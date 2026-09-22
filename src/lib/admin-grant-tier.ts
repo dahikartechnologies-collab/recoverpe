@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { syncBusinessUsageQuotas } from "@/lib/business-usage-metering";
 import { cancelBusinessSubscriptionIfActive } from "@/lib/subscription-lifecycle";
+import { applyTierFulfillment } from "@/lib/tier-fulfillment";
 import { AdminManagedBusiness, Tier } from "@/types";
 
 const ADMIN_GRANTED_SUBSCRIPTION_ID = "admin_granted";
@@ -76,36 +76,28 @@ export async function grantBusinessTierAccess(
   const expiresAt = new Date();
   expiresAt.setUTCDate(expiresAt.getUTCDate() + Math.trunc(input.days));
 
-  const { data: updatedBusiness, error: updateError } = await supabase
+  await applyTierFulfillment({
+    supabase,
+    businessId,
+    tier: input.tier,
+    status: "active",
+    razorpaySubscriptionId: ADMIN_GRANTED_SUBSCRIPTION_ID,
+    periodEnd: expiresAt.toISOString(),
+    subscriptionInterval: input.days >= 365 ? "annual" : "monthly",
+    subscriptionBillingTier: billingTierToPreserve,
+  });
+
+  const { data: updatedBusiness, error: reloadError } = await supabase
     .from("businesses")
-    .update({
-      subscription_tier: input.tier,
-      subscription_billing_tier: billingTierToPreserve,
-      subscription_status: "active",
-      subscription_interval: input.days >= 365 ? "annual" : "monthly",
-      razorpay_subscription_id: ADMIN_GRANTED_SUBSCRIPTION_ID,
-      subscription_expires_at: expiresAt.toISOString(),
-      subscription_current_period_end: expiresAt.toISOString(),
-    })
-    .eq("id", businessId)
     .select(
       "id, user_id, business_name, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, created_at"
     )
+    .eq("id", businessId)
     .single();
 
-  if (updateError || !updatedBusiness) {
-    throw new Error(updateError?.message || "Failed to grant tier access.");
+  if (reloadError || !updatedBusiness) {
+    throw new Error(reloadError?.message || "Failed to reload granted business.");
   }
-
-  await supabase
-    .from("users")
-    .update({
-      subscription_plan: input.tier === "premium" ? "premium" : "free",
-      premium_expires_at: expiresAt.toISOString(),
-    })
-    .eq("id", business.user_id as string);
-
-  await syncBusinessUsageQuotas(supabase, businessId);
 
   return mapAdminBusinessRow(
     updatedBusiness as Record<string, unknown>,

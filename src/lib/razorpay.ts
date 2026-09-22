@@ -23,6 +23,7 @@ import {
   PurchaseType,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
+import { applyTierFulfillmentForUser } from "@/lib/tier-fulfillment";
 import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
 import { fulfillMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
@@ -132,42 +133,19 @@ export async function activateBusinessSubscription(
 ): Promise<void> {
   const expiresAt =
     periodEnd ?? addIntervalToDate(new Date(), planInterval);
+  const normalizedTier: BusinessSubscriptionTier = tier === "free" ? "free" : tier;
 
-  const userPlan =
-    tier === "free" || tier === "starter" ? "free" : ("premium" as const);
-
-  const { error } = await supabase
-    .from("users")
-    .update({
-      subscription_plan: userPlan,
-      premium_expires_at:
-        tier === "free" ? null : expiresAt.toISOString(),
-    })
-    .eq("id", userId);
-
-  if (error) {
-    throw new Error(error.message || "Failed to activate subscription.");
-  }
-
-  const { error: businessTierError } = await supabase
-    .from("businesses")
-    .update({
-      subscription_tier: tier === "free" ? "starter" : tier,
-      subscription_billing_tier:
-        tier === "free" || tier === "starter" ? null : tier,
-      subscription_interval: planInterval,
-      subscription_status: tier === "free" ? "none" : "active",
-      subscription_current_period_end: expiresAt.toISOString(),
-      subscription_expires_at: expiresAt.toISOString(),
-      razorpay_subscription_id: razorpaySubscriptionId ?? null,
-    })
-    .eq("user_id", userId);
-
-  if (businessTierError) {
-    throw new Error(
-      businessTierError.message || "Failed to sync business subscription tier."
-    );
-  }
+  await applyTierFulfillmentForUser(supabase, userId, {
+    tier: normalizedTier,
+    status: normalizedTier === "free" ? "none" : "active",
+    razorpaySubscriptionId: razorpaySubscriptionId ?? null,
+    periodEnd: expiresAt.toISOString(),
+    subscriptionInterval: planInterval,
+    subscriptionBillingTier:
+      normalizedTier === "business" || normalizedTier === "premium"
+        ? normalizedTier
+        : null,
+  });
 }
 
 /** @deprecated Use activateBusinessSubscription */

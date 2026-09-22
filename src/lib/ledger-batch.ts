@@ -1,6 +1,7 @@
 import { formatIndianPhoneNumber } from "@/lib/invoices";
 import { countUserLedgers } from "@/lib/razorpay";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
+import { shouldApplyFreeInvoiceLimits } from "@/lib/tier-fulfillment";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { MappedImportRow, WorkspaceMode } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -107,7 +108,7 @@ export async function importLedgerBatch({
 
   const { data: userRow, error: userError } = await supabase
     .from("users")
-    .select("subscription_plan")
+    .select("id")
     .eq("id", userId)
     .single();
 
@@ -115,10 +116,14 @@ export async function importLedgerBatch({
     throw new Error("User profile not found.");
   }
 
+  let businessEntitlement = null;
+
   if (workspaceMode === "business" && businessId) {
     const { data: business, error: businessError } = await supabase
       .from("businesses")
-      .select("id")
+      .select(
+        "id, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons"
+      )
       .eq("id", businessId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -126,6 +131,8 @@ export async function importLedgerBatch({
     if (businessError || !business) {
       throw new Error("Business profile not found.");
     }
+
+    businessEntitlement = business;
   }
 
   const dedupeInvoiceNumbers = Array.from(
@@ -169,13 +176,13 @@ export async function importLedgerBatch({
     return !(invoiceKey && existingByInvoiceNumber.has(invoiceKey));
   }).length;
 
-  if (userRow.subscription_plan === "free") {
+  if (shouldApplyFreeInvoiceLimits(businessEntitlement)) {
     const ledgerCount = await countUserLedgers(supabase, userId);
 
     if (ledgerCount + projectedInsertCount > FREE_PLAN_LEDGER_LIMIT) {
       const remaining = Math.max(FREE_PLAN_LEDGER_LIMIT - ledgerCount, 0);
       throw new BatchLimitError(
-        `This import would create ${projectedInsertCount} new invoice(s) but your free plan only allows ${remaining} more. Upgrade to Premium to import the full batch.`,
+        `This import would create ${projectedInsertCount} new invoice(s) but your free plan only allows ${remaining} more. Upgrade to a paid plan to import the full batch.`,
         {
           upgrade_required: true,
           ledger_count: ledgerCount,

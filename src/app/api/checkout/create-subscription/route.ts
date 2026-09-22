@@ -18,13 +18,6 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
   const tier = body.tier?.trim() ?? "";
   const interval = body.interval;
 
-  if (tier === "starter") {
-    return NextResponse.json(
-      { error: "Starter is the free tier and cannot be purchased." },
-      { status: 400 }
-    );
-  }
-
   if (!isTier(tier)) {
     return NextResponse.json(
       { error: "tier must be starter, business, or premium." },
