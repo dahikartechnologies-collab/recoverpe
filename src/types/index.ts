@@ -1193,6 +1193,11 @@ export interface PublicOnboardResponse {
 
 export type DiagnosticServiceStatus = "ok" | "failed";
 
+export interface DiagnosticServiceResult {
+  status: DiagnosticServiceStatus;
+  error?: string;
+}
+
 export interface DiagnosticsHealthResponse {
   status: "ok" | "degraded";
   services: {
@@ -1200,7 +1205,11 @@ export interface DiagnosticsHealthResponse {
     firebase: DiagnosticServiceStatus;
     redis: DiagnosticServiceStatus;
     razorpay: DiagnosticServiceStatus;
+    vapi: DiagnosticServiceStatus;
   };
+  service_errors?: Partial<
+    Record<keyof DiagnosticsHealthResponse["services"], string>
+  >;
   checked_at: string;
 }
 

@@ -90,7 +90,7 @@ export function AdminDiagnosticsPanel() {
           </p>
           <p className="mt-1 text-sm text-recoverpe-grey-medium">
             Lightweight connectivity probes for Supabase, Firebase Admin, Upstash
-            Redis, and Razorpay.
+            Redis, Razorpay, and VAPI.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -129,12 +129,19 @@ export function AdminDiagnosticsPanel() {
                 ).map(([service, status]) => (
                   <li
                     key={service}
-                    className="flex items-center justify-between rounded-md border border-recoverpe-grey-light px-3 py-2"
+                    className="rounded-md border border-recoverpe-grey-light px-3 py-2"
                   >
-                    <span className="capitalize text-recoverpe-black">{service}</span>
-                    <span className={`font-medium ${statusClass(status)}`}>
-                      {statusLabel(status)}
-                    </span>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="capitalize text-recoverpe-black">{service}</span>
+                      <span className={`font-medium ${statusClass(status)}`}>
+                        {statusLabel(status)}
+                      </span>
+                    </div>
+                    {health.service_errors?.[service] ? (
+                      <p className="mt-2 text-xs text-recoverpe-error">
+                        {health.service_errors[service]}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>

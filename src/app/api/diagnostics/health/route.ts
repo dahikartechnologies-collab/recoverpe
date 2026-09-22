@@ -12,15 +12,29 @@ export async function GET(request: Request) {
 
     const health = await runIntegrationHealthChecks();
 
-    return NextResponse.json(health, {
-      status: health.status === "ok" ? 200 : 503,
-    });
+    return NextResponse.json(health, { status: 200 });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : "Failed to run integration health checks.";
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        status: "degraded",
+        services: {
+          supabase: "failed",
+          firebase: "failed",
+          redis: "failed",
+          razorpay: "failed",
+          vapi: "failed",
+        },
+        service_errors: {
+          supabase: message,
+        },
+        checked_at: new Date().toISOString(),
+      },
+      { status: 200 }
+    );
   }
 }

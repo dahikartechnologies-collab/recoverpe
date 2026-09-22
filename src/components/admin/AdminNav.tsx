@@ -14,15 +14,31 @@ const ADMIN_LINKS = [
   { href: "/admin/audit-logs", label: "Audit Logs" },
 ];
 
-export function AdminNav() {
-  const pathname = usePathname();
+function isAdminNavActive(pathname: string, href: string): boolean {
+  const normalizedPath =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+  const normalizedHref =
+    href.length > 1 && href.endsWith("/") ? href.slice(0, -1) : href;
+
+  if (normalizedHref === "/admin") {
+    return normalizedPath === "/admin";
+  }
 
   return (
-    <nav className="flex flex-wrap gap-2">
+    normalizedPath === normalizedHref ||
+    normalizedPath.startsWith(`${normalizedHref}/`)
+  );
+}
+
+export function AdminNav() {
+  const pathname = usePathname() ?? "";
+
+  return (
+    <nav className="flex flex-wrap gap-2" aria-label="Admin navigation">
       {ADMIN_LINKS.map((link) => {
-        const isActive =
-          pathname === link.href ||
-          (link.href !== "/admin" && pathname.startsWith(`${link.href}/`));
+        const isActive = isAdminNavActive(pathname, link.href);
 
         return (
           <Link

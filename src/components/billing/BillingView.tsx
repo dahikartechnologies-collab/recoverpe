@@ -12,6 +12,7 @@ import { getAuthHeaders } from "@/lib/auth-headers";
 import { trackMetaEvent } from "@/lib/analytics-events";
 import {
   getEffectiveVapiMinutesQuota,
+  resolveEffectiveTier,
 } from "@/lib/entitlements";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import { startRazorpayCheckout } from "@/lib/razorpay-client";
@@ -23,6 +24,7 @@ import {
   PURCHASE_PRODUCTS,
   SubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
+import { hasPaidTierBenefits } from "@/lib/tier-fulfillment";
 import { AI_VOICE_BILLING_TRANSPARENCY_COPY } from "@/lib/vapi-pricing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { RecoverpeUser } from "@/types";
@@ -166,13 +168,15 @@ export function BillingView({ user }: BillingViewProps) {
     }
   }
 
-  const activeTier = activeBusiness?.subscription_tier ?? "starter";
-  const normalizedActiveTier =
-    activeTier === "free" ? "starter" : activeTier;
+  const currentPlanKey = activeBusiness
+    ? hasPaidTierBenefits(activeBusiness)
+      ? resolveEffectiveTier(activeBusiness)
+      : "free"
+    : "free";
   const hasActivePaidSubscription =
-    (normalizedActiveTier === "business" || normalizedActiveTier === "premium") &&
+    currentPlanKey !== "free" &&
     activeBusiness?.subscription_status === "active";
-  const isStarterTier = normalizedActiveTier === "starter";
+  const isStarterTier = currentPlanKey === "starter";
 
   const premiumTrialMinutes = getEffectiveVapiMinutesQuota("premium");
 
@@ -262,8 +266,7 @@ export function BillingView({ user }: BillingViewProps) {
               </p>
               <p className="mt-1 text-sm text-recoverpe-muted">
                 {activeBusiness?.business_name ?? "Workspace"} is on the{" "}
-                {normalizedActiveTier.charAt(0).toUpperCase() +
-                  normalizedActiveTier.slice(1)}{" "}
+                {currentPlanKey.charAt(0).toUpperCase() + currentPlanKey.slice(1)}{" "}
                 plan.
               </p>
             </div>
@@ -282,12 +285,12 @@ export function BillingView({ user }: BillingViewProps) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {tierCards.map((tier) => {
-          const isCurrent = normalizedActiveTier === tier.key || (tier.key === "free" && normalizedActiveTier === "starter");
+          const isCurrent = currentPlanKey === tier.key;
 
           return (
             <Card
               key={tier.key}
-              className={tier.highlight || isCurrent ? "border-recoverpe-black" : ""}
+              className={isCurrent ? "border-recoverpe-black" : ""}
             >
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">

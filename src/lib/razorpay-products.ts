@@ -258,6 +258,40 @@ export function getPremiumAmountLabel(eligibleForDiscount: boolean): string {
   }).format(rupees);
 }
 
+export function getSubscriptionPlanEnvVarName(
+  purchaseType: SubscriptionPurchaseType,
+  eligibleForDiscount: boolean
+): string {
+  switch (purchaseType) {
+    case "subscription_starter_monthly":
+      return "RAZORPAY_PLAN_STARTER_MONTHLY";
+    case "subscription_starter_annual":
+      return "RAZORPAY_PLAN_STARTER_ANNUAL";
+    case "subscription_business_monthly":
+      return "RAZORPAY_PLAN_BUSINESS_MONTHLY";
+    case "subscription_business_annual":
+      return "RAZORPAY_PLAN_BUSINESS_ANNUAL";
+    case "subscription_premium_annual":
+      return "RAZORPAY_PLAN_PREMIUM_ANNUAL";
+    case "subscription_premium":
+      return eligibleForDiscount
+        ? "RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED or RAZORPAY_PLAN_PREMIUM_MONTHLY"
+        : "RAZORPAY_PLAN_PREMIUM_MONTHLY";
+    default:
+      return "RAZORPAY_PLAN_ID";
+  }
+}
+
+export function formatSubscriptionPlanTierLabel(tier: Tier): string {
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
+export function formatSubscriptionPlanIntervalLabel(
+  interval: "monthly" | "annual"
+): string {
+  return interval === "monthly" ? "Monthly" : "Annual";
+}
+
 export function getSubscriptionPlanId(
   purchaseType: SubscriptionPurchaseType,
   eligibleForDiscount: boolean
