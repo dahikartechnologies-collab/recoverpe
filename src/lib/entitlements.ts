@@ -169,6 +169,33 @@ export function resolveEffectiveTier(
   return baseTier;
 }
 
+function hasPaidTierBenefitsForEntitlements(
+  business: BusinessEntitlementRow | null | undefined
+): boolean {
+  if (!business) {
+    return false;
+  }
+
+  const effectiveTier = resolveEffectiveTier(business);
+
+  if (effectiveTier === "business" || effectiveTier === "premium") {
+    return true;
+  }
+
+  if (effectiveTier === "starter") {
+    const rawTier = business.subscription_tier ?? "free";
+    const status = (business.subscription_status ?? "none").toLowerCase();
+
+    return (
+      rawTier === "starter" &&
+      status === "active" &&
+      !isSubscriptionExpired(business.subscription_expires_at)
+    );
+  }
+
+  return false;
+}
+
 export function hasEntitlement(
   business: BusinessEntitlementRow | null | undefined,
   key: EntitlementKey
@@ -176,7 +203,15 @@ export function hasEntitlement(
   const effectiveTier = resolveEffectiveTier(business);
   const requiredTier = ENTITLEMENT_MATRIX[key];
 
-  return tierRank(effectiveTier) >= tierRank(requiredTier);
+  if (tierRank(effectiveTier) < tierRank(requiredTier)) {
+    return false;
+  }
+
+  if (requiredTier === "starter") {
+    return hasPaidTierBenefitsForEntitlements(business);
+  }
+
+  return true;
 }
 
 export function listEntitlements(

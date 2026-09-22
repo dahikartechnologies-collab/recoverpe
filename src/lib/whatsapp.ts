@@ -8,7 +8,8 @@ import {
   buildSmartCollectPaymentReceiptBody,
   buildWhatsAppReminderBody,
 } from "@/lib/whatsapp-content";
-import { Business, LedgerWithContact, SubscriptionPlan } from "@/types";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
+import { Business, LedgerWithContact } from "@/types";
 
 export interface WhatsAppMessageDraft {
   to: string;
@@ -124,8 +125,9 @@ export interface WhatsAppSendResult {
 
 interface DraftMessageInput {
   ledger: LedgerWithContact;
-  business: Pick<Business, "business_name"> | null;
-  subscriptionPlan?: SubscriptionPlan;
+  business:
+    | (Pick<Business, "business_name"> & BusinessEntitlementRow)
+    | null;
 }
 
 function normalizeWhatsAppRecipient(phoneNumber: string): string {
@@ -186,7 +188,6 @@ export function buildWhatsAppTemplatePayload(
 export function draftWhatsAppReminderMessage({
   ledger,
   business,
-  subscriptionPlan = "free",
   invoiceDocumentLink = null,
   autopilotTone,
   totalOutstandingBalance,
@@ -200,7 +201,7 @@ export function draftWhatsAppReminderMessage({
   const body = buildWhatsAppReminderBody({
     ledger,
     businessName: business?.business_name ?? null,
-    subscriptionPlan,
+    business,
     payPageUrl,
     invoiceViewUrl: invoiceDocumentLink,
     autopilotTone,

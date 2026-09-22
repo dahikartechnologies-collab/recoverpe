@@ -34,6 +34,18 @@ describe("entitlements", () => {
     expect(
       hasEntitlement({ subscription_tier: "business" }, "ai_voice_calls")
     ).toBe(false);
+    expect(
+      hasEntitlement({ subscription_tier: "free" }, "whatsapp_reminders")
+    ).toBe(false);
+    expect(
+      hasEntitlement(
+        {
+          subscription_tier: "starter",
+          subscription_status: "active",
+        },
+        "whatsapp_reminders"
+      )
+    ).toBe(true);
   });
 
   it("only bundles a premium AI trial, not flat SaaS minutes", () => {

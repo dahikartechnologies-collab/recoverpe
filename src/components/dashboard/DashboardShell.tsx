@@ -36,6 +36,7 @@ import {
   setWorkspaceCookies,
 } from "@/lib/workspace-context";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
+import { useActiveBusinessBilling } from "@/lib/use-active-business-billing";
 import { isAgentContextActive } from "@/lib/post-auth-navigation";
 import { AccountPendingPurgeError, AccountSuspendedError } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
@@ -108,7 +109,7 @@ export function DashboardShell({
   );
   const setGhostMode = useWorkspaceStore((state) => state.setGhostMode);
   const ghostModeUserId = useWorkspaceStore((state) => state.ghostModeUserId);
-  const subscriptionPlan = useWorkspaceStore((state) => state.subscriptionPlan);
+  const { isFreeTier, tierBadgeLabel } = useActiveBusinessBilling();
   const workspaceRole = useWorkspaceStore((state) => state.workspaceRole);
   const customPermissions = useWorkspaceStore((state) => state.customPermissions);
   const isOwnWorkspaceContext = useWorkspaceStore(
@@ -392,7 +393,7 @@ export function DashboardShell({
     }
 
     if (
-      subscriptionPlan === "free" &&
+      isFreeTier &&
       ledgerCount >= FREE_PLAN_LEDGER_LIMIT
     ) {
       openUpgradeModal();
@@ -441,7 +442,7 @@ export function DashboardShell({
                     Recoverpe
                   </Link>
                   <span className="type-eyebrow rounded-md border border-recoverpe-grey-light px-2.5 py-1">
-                    {subscriptionPlan === "premium" ? "Premium" : "Free"}
+                    {tierBadgeLabel}
                   </span>
                 </div>
 

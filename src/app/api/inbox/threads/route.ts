@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
+import { requireInboxAccess } from "@/lib/inbox-entitlement";
 import { listInboxThreads } from "@/lib/inbox";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -16,9 +17,20 @@ export async function GET(request: Request) {
     new URL(request.url).searchParams.get("business_id")?.trim() ||
     auth.workspaceBusinessId;
 
+  const supabase = createAdminSupabaseClient();
+  const denied = await requireInboxAccess(
+    supabase,
+    businessId,
+    auth.effectiveUserId
+  );
+
+  if (denied) {
+    return denied;
+  }
+
   try {
     const threads = await listInboxThreads(
-      createAdminSupabaseClient(),
+      supabase,
       auth.effectiveUserId,
       businessId
     );

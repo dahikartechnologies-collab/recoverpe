@@ -6,7 +6,7 @@ import { validateBusinessSettingsUpdate } from "@/lib/business-settings-validati
 import { parseSmtpSettings } from "@/lib/notification-settings";
 import { cancelBusinessSubscriptionIfActive } from "@/lib/subscription-lifecycle";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { Business, SubscriptionPlan } from "@/types";
+import { Business } from "@/types";
 
 const BUSINESS_SELECT_FIELDS = BUSINESS_SELECT;
 
@@ -47,7 +47,9 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
 
       const { data: ownedBusiness, error: ownershipError } = await adminSupabase
         .from("businesses")
-        .select("id, smtp_settings")
+        .select(
+          "id, smtp_settings, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons"
+        )
         .eq("id", businessId)
         .eq("user_id", auth.workspaceUserId)
         .maybeSingle();
@@ -63,22 +65,19 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         return NextResponse.json({ error: "Business not found." }, { status: 404 });
       }
 
-      const { data: ownerUser, error: ownerLookupError } = await adminSupabase
-        .from("users")
-        .select("subscription_plan")
-        .eq("id", auth.workspaceUserId)
-        .maybeSingle();
-
-      if (ownerLookupError) {
-        return logAndRespondDatabaseError(
-          "businesses PATCH owner lookup",
-          ownerLookupError
-        );
-      }
-
       const validation = validateBusinessSettingsUpdate(body, {
-        subscriptionPlan:
-          (ownerUser?.subscription_plan as SubscriptionPlan | undefined) ?? "free",
+        business: ownedBusiness
+          ? {
+              subscription_tier:
+                (ownedBusiness.subscription_tier as Business["subscription_tier"]) ??
+                "free",
+              subscription_status: ownedBusiness.subscription_status,
+              subscription_expires_at: ownedBusiness.subscription_expires_at,
+              subscription_billing_tier: ownedBusiness.subscription_billing_tier,
+              razorpay_subscription_id: ownedBusiness.razorpay_subscription_id,
+              addons: ownedBusiness.addons,
+            }
+          : null,
       });
 
       if (validation.error || !validation.data) {

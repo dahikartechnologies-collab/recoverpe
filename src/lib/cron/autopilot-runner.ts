@@ -9,20 +9,17 @@ import {
   pickPrimaryReminderLedger,
   computeTotalOutstandingBalance,
 } from "@/lib/recovery-autopilot";
+import { AutopilotBusinessContext } from "@/lib/autopilot-schedule";
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { isLedgerDynamicallyOverdue } from "@/lib/ledger-status";
 import { getTodayDateStringInIst } from "@/lib/timezone";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { SubscriptionPlan } from "@/types";
 
 const DEFAULT_BATCH_SIZE = 40;
 const DEFAULT_TIME_BUDGET_MS = 50_000;
 
-type BusinessRow = {
-  id: string;
-  business_name: string;
-  autopilot_schedule: number[];
-};
+type BusinessRow = AutopilotBusinessContext & BusinessEntitlementRow;
 
 export async function runAutopilotCadenceJob(
   supabase: SupabaseClient,
@@ -49,7 +46,6 @@ export async function runAutopilotCadenceJob(
   const results: ProcessAutopilotRunResult[] = [];
 
   const businessCache = new Map<string, BusinessRow | null>();
-  const subscriptionCache = new Map<string, SubscriptionPlan>();
 
   const groupedRuns = new Map<
     string,
@@ -77,24 +73,6 @@ export async function runAutopilotCadenceJob(
       continue;
     }
 
-    let subscriptionPlan = subscriptionCache.get(sampleLedger.user_id);
-
-    if (!subscriptionPlan) {
-      const { data: userRow, error: userError } = await supabase
-        .from("users")
-        .select("subscription_plan")
-        .eq("id", sampleLedger.user_id)
-        .maybeSingle();
-
-      if (userError) {
-        throw new Error(userError.message || "Failed to resolve subscription plan.");
-      }
-
-      subscriptionPlan =
-        (userRow?.subscription_plan as SubscriptionPlan | undefined) ?? "free";
-      subscriptionCache.set(sampleLedger.user_id, subscriptionPlan);
-    }
-
     let business: BusinessRow | null = null;
 
     if (sampleLedger.business_id) {
@@ -103,7 +81,9 @@ export async function runAutopilotCadenceJob(
       } else {
         const { data: businessRow, error: businessError } = await supabase
           .from("businesses")
-          .select("id, business_name, autopilot_schedule")
+          .select(
+            "id, business_name, autopilot_schedule, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons"
+          )
           .eq("id", sampleLedger.business_id)
           .maybeSingle();
 
@@ -116,6 +96,20 @@ export async function runAutopilotCadenceJob(
               id: businessRow.id as string,
               business_name: businessRow.business_name as string,
               autopilot_schedule: businessRow.autopilot_schedule as number[],
+              subscription_tier:
+                (businessRow.subscription_tier as BusinessEntitlementRow["subscription_tier"]) ??
+                "free",
+              subscription_status: businessRow.subscription_status as string | null,
+              subscription_expires_at: businessRow.subscription_expires_at as
+                | string
+                | null,
+              subscription_billing_tier: businessRow.subscription_billing_tier as
+                | BusinessEntitlementRow["subscription_billing_tier"]
+                | null,
+              razorpay_subscription_id: businessRow.razorpay_subscription_id as
+                | string
+                | null,
+              addons: businessRow.addons,
             }
           : null;
 
@@ -161,7 +155,6 @@ export async function runAutopilotCadenceJob(
           cadenceRun: dueRun,
           ledger,
           business,
-          subscriptionPlan,
           skipReminderDispatch: !shouldDispatch,
           totalOutstandingBalance: shouldDispatch
             ? totalOutstandingBalance

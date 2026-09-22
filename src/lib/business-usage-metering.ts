@@ -346,7 +346,7 @@ export function buildUsageDashboardPayload(
       usage: row.usage_smart_collect,
       quota: row.quota_smart_collect,
       unlimited: false,
-      overageLabel: "₹12 / transaction via Route",
+      overageLabel: null,
     },
     {
       key: "sms",
@@ -354,7 +354,7 @@ export function buildUsageDashboardPayload(
       usage: row.usage_sms,
       quota: row.quota_sms,
       unlimited: false,
-      overageLabel: "₹0.15 / SMS",
+      overageLabel: null,
     },
     {
       key: "whatsapp",
@@ -373,8 +373,7 @@ export function buildUsageDashboardPayload(
         isUnlimitedQuota(row.quota_invoices) ||
         effectiveTier === "business" ||
         effectiveTier === "premium",
-      overageLabel:
-        effectiveTier === "starter" ? "Upgrade for unlimited" : null,
+      overageLabel: null,
     },
   ];
 

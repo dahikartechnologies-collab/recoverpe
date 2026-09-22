@@ -5,7 +5,6 @@ import { incrementSmsUsageSafely } from "@/lib/business-usage-metering";
 import {
   BusinessEntitlementRow,
   hasEntitlement,
-  resolveEffectiveTier,
 } from "@/lib/entitlements";
 import { sendDebtReminderEmail } from "@/lib/notifications/email";
 import {
@@ -32,6 +31,9 @@ interface BusinessReminderRow {
   business_name: string;
   subscription_tier: BusinessSubscriptionTier;
   subscription_status?: string | null;
+  subscription_expires_at?: string | null;
+  subscription_billing_tier?: BusinessSubscriptionTier | null;
+  razorpay_subscription_id?: string | null;
   addons?: unknown;
   notification_preferences?: unknown;
   smtp_settings?: unknown;
@@ -107,7 +109,7 @@ export async function dispatchDebtReminder(
     const { data, error } = await supabase
       .from("businesses")
       .select(
-        "business_name, subscription_tier, subscription_status, addons, notification_preferences, smtp_settings"
+        "business_name, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons, notification_preferences, smtp_settings"
       )
       .eq("id", businessId)
       .maybeSingle();
@@ -122,6 +124,15 @@ export async function dispatchDebtReminder(
         subscription_tier:
           (data.subscription_tier as BusinessSubscriptionTier | null) ?? "free",
         subscription_status: data.subscription_status as string | null | undefined,
+        subscription_expires_at: data.subscription_expires_at as string | null | undefined,
+        subscription_billing_tier: data.subscription_billing_tier as
+          | BusinessSubscriptionTier
+          | null
+          | undefined,
+        razorpay_subscription_id: data.razorpay_subscription_id as
+          | string
+          | null
+          | undefined,
         addons: data.addons,
         notification_preferences: data.notification_preferences,
         smtp_settings: data.smtp_settings,
@@ -133,11 +144,13 @@ export async function dispatchDebtReminder(
     ? {
         subscription_tier: businessRow.subscription_tier,
         subscription_status: businessRow.subscription_status,
+        subscription_expires_at: businessRow.subscription_expires_at,
+        subscription_billing_tier: businessRow.subscription_billing_tier,
+        razorpay_subscription_id: businessRow.razorpay_subscription_id,
         addons: businessRow.addons,
       }
     : null;
 
-  const effectiveTier = resolveEffectiveTier(businessEntitlements);
   const daysOverdue = differenceInCalendarDays(
     new Date(),
     parseDateOnly(ledgerRow.due_date as string)
@@ -150,10 +163,7 @@ export async function dispatchDebtReminder(
     contactId,
     ledgerId,
     messagePayload: {
-      subscriptionPlan:
-        effectiveTier === "premium" || effectiveTier === "business"
-          ? "premium"
-          : "free",
+      businessEntitlement: businessEntitlements,
     },
   });
 

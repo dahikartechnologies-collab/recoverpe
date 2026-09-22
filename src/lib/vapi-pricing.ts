@@ -204,6 +204,8 @@ export function splitVapiBillAcrossTrialAndWallet(
   };
 }
 
+export const VAPI_MIN_WALLET_BUFFER_INR = 10;
+
 export function canInitiateVapiCall(input: {
   wallet_balance_inr: number;
   trial_minutes_remaining: number;
@@ -212,11 +214,15 @@ export function canInitiateVapiCall(input: {
     return true;
   }
 
-  return input.wallet_balance_inr > 0;
+  return input.wallet_balance_inr >= VAPI_MIN_WALLET_BUFFER_INR;
 }
 
 export function vapiCallBlockedMessage(): string {
   return "Your AI Voice Wallet is empty and your Premium trial minutes are used up. Recharge the wallet to continue outbound calls.";
+}
+
+export function vapiCallInsufficientBufferMessage(): string {
+  return `Your AI Voice Wallet balance is below the minimum ₹${VAPI_MIN_WALLET_BUFFER_INR} buffer required to place a call. Recharge to continue.`;
 }
 
 export function validateWalletRechargeBaseAmount(baseAmount: number): string | null {

@@ -14,7 +14,6 @@ import {
 import {
   DEFAULT_AUTOPILOT_SCHEDULE,
   formatAutopilotScheduleLabel,
-  parseAutopilotSchedule,
   resolveAutopilotSchedule,
 } from "@/lib/autopilot-schedule";
 import {
@@ -25,6 +24,7 @@ import {
 } from "@/lib/notification-settings";
 import { sendSmtpTestEmail } from "@/lib/notification-settings-client";
 import { fetchCurrentUser } from "@/lib/users";
+import { useActiveBusinessBilling } from "@/lib/use-active-business-billing";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import {
   BusinessNotificationPreferences,
@@ -34,7 +34,8 @@ import {
 export function NotificationSettingsView() {
   const router = useRouter();
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
-  const subscriptionPlan = useWorkspaceStore((state) => state.subscriptionPlan);
+  const businesses = useWorkspaceStore((state) => state.businesses);
+  const { hasPaidTierBenefits } = useActiveBusinessBilling();
   const setBusinesses = useWorkspaceStore((state) => state.setBusinesses);
 
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -76,10 +77,7 @@ export function NotificationSettingsView() {
 
       setBusinessId(selectedBusiness.id);
       setBusinessName(selectedBusiness.business_name);
-      const resolvedSchedule = resolveAutopilotSchedule(
-        user.subscription_plan,
-        selectedBusiness
-      );
+      const resolvedSchedule = resolveAutopilotSchedule(selectedBusiness);
       setAutopilotScheduleInput(resolvedSchedule.join(", "));
       setPreferences(
         parseNotificationPreferences(selectedBusiness.notification_preferences)
@@ -122,9 +120,7 @@ export function NotificationSettingsView() {
       await updateBusinessSettings(businessId, {
         notification_preferences: preferences,
         smtp_settings: smtpSettings,
-        ...(subscriptionPlan === "premium"
-          ? { autopilot_schedule: scheduleValues }
-          : {}),
+        ...(hasPaidTierBenefits ? { autopilot_schedule: scheduleValues } : {}),
       });
       setSuccessMessage("Notification settings saved.");
       await loadSettings();
@@ -245,18 +241,14 @@ export function NotificationSettingsView() {
           <div className="rounded-md border border-recoverpe-grey-light px-4 py-3">
             <p className="text-sm font-medium text-recoverpe-black">
               {formatAutopilotScheduleLabel(
-                resolveAutopilotSchedule(subscriptionPlan, {
-                  autopilot_schedule: parseAutopilotSchedule(
-                    autopilotScheduleInput
-                      .split(",")
-                      .map((value) => Number(value.trim()))
-                  ),
-                })
+                resolveAutopilotSchedule(
+                  businesses.find((business) => business.id === businessId) ?? null
+                )
               )}
             </p>
             <p className="mt-1 text-xs text-recoverpe-grey-medium">
-              Free plan: Day 0, Day 3, Day 5, Day 7 (locked). Premium can customize
-              offsets.
+              Free plan: Day 0, Day 3, Day 5, Day 7 (locked). Paid Starter,
+              Business, or Premium can customize offsets.
             </p>
           </div>
 
@@ -268,11 +260,11 @@ export function NotificationSettingsView() {
               value={autopilotScheduleInput}
               onChange={(event) => setAutopilotScheduleInput(event.target.value)}
               placeholder="0, 3, 5, 7"
-              disabled={subscriptionPlan !== "premium"}
+              disabled={!hasPaidTierBenefits}
             />
           </div>
 
-          {subscriptionPlan !== "premium" ? (
+          {!hasPaidTierBenefits ? (
             <Button
               type="button"
               variant="secondary"
@@ -280,7 +272,7 @@ export function NotificationSettingsView() {
               onClick={() => router.push("/dashboard/billing")}
             >
               <Lock className="h-4 w-4" aria-hidden />
-              Upgrade to Premium to customize schedule
+              Upgrade to Starter or above to customize schedule
             </Button>
           ) : null}
         </CardContent>

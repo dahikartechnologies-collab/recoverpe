@@ -64,6 +64,7 @@ export const PURCHASE_PRODUCTS = {
     billingMode: "subscription" as const,
     planInterval: "annual" as const,
   },
+  /** @deprecated Use custom GST wallet recharge (`wallet_recharge`) instead. */
   vapi_recharge_500: {
     label: "AI Voice Wallet — ₹500",
     description: "Top up Sneha AI voice minutes (~19 min at ₹26/min incl. margin).",
@@ -73,6 +74,7 @@ export const PURCHASE_PRODUCTS = {
     tier: "wallet" as const,
     billingMode: "order" as const,
   },
+  /** @deprecated Use custom GST wallet recharge (`wallet_recharge`) instead. */
   vapi_recharge_1000: {
     label: "AI Voice Wallet — ₹1,000",
     description: "Top up Sneha AI voice minutes (~38 min at ₹26/min incl. margin).",
@@ -82,6 +84,7 @@ export const PURCHASE_PRODUCTS = {
     tier: "wallet" as const,
     billingMode: "order" as const,
   },
+  /** @deprecated Use custom GST wallet recharge (`wallet_recharge`) instead. */
   vapi_recharge_5000: {
     label: "AI Voice Wallet — ₹5,000",
     description: "Top up Sneha AI voice minutes (~192 min at ₹26/min incl. margin).",
@@ -91,6 +94,7 @@ export const PURCHASE_PRODUCTS = {
     tier: "wallet" as const,
     billingMode: "order" as const,
   },
+  /** @deprecated Mislabeled legacy SKU — use custom GST wallet recharge instead. */
   vapi_recharge_100: {
     label: "AI Voice Wallet — ₹1,000",
     description: "Legacy top-up SKU mapped to ₹1,000 wallet credit.",
@@ -192,12 +196,14 @@ export function isBusinessAddonPurchaseType(
   );
 }
 
+/** @deprecated Legacy fixed VAPI wallet SKUs — use custom GST wallet recharge instead. */
 export type VapiWalletRechargePurchaseType =
   | "vapi_recharge_500"
   | "vapi_recharge_1000"
   | "vapi_recharge_5000"
   | "vapi_recharge_100";
 
+/** @deprecated Legacy fixed VAPI wallet SKUs — use custom GST wallet recharge instead. */
 export function isVapiWalletRechargePurchaseType(
   value: PurchaseType
 ): value is VapiWalletRechargePurchaseType {

@@ -1,7 +1,6 @@
 import {
   BusinessNotificationPreferences,
   BusinessSmtpSettings,
-  SubscriptionPlan,
 } from "@/types";
 import {
   isValidContactEmail,
@@ -11,6 +10,8 @@ import {
 import {
   validatePremiumAutopilotSchedule,
 } from "@/lib/autopilot-schedule";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
+import { hasPaidTierBenefits } from "@/lib/tier-fulfillment";
 
 export interface UpdateBusinessSettingsPayload {
   msme_reg_no?: string | null;
@@ -58,7 +59,7 @@ function isValidGstin(value: string): boolean {
 
 export function validateBusinessSettingsUpdate(
   body: UpdateBusinessSettingsPayload,
-  options?: { subscriptionPlan?: SubscriptionPlan }
+  options?: { business?: BusinessEntitlementRow | null }
 ): { data?: ValidatedBusinessSettingsUpdate; error?: string } {
   if (
     body.msme_reg_no === undefined &&
@@ -162,12 +163,10 @@ export function validateBusinessSettingsUpdate(
   }
 
   if (body.autopilot_schedule !== undefined) {
-    const subscriptionPlan = options?.subscriptionPlan ?? "free";
-
-    if (subscriptionPlan !== "premium") {
+    if (!hasPaidTierBenefits(options?.business)) {
       return {
         error:
-          "Upgrade to Premium to customize your Recovery Autopilot schedule.",
+          "Upgrade to Starter or above to customize your Recovery Autopilot schedule.",
       };
     }
 

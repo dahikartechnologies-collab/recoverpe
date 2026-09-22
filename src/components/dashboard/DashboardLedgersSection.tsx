@@ -47,6 +47,7 @@ import {
   canViewEvidenceDocket,
 } from "@/lib/workspace-permissions";
 import { isPremiumBusiness } from "@/lib/workspace-rbac";
+import { useActiveBusinessBilling } from "@/lib/use-active-business-billing";
 import { openEvidenceDocketPdf, loadSamadhaanFulfillment } from "@/lib/ledger-docket-client";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { LedgerWithContact, MicroTransactionFulfillment, PurchaseType, WorkspaceMode } from "@/types";
@@ -73,7 +74,7 @@ export function DashboardLedgersSection({
   const bumpLedgerRefresh = useWorkspaceStore((state) => state.bumpLedgerRefresh);
   const bumpWalletRefresh = useWorkspaceStore((state) => state.bumpWalletRefresh);
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
-  const subscriptionPlan = useWorkspaceStore((state) => state.subscriptionPlan);
+  const { isFreeTier } = useActiveBusinessBilling();
   const openUpgradeModal = useWorkspaceStore((state) => state.openUpgradeModal);
   const workspaceRole = useWorkspaceStore((state) => state.workspaceRole);
   const customPermissions = useWorkspaceStore((state) => state.customPermissions);
@@ -97,8 +98,8 @@ export function DashboardLedgersSection({
       return isPremiumBusiness(activeBusiness);
     }
 
-    return subscriptionPlan === "premium";
-  }, [workspaceMode, activeBusiness, subscriptionPlan]);
+    return false;
+  }, [workspaceMode, activeBusiness]);
   const { ledgers, metrics, pagination, error, isLoading, reload, goToPreviousPage, goToNextPage } = useDashboardData(
     workspaceMode,
     businessId
@@ -164,7 +165,7 @@ export function DashboardLedgersSection({
     if (
       recoveryUpsellCheckedRef.current ||
       isLoading ||
-      subscriptionPlan !== "free" ||
+      !isFreeTier ||
       metrics.recoveredViaRecoverpe < RECOVERY_UPSELL_THRESHOLD_INR
     ) {
       return;
@@ -176,7 +177,7 @@ export function DashboardLedgersSection({
       try {
         const user = await fetchCurrentUser();
 
-        if (user.recovery_upsell_shown || user.subscription_plan === "premium") {
+        if (user.recovery_upsell_shown) {
           return;
         }
 
@@ -194,8 +195,8 @@ export function DashboardLedgersSection({
   }, [
     bumpUserRefresh,
     isLoading,
+    isFreeTier,
     metrics.recoveredViaRecoverpe,
-    subscriptionPlan,
   ]);
 
   function openMicroTransactionConfirm(
@@ -474,15 +475,14 @@ export function DashboardLedgersSection({
   }
 
   function handleSendFromPhone(ledger: LedgerWithContact) {
-    const businessName =
+    const ledgerBusiness =
       ledger.business_id != null
-        ? businesses.find((business) => business.id === ledger.business_id)
-            ?.business_name ?? null
+        ? businesses.find((business) => business.id === ledger.business_id) ?? null
         : null;
     const message = buildWhatsAppReminderBody({
       ledger,
-      businessName,
-      subscriptionPlan,
+      businessName: ledgerBusiness?.business_name ?? null,
+      business: ledgerBusiness,
       payPageUrl: `${window.location.origin}/pay/${ledger.id}`,
     });
     const waMeUrl = buildWhatsAppMeLink(ledger.contact.phone_number, message);

@@ -18,7 +18,7 @@ import {
   parseDateOnly,
   RECOVERPE_TIMEZONE,
 } from "@/lib/timezone";
-import { SubscriptionPlan } from "@/types";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 const AUTOPILOT_RUN_HOUR_IST = 9;
@@ -359,18 +359,16 @@ export async function syncAutopilotEnrollments(
       continue;
     }
 
-    const { data: userRow } = await supabase
-      .from("users")
-      .select("subscription_plan")
-      .eq("id", ledger.user_id)
-      .maybeSingle();
-
-    let business: AutopilotBusinessContext | null = null;
+    let business:
+      | (AutopilotBusinessContext & BusinessEntitlementRow)
+      | null = null;
 
     if (ledger.business_id) {
       const { data: businessRow } = await supabase
         .from("businesses")
-        .select("id, business_name, autopilot_schedule")
+        .select(
+          "id, business_name, autopilot_schedule, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons"
+        )
         .eq("id", ledger.business_id)
         .maybeSingle();
 
@@ -379,14 +377,25 @@ export async function syncAutopilotEnrollments(
           id: businessRow.id as string,
           business_name: businessRow.business_name as string,
           autopilot_schedule: businessRow.autopilot_schedule as number[],
+          subscription_tier:
+            (businessRow.subscription_tier as BusinessEntitlementRow["subscription_tier"]) ??
+            "free",
+          subscription_status: businessRow.subscription_status as string | null,
+          subscription_expires_at: businessRow.subscription_expires_at as
+            | string
+            | null,
+          subscription_billing_tier: businessRow.subscription_billing_tier as
+            | BusinessEntitlementRow["subscription_billing_tier"]
+            | null,
+          razorpay_subscription_id: businessRow.razorpay_subscription_id as
+            | string
+            | null,
+          addons: businessRow.addons,
         };
       }
     }
 
-    const schedule = resolveAutopilotSchedule(
-      (userRow?.subscription_plan as SubscriptionPlan | undefined) ?? "free",
-      business
-    );
+    const schedule = resolveAutopilotSchedule(business);
 
     await enrollLedgerInAutopilot(supabase, ledger, schedule);
     enrolled += 1;
@@ -471,8 +480,7 @@ export async function processAutopilotRun(
   input: {
     cadenceRun: CadenceRun;
     ledger: AutopilotLedgerContext;
-    business: AutopilotBusinessContext | null;
-    subscriptionPlan: SubscriptionPlan;
+    business: (AutopilotBusinessContext & BusinessEntitlementRow) | null;
     skipReminderDispatch?: boolean;
     totalOutstandingBalance?: number;
   }
@@ -481,11 +489,10 @@ export async function processAutopilotRun(
     cadenceRun,
     ledger,
     business,
-    subscriptionPlan,
     skipReminderDispatch = false,
     totalOutstandingBalance,
   } = input;
-  const schedule = resolveAutopilotSchedule(subscriptionPlan, business);
+  const schedule = resolveAutopilotSchedule(business);
 
   if (
     ledger.status === "paid" ||
@@ -636,7 +643,7 @@ export async function processAutopilotRun(
       contactId: ledger.contact_id,
       ledgerId: ledger.id,
       messagePayload: {
-        subscriptionPlan,
+        businessEntitlement: business,
         autopilotStep: cadenceRun.step_index,
         autopilotTone: tone,
         totalOutstandingBalance,

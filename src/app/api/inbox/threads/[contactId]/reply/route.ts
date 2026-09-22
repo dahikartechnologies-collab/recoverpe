@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { requireInboxAccess } from "@/lib/inbox-entitlement";
 import { sendOwnerInboxReply } from "@/lib/inbox";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -26,7 +27,18 @@ export const POST = withWorkspaceMutation(
       );
     }
 
-    const message = await sendOwnerInboxReply(createAdminSupabaseClient(), {
+    const supabase = createAdminSupabaseClient();
+    const denied = await requireInboxAccess(
+      supabase,
+      auth.workspaceBusinessId,
+      auth.effectiveUserId
+    );
+
+    if (denied) {
+      return denied;
+    }
+
+    const message = await sendOwnerInboxReply(supabase, {
       workspaceUserId: auth.effectiveUserId,
       businessId: auth.workspaceBusinessId,
       contactId,

@@ -36,7 +36,7 @@ const FEATURES = [
   {
     title: "Automated WhatsApp Cadence",
     description:
-      "TRAI-compliant reminder sequences on Day 0, 3, and 7 — without manual follow-ups.",
+      "TRAI-compliant reminder sequences on Day 0, 3, 5, and 7 — without manual follow-ups.",
     icon: MessageSquare,
     className: "md:col-span-1",
   },
@@ -65,10 +65,42 @@ const PRICING_PLANS = [
     features: [
       "Basic ledger tracking",
       "Manual WhatsApp reminders",
-      "Day 0 / 3 / 7 automations",
+      "Day 0 / 3 / 5 / 7 automations",
       "Recoverpe branding on invoices",
     ],
     cta: "Start for Free",
+    href: "/register",
+    highlighted: false,
+  },
+  {
+    name: "Starter",
+    price: "₹499",
+    period: "/month",
+    altPrice: "or ₹4,999/year",
+    description: "Core Khata, WhatsApp automation, inbound AI bot, and live inbox.",
+    features: [
+      "Automated WhatsApp reminders",
+      "Inbound AI payment assistant",
+      "Live WhatsApp inbox",
+      "No invoice watermarks",
+    ],
+    cta: "Start Starter",
+    href: "/register",
+    highlighted: false,
+  },
+  {
+    name: "Business",
+    price: "₹999",
+    period: "/month",
+    altPrice: "or ₹9,999/year",
+    description: "Zero-MDR Smart Checkout plus Settlement Desk and Promise Register.",
+    features: [
+      "Everything in Starter",
+      "Zero-MDR Smart Checkout",
+      "Settlement Desk & Promise Register",
+      "SMS payment receipts",
+    ],
+    cta: "Start Business",
     href: "/register",
     highlighted: false,
   },
@@ -77,12 +109,12 @@ const PRICING_PLANS = [
     price: "₹1,999",
     period: "/month",
     altPrice: "or ₹17,999/year",
-    description: "Full automation for high-volume recovery teams.",
+    description: "Command Center for high-volume recovery teams.",
     features: [
-      "Full WhatsApp automation",
+      "Everything in Business",
       "AI voice calling (Sneha)",
       AI_VOICE_BILLING_TRANSPARENCY_COPY,
-      "Zero watermarks on invoices",
+      "Morning Briefing & Debtor Health Score",
       "Priority support",
     ],
     cta: "Upgrade to Premium",
@@ -251,7 +283,7 @@ export function LandingPage() {
               whileInView="visible"
               viewport={{ once: true, margin: "-60px" }}
               variants={staggerContainer}
-              className="mt-10 grid gap-4 lg:grid-cols-2"
+              className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
             >
               {PRICING_PLANS.map((plan) => (
                 <motion.div
@@ -335,6 +367,17 @@ export function LandingPage() {
                 </motion.div>
               ))}
             </motion.div>
+
+            <p className="mt-6 text-center text-sm text-recoverpe-grey-medium">
+              Already on RecoverPe?{" "}
+              <Link
+                href="/dashboard/billing"
+                className="font-medium text-recoverpe-black underline-offset-2 hover:underline"
+              >
+                Compare plans in your dashboard
+              </Link>
+              .
+            </p>
 
             <motion.div
               initial="hidden"

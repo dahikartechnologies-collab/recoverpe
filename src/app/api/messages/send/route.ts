@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
+import {
+  entitlementForbiddenResponse,
+  fetchBusinessEntitlementRow,
+  requireEntitlementAccess,
+} from "@/lib/entitlement-gate";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
 import {
@@ -7,7 +12,7 @@ import {
   resolveWorkspaceAccess,
 } from "@/lib/workspace-rbac";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { SendWhatsAppReminderPayload, SubscriptionPlan } from "@/types";
+import { SendWhatsAppReminderPayload } from "@/types";
 
 export async function POST(request: Request) {
   try {
@@ -75,12 +80,29 @@ export async function POST(request: Request) {
 
     const { data: userRow, error: userError } = await supabase
       .from("users")
-      .select("subscription_plan")
+      .select("id")
       .eq("id", contextResult.effectiveUserId)
       .single();
 
     if (userError || !userRow) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    if (ledger.business_id) {
+      const businessEntitlement = await fetchBusinessEntitlementRow(
+        supabase,
+        ledger.business_id,
+        contextResult.effectiveUserId
+      );
+      const denied = requireEntitlementAccess(
+        businessEntitlement,
+        "whatsapp_reminders",
+        "Upgrade to Starter or above to send automated WhatsApp reminders."
+      );
+
+      if (denied) {
+        return denied;
+      }
     }
 
     const dispatchResult = await dispatchOmnichannelMessage({
@@ -89,12 +111,17 @@ export async function POST(request: Request) {
       businessId: ledger.business_id,
       contactId: ledger.contact_id,
       ledgerId: ledger.id,
-      messagePayload: {
-        subscriptionPlan: userRow.subscription_plan as SubscriptionPlan,
-      },
+      messagePayload: {},
     });
 
     if (!dispatchResult.success) {
+      if (
+        dispatchResult.error?.includes("Upgrade to Starter") ||
+        dispatchResult.message.includes("Upgrade to Starter")
+      ) {
+        return entitlementForbiddenResponse(dispatchResult.message);
+      }
+
       return NextResponse.json(
         { error: dispatchResult.message },
         { status: 422 }

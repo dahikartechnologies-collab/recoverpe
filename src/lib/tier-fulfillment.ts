@@ -141,3 +141,10 @@ export function shouldShowRecoverpeBranding(
 ): boolean {
   return shouldApplyFreeInvoiceLimits(business);
 }
+
+/** Paid Starter, Business, or Premium unlocks custom autopilot and removes WhatsApp watermarks. */
+export function hasPaidTierBenefits(
+  business: BusinessEntitlementRow | null | undefined
+): boolean {
+  return !shouldApplyFreeInvoiceLimits(business);
+}

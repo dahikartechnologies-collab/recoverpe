@@ -3,7 +3,8 @@ import { formatCurrency } from "@/lib/gst";
 import { getPayPageUrl, FREE_TIER_WHATSAPP_WATERMARK } from "@/lib/app-url";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { parseDateOnly } from "@/lib/timezone";
-import { SubscriptionPlan } from "@/types";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
+import { shouldShowRecoverpeBranding } from "@/lib/tier-fulfillment";
 import { LedgerWithContact } from "@/types";
 
 export const AUTOPILOT_REMINDER_TEMPLATE_NAME = "recoverpe_autopilot_reminder" as const;
@@ -20,7 +21,7 @@ export interface WhatsAppReminderContentInput {
     | "contact"
   >;
   businessName: string | null;
-  subscriptionPlan?: SubscriptionPlan;
+  business?: BusinessEntitlementRow | null;
   payPageUrl?: string;
   invoiceViewUrl?: string | null;
   autopilotTone?: "polite" | "firm" | "critical";
@@ -54,9 +55,9 @@ export function buildAutopilotReminderTemplateParameters(input: {
 
 export function appendFreeTierWatermark(
   body: string,
-  subscriptionPlan: SubscriptionPlan = "free"
+  business: BusinessEntitlementRow | null | undefined = null
 ): string {
-  if (subscriptionPlan === "premium") {
+  if (!shouldShowRecoverpeBranding(business)) {
     return body;
   }
 
@@ -66,7 +67,7 @@ export function appendFreeTierWatermark(
 export function buildWhatsAppReminderBody({
   ledger,
   businessName,
-  subscriptionPlan = "free",
+  business = null,
   payPageUrl = getPayPageUrl(ledger.id),
   invoiceViewUrl = null,
   autopilotTone,
@@ -105,7 +106,7 @@ export function buildWhatsAppReminderBody({
     body += "\n\nThank you.";
   }
 
-  return appendFreeTierWatermark(body, subscriptionPlan);
+  return appendFreeTierWatermark(body, business);
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {

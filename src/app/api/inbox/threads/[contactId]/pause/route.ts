@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { requireInboxAccess } from "@/lib/inbox-entitlement";
 import { setContactBotPaused } from "@/lib/inbox";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -18,8 +19,19 @@ export const POST = withWorkspaceMutation(
       | { paused?: boolean }
       | null;
 
+    const supabase = createAdminSupabaseClient();
+    const denied = await requireInboxAccess(
+      supabase,
+      auth.workspaceBusinessId,
+      auth.effectiveUserId
+    );
+
+    if (denied) {
+      return denied;
+    }
+
     await setContactBotPaused(
-      createAdminSupabaseClient(),
+      supabase,
       auth.effectiveUserId,
       contactId,
       body?.paused !== false

@@ -29,13 +29,19 @@ import {
   recordCommunicationSafely,
 } from "@/lib/communication-logs";
 import {
+  BusinessEntitlementRow,
+  hasEntitlement,
+} from "@/lib/entitlements";
+import {
+  fetchBusinessEntitlementRow,
+} from "@/lib/entitlement-gate";
+import {
   CommunicationChannel,
   CommunicationType,
-  SubscriptionPlan,
 } from "@/types";
 
 export interface OmnichannelMessagePayload {
-  subscriptionPlan?: SubscriptionPlan;
+  businessEntitlement?: BusinessEntitlementRow | null;
   invoiceDocumentLink?: string | null;
   legalNoticeDocumentLink?: string | null;
   autopilotStep?: number;
@@ -106,7 +112,7 @@ async function tryWhatsAppDispatch(input: {
     amountReceived: number;
     netOutstanding: number;
   };
-  subscriptionPlan: SubscriptionPlan;
+  businessEntitlement: BusinessEntitlementRow | null;
   businessName: string | null;
   businessId: string | null;
   invoiceDocumentLink: string | null;
@@ -152,9 +158,13 @@ async function tryWhatsAppDispatch(input: {
     : draftWhatsAppReminderMessage({
         ledger,
         business: input.businessName
-          ? { business_name: input.businessName }
+          ? {
+              business_name: input.businessName,
+              ...(input.businessEntitlement ?? {
+                subscription_tier: "free",
+              }),
+            }
           : null,
-        subscriptionPlan: input.subscriptionPlan,
         invoiceDocumentLink: input.invoiceDocumentLink,
         autopilotTone: input.autopilotTone,
         totalOutstandingBalance: input.totalOutstandingBalance,
@@ -330,9 +340,27 @@ export async function dispatchOmnichannelMessage(
   let notificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
   let smtpSettings = parseSmtpSettings(null);
   let businessName: string | null = null;
+  let businessEntitlement: BusinessEntitlementRow | null =
+    messagePayload.businessEntitlement ?? null;
 
   if (businessId) {
-    const { data: business, error: businessError } = await supabase
+    const business = await fetchBusinessEntitlementRow(
+      supabase,
+      businessId,
+      userId
+    );
+
+    if (!business) {
+      return {
+        success: false,
+        message: "Business profile not found.",
+        error: "Business profile not found.",
+      };
+    }
+
+    businessEntitlement = business;
+
+    const { data: businessSettings, error: businessError } = await supabase
       .from("businesses")
       .select("business_name, notification_preferences, smtp_settings")
       .eq("id", businessId)
@@ -347,16 +375,29 @@ export async function dispatchOmnichannelMessage(
       };
     }
 
-    if (business) {
-      businessName = business.business_name as string;
+    if (businessSettings) {
+      businessName = businessSettings.business_name as string;
       notificationPreferences = parseNotificationPreferences(
-        business.notification_preferences
+        businessSettings.notification_preferences
       );
-      smtpSettings = parseSmtpSettings(business.smtp_settings);
+      smtpSettings = parseSmtpSettings(businessSettings.smtp_settings);
     }
   }
 
-  const subscriptionPlan = messagePayload.subscriptionPlan ?? "free";
+  if (
+    !isLegalNotice &&
+    !isPaymentReceipt &&
+    businessId &&
+    !hasEntitlement(businessEntitlement, "whatsapp_reminders")
+  ) {
+    return {
+      success: false,
+      message:
+        "Upgrade to Starter or above to send automated WhatsApp reminders.",
+      error: "Upgrade to Starter or above to send automated WhatsApp reminders.",
+    };
+  }
+
   let invoiceDocumentLink = messagePayload.invoiceDocumentLink ?? null;
   let legalNoticeDocumentLink = messagePayload.legalNoticeDocumentLink ?? null;
 
@@ -396,7 +437,7 @@ export async function dispatchOmnichannelMessage(
         isLegalNotice,
         isPaymentReceipt,
         paymentReceipt: messagePayload.paymentReceipt,
-        subscriptionPlan,
+        businessEntitlement,
         businessName,
         businessId,
         invoiceDocumentLink,

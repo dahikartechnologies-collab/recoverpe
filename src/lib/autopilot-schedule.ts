@@ -1,4 +1,6 @@
-import { Business, SubscriptionPlan } from "@/types";
+import { Business } from "@/types";
+import { hasPaidTierBenefits } from "@/lib/tier-fulfillment";
+import { BusinessEntitlementRow } from "@/lib/entitlements";
 
 export const FREE_AUTOPILOT_SCHEDULE = [0, 3, 5, 7] as const;
 
@@ -58,18 +60,19 @@ export function parseAutopilotSchedule(value: unknown): number[] {
 }
 
 export function resolveAutopilotSchedule(
-  subscriptionPlan: SubscriptionPlan,
-  business: Pick<Business, "autopilot_schedule"> | null
+  business:
+    | (Pick<Business, "autopilot_schedule"> & BusinessEntitlementRow)
+    | null
 ): number[] {
-  if (subscriptionPlan === "free") {
-    return [...FREE_AUTOPILOT_SCHEDULE];
+  if (hasPaidTierBenefits(business)) {
+    if (!business) {
+      return [...DEFAULT_AUTOPILOT_SCHEDULE];
+    }
+
+    return parseAutopilotSchedule(business.autopilot_schedule);
   }
 
-  if (!business) {
-    return [...DEFAULT_AUTOPILOT_SCHEDULE];
-  }
-
-  return parseAutopilotSchedule(business.autopilot_schedule);
+  return [...FREE_AUTOPILOT_SCHEDULE];
 }
 
 export function validatePremiumAutopilotSchedule(

@@ -11,6 +11,8 @@ import {
   canInitiateVapiCall,
   getPremiumTrialMinutesRemaining,
   vapiCallBlockedMessage,
+  vapiCallInsufficientBufferMessage,
+  VAPI_MIN_WALLET_BUFFER_INR,
 } from "@/lib/vapi-pricing";
 import {
   draftVapiCall,
@@ -141,9 +143,16 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
         trial_minutes_remaining: trialMinutesRemaining,
       })
     ) {
+      const insufficientBuffer =
+        trialMinutesRemaining <= 0 &&
+        walletBalanceInr > 0 &&
+        walletBalanceInr < VAPI_MIN_WALLET_BUFFER_INR;
+
       return NextResponse.json(
         {
-          error: vapiCallBlockedMessage(),
+          error: insufficientBuffer
+            ? vapiCallInsufficientBufferMessage()
+            : vapiCallBlockedMessage(),
           recharge_required: true,
         },
         { status: 402 }

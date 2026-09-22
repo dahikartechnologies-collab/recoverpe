@@ -208,9 +208,9 @@ export function UsageSpendingView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Unit economics"
-        title="Usage & Spending"
-        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}.`}
+        eyebrow="Workspace activity"
+        title="Usage Analytics"
+        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. Progress bars show activity — not hard billing caps.`}
       />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
@@ -381,10 +381,8 @@ export function UsageSpendingView() {
                       </p>
                       <p className="mt-2 text-xs text-recoverpe-muted">
                         {metric.comingSoon
-                          ? `Coming soon · ${metric.overageLabel}`
-                          : metric.overageLabel
-                            ? `Overage: ${metric.overageLabel}`
-                            : "Included in your plan"}
+                          ? "Coming soon"
+                          : "Activity tracked for analytics"}
                       </p>
                     </div>
                     <CircularProgress
@@ -396,13 +394,6 @@ export function UsageSpendingView() {
               );
             })}
           </div>
-
-          {payload.pass_through_overages ? (
-            <p className="text-xs text-recoverpe-muted">
-              Pass-through overages are enabled. Usage beyond included quotas will
-              appear on your next RecoverPe invoice.
-            </p>
-          ) : null}
         </>
       ) : null}
 

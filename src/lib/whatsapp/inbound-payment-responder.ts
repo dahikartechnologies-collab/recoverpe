@@ -2,6 +2,8 @@ import { tryConsumeMerchantOtpFromInbound } from "@/lib/agent/inbound-otp";
 import { getDebtorPortalUrl, getPayPageUrl } from "@/lib/app-url";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { formatIndianPhoneNumber } from "@/lib/invoices";
+import { hasEntitlement } from "@/lib/entitlements";
+import { fetchBusinessEntitlementRow } from "@/lib/entitlement-gate";
 import { tryExtractAndRecordPaymentPromises } from "@/lib/promise-register";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
@@ -516,7 +518,33 @@ export async function processInboundWhatsAppMessage(
   }
 
   const scopes = await findBusinessDebtScopes(supabase, rawFrom);
-  const ledgerSummaryData = await buildLedgerSummaryData(supabase, scopes);
+  const entitledScopes = [];
+
+  for (const scope of scopes) {
+    if (!scope.businessId) {
+      continue;
+    }
+
+    const business = await fetchBusinessEntitlementRow(
+      supabase,
+      scope.businessId,
+      scope.contact.user_id
+    );
+
+    if (hasEntitlement(business, "inbound_ai_bot")) {
+      entitledScopes.push(scope);
+    }
+  }
+
+  if (entitledScopes.length === 0) {
+    await sendWhatsAppTextMessage(
+      rawFrom,
+      `${buildUnrecognizedNumberReply(appUrl)}\n\nAutomated WhatsApp assistant replies require a Starter plan or above.`
+    );
+    return;
+  }
+
+  const ledgerSummaryData = await buildLedgerSummaryData(supabase, entitledScopes);
   const aiResponse = await generateInboundAiReply(
     incomingText,
     ledgerSummaryData,
@@ -526,7 +554,7 @@ export async function processInboundWhatsAppMessage(
   await sendWhatsAppTextMessage(rawFrom, aiResponse);
 
   await Promise.all(
-    scopes.map((scope) =>
+    entitledScopes.map((scope) =>
       recordCommunicationSafely(supabase, {
         userId: scope.contact.user_id,
         businessId: scope.businessId,
@@ -543,7 +571,7 @@ export async function processInboundWhatsAppMessage(
   try {
     const recorded = await tryExtractAndRecordPaymentPromises(
       supabase,
-      scopes,
+      entitledScopes,
       incomingText,
       ledgerSummaryData,
       communicationLogIds
