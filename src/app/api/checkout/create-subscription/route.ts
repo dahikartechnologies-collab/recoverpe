@@ -10,6 +10,7 @@ import {
   resolveSubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import { createRazorpaySubscriptionRecord } from "@/lib/razorpay";
+import { extractRazorpaySdkError } from "@/lib/payments/razorpay-client";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { CreateSubscriptionCheckoutPayload, Tier } from "@/types";
 
@@ -101,6 +102,7 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
         : "Razorpay subscription created successfully.",
     });
   } catch (error) {
+    console.error("[RAZORPAY SDK ERROR]:", JSON.stringify(error, null, 2));
     console.error(
       "[checkout/create-subscription] Failed to create subscription checkout:",
       error instanceof Error ? error.message : error
@@ -108,12 +110,9 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create subscription checkout.",
+        error: extractRazorpaySdkError(error),
       },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }, { ownerOnly: true });

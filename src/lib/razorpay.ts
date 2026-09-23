@@ -27,6 +27,7 @@ import { applyTierFulfillmentForUser } from "@/lib/tier-fulfillment";
 import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
 import { fulfillMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
+import { createRazorpaySubscription } from "@/lib/payments/razorpay-client";
 import { MicroTransactionFulfillment } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -415,32 +416,16 @@ export async function createRazorpaySubscriptionRecord(
     };
   }
 
-  const response = await fetch("https://api.razorpay.com/v1/subscriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${buildBasicAuth(credentials.keyId, credentials.keySecret)}`,
-      "Content-Type": "application/json",
+  const subscription = await createRazorpaySubscription({
+    planId,
+    totalCount: getSubscriptionTotalCount(purchaseType),
+    notes: {
+      user_id: userId,
+      purchase_type: purchaseType,
+      discount_applied: discountApplied ? "true" : "false",
+      autopay: "true",
     },
-    body: JSON.stringify({
-      plan_id: planId,
-      total_count: getSubscriptionTotalCount(purchaseType),
-      customer_notify: 1,
-      // e-Mandate / UPI AutoPay is configured on the Razorpay plan; checkout completes mandate auth.
-      notes: {
-        user_id: userId,
-        purchase_type: purchaseType,
-        discount_applied: discountApplied,
-        autopay: "true",
-      },
-    }),
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Razorpay subscription creation failed: ${errorBody}`);
-  }
-
-  const subscription = (await response.json()) as CreatedRazorpaySubscription;
 
   const { error } = await supabase.from("razorpay_subscriptions").insert({
     user_id: userId,

@@ -324,7 +324,7 @@ export function getSubscriptionPlanId(
 export function getSubscriptionTotalCount(
   purchaseType: SubscriptionPurchaseType
 ): number {
-  return purchaseType.endsWith("_annual") ? 1 : 120;
+  return purchaseType.endsWith("_annual") ? 10 : 120;
 }
 
 export function resolveSubscriptionPurchaseType(

@@ -127,3 +127,80 @@ export async function createVirtualAccount(
     ...parsed,
   };
 }
+
+export function extractRazorpaySdkError(error: unknown): string {
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const nested = record.error;
+
+    if (nested && typeof nested === "object") {
+      const nestedError = nested as Record<string, unknown>;
+
+      if (
+        typeof nestedError.description === "string" &&
+        nestedError.description.trim()
+      ) {
+        return nestedError.description.trim();
+      }
+
+      if (typeof nestedError.reason === "string" && nestedError.reason.trim()) {
+        return nestedError.reason.trim();
+      }
+
+      if (typeof nestedError.code === "string" && nestedError.code.trim()) {
+        return nestedError.code.trim();
+      }
+    }
+
+    if (typeof record.description === "string" && record.description.trim()) {
+      return record.description.trim();
+    }
+
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message.trim();
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return "Razorpay subscription creation failed.";
+}
+
+export interface CreateRazorpaySubscriptionInput {
+  planId: string;
+  totalCount: number;
+  notes: Record<string, string | number>;
+}
+
+export async function createRazorpaySubscription(
+  input: CreateRazorpaySubscriptionInput
+): Promise<CreatedRazorpaySubscriptionEntity> {
+  const client = getRazorpayClient();
+
+  if (!client) {
+    throw new Error("Razorpay credentials are not configured.");
+  }
+
+  try {
+    const subscription = (await client.subscriptions.create({
+      plan_id: input.planId,
+      total_count: input.totalCount,
+      customer_notify: 1,
+      notes: input.notes,
+    })) as CreatedRazorpaySubscriptionEntity;
+
+    return subscription;
+  } catch (error) {
+    console.error("[RAZORPAY SDK ERROR]:", JSON.stringify(error, null, 2));
+    throw new Error(extractRazorpaySdkError(error));
+  }
+}
+
+interface CreatedRazorpaySubscriptionEntity {
+  id: string;
+  plan_id: string;
+  status: string;
+  current_end?: number;
+}
