@@ -23,7 +23,7 @@ interface RazorpayVirtualAccountEntity {
 
 let razorpayClient: Razorpay | null = null;
 
-function getRazorpayClient(): Razorpay | null {
+export function getRazorpayClient(): Razorpay | null {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 

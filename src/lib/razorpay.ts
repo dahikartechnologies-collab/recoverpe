@@ -10,7 +10,6 @@ import {
 } from "@/lib/business-addons";
 import {
   getPurchaseProduct,
-  getSubscriptionPlanId,
   getSubscriptionTierFromPurchase,
   getSubscriptionTotalCount,
   isBankVerificationPurchaseType,
@@ -28,6 +27,7 @@ import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
 import { fulfillMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
 import { createRazorpaySubscription } from "@/lib/payments/razorpay-client";
+import { requireSubscriptionPlanId } from "@/lib/payments/razorpay-plan-resolver";
 import { MicroTransactionFulfillment } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -368,13 +368,12 @@ export async function createRazorpaySubscriptionRecord(
   discount_applied: boolean;
 }> {
   const product = PURCHASE_PRODUCTS[purchaseType];
-  const planId = getSubscriptionPlanId(purchaseType, eligibleForDiscount);
   const discountApplied =
     purchaseType === "subscription_premium" && eligibleForDiscount;
   const credentials = getRazorpayCredentials();
   const isDevelopment = isDevelopmentAppEnv();
 
-  if (!credentials || !planId) {
+  if (!credentials) {
     if (!isDevelopment) {
       throw new Error(
         "Razorpay subscription plans are not configured for production checkout."
@@ -388,7 +387,7 @@ export async function createRazorpaySubscriptionRecord(
     const simulatedSubscriptionId = `sub_dev_${randomUUID().replace(/-/g, "")}`;
     const subscription: CreatedRazorpaySubscription = {
       id: simulatedSubscriptionId,
-      plan_id: planId ?? "plan_dev_simulated",
+      plan_id: "plan_dev_simulated",
       status: "created",
     };
 
@@ -415,6 +414,11 @@ export async function createRazorpaySubscriptionRecord(
       discount_applied: discountApplied,
     };
   }
+
+  const planId = await requireSubscriptionPlanId(
+    purchaseType,
+    eligibleForDiscount
+  );
 
   const subscription = await createRazorpaySubscription({
     planId,

@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth-gateway";
-import { isDevelopmentAppEnv } from "@/lib/app-env";
 import {
-  formatSubscriptionPlanIntervalLabel,
-  formatSubscriptionPlanTierLabel,
-  getSubscriptionPlanEnvVarName,
-  getSubscriptionPlanId,
   isSubscriptionPurchaseType,
   resolveSubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import { createRazorpaySubscriptionRecord } from "@/lib/razorpay";
 import { extractRazorpaySdkError } from "@/lib/payments/razorpay-client";
+import {
+  MissingRazorpayPlanError,
+} from "@/lib/payments/razorpay-plan-resolver";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { CreateSubscriptionCheckoutPayload, Tier } from "@/types";
 
@@ -60,24 +58,6 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
     }
 
     const eligibleForDiscount = Boolean(userRow.eligible_for_discount);
-    const planEnvVar = getSubscriptionPlanEnvVarName(
-      purchaseType,
-      eligibleForDiscount
-    );
-    const planId = getSubscriptionPlanId(purchaseType, eligibleForDiscount);
-
-    if (!planId && !isDevelopmentAppEnv()) {
-      console.error(
-        `[checkout/create-subscription] Missing environment variable: ${planEnvVar}`
-      );
-
-      return NextResponse.json(
-        {
-          error: `Missing Razorpay Plan ID in environment variables for ${formatSubscriptionPlanTierLabel(tier)} ${formatSubscriptionPlanIntervalLabel(interval)}.`,
-        },
-        { status: 400 }
-      );
-    }
 
     const { subscription, simulated, publicKey, amount_paise, discount_applied } =
       await createRazorpaySubscriptionRecord(
@@ -107,6 +87,16 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       "[checkout/create-subscription] Failed to create subscription checkout:",
       error instanceof Error ? error.message : error
     );
+
+    if (error instanceof MissingRazorpayPlanError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          missing_env: error.missingEnv,
+        },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json(
       {
