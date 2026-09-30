@@ -19,6 +19,7 @@ export function isAgentContextActive(): boolean {
 
 export async function fetchIdentitySurfaces(): Promise<{
   surfaces: IdentitySurfaces;
+  is_super_admin?: boolean;
   active_context: ActiveContext | null;
 }> {
   const headers = await getAuthHeaders();
@@ -27,7 +28,6 @@ export async function fetchIdentitySurfaces(): Promise<{
 }
 
 export async function persistActiveContext(context: ActiveContext): Promise<void> {
-  setActiveContextCookie(context);
   const headers = await getAuthHeaders();
   const response = await fetch("/api/session/context", {
     method: "POST",
@@ -35,6 +35,7 @@ export async function persistActiveContext(context: ActiveContext): Promise<void
     body: JSON.stringify({ context }),
   });
   await parseApiJsonResponse(response);
+  setActiveContextCookie(context);
 }
 
 /**

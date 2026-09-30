@@ -30,6 +30,9 @@ interface WorkspaceState {
   subscriptionPlan: SubscriptionPlan;
   ledgerCount: number;
   isSuperAdmin: boolean;
+  hasAgentProfile: boolean;
+  defaultUpiVpa: string | null;
+  isCollectionGateOpen: boolean;
   ledgerRefreshKey: number;
   walletRefreshKey: number;
   userRefreshKey: number;
@@ -46,6 +49,10 @@ interface WorkspaceState {
     ledgerCount: number,
     isSuperAdmin?: boolean
   ) => void;
+  setHasAgentProfile: (hasAgentProfile: boolean) => void;
+  setDefaultUpiVpa: (defaultUpiVpa: string | null) => void;
+  openCollectionGate: () => void;
+  closeCollectionGate: () => void;
   addBusiness: (business: Business) => void;
   openBusinessModal: () => void;
   closeBusinessModal: () => void;
@@ -87,6 +94,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   subscriptionPlan: "free",
   ledgerCount: 0,
   isSuperAdmin: false,
+  hasAgentProfile: false,
+  defaultUpiVpa: null,
+  isCollectionGateOpen: false,
   ledgerRefreshKey: 0,
   walletRefreshKey: 0,
   userRefreshKey: 0,
@@ -112,6 +122,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setIsOwnWorkspaceContext: (isOwnWorkspaceContext) => set({ isOwnWorkspaceContext }),
   setUserBillingState: (subscriptionPlan, ledgerCount, isSuperAdmin = false) =>
     set({ subscriptionPlan, ledgerCount, isSuperAdmin }),
+  setHasAgentProfile: (hasAgentProfile) => set({ hasAgentProfile }),
+  setDefaultUpiVpa: (defaultUpiVpa) => set({ defaultUpiVpa }),
+  openCollectionGate: () => set({ isCollectionGateOpen: true }),
+  closeCollectionGate: () => set({ isCollectionGateOpen: false }),
   addBusiness: (business) =>
     set((state) => ({
       businesses: [...state.businesses, business],
@@ -120,7 +134,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })),
   openBusinessModal: () => set({ isBusinessModalOpen: true }),
   closeBusinessModal: () => set({ isBusinessModalOpen: false }),
-  openLedgerModal: (options) =>
+  openLedgerModal: (options) => {
+    const state = get();
+    const business =
+      state.businesses.find((item) => item.id === state.activeBusinessId) ??
+      null;
+
+    if (
+      !state.defaultUpiVpa?.trim() &&
+      !business?.payout_bank_account_number?.trim()
+    ) {
+      set({ isCollectionGateOpen: true, isLedgerModalOpen: false });
+      return;
+    }
+
     set({
       isLedgerModalOpen: true,
       ledgerModalTab: options?.tab ?? "udhaar",
@@ -131,7 +158,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               phoneNumber: options.phoneNumber,
             }
           : null,
-    }),
+    });
+  },
   closeLedgerModal: () =>
     set({
       isLedgerModalOpen: false,

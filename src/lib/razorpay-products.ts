@@ -292,33 +292,92 @@ export function formatSubscriptionPlanIntervalLabel(
   return interval === "monthly" ? "Monthly" : "Annual";
 }
 
+export interface HardcodedSubscriptionPlan {
+  planId: string | null;
+  envVar: string;
+}
+
+/**
+ * Plan IDs come only from explicit environment variables.
+ * Do not list or create plans through the Razorpay API at checkout time.
+ */
+export function resolveHardcodedSubscriptionPlanId(
+  tier: Tier,
+  interval: "monthly" | "annual",
+  eligibleForDiscount: boolean
+): HardcodedSubscriptionPlan {
+  if (tier === "starter" && interval === "monthly") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_STARTER_MONTHLY?.trim() || null,
+      envVar: "RAZORPAY_PLAN_STARTER_MONTHLY",
+    };
+  }
+
+  if (tier === "starter" && interval === "annual") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_STARTER_ANNUAL?.trim() || null,
+      envVar: "RAZORPAY_PLAN_STARTER_ANNUAL",
+    };
+  }
+
+  if (tier === "business" && interval === "monthly") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_BUSINESS_MONTHLY?.trim() || null,
+      envVar: "RAZORPAY_PLAN_BUSINESS_MONTHLY",
+    };
+  }
+
+  if (tier === "business" && interval === "annual") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_BUSINESS_ANNUAL?.trim() || null,
+      envVar: "RAZORPAY_PLAN_BUSINESS_ANNUAL",
+    };
+  }
+
+  if (tier === "premium" && interval === "annual") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_PREMIUM_ANNUAL?.trim() || null,
+      envVar: "RAZORPAY_PLAN_PREMIUM_ANNUAL",
+    };
+  }
+
+  if (tier === "premium" && interval === "monthly" && eligibleForDiscount) {
+    const discounted =
+      process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED?.trim() || null;
+
+    if (discounted) {
+      return {
+        planId: discounted,
+        envVar: "RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED",
+      };
+    }
+  }
+
+  if (tier === "premium" && interval === "monthly") {
+    return {
+      planId: process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY?.trim() || null,
+      envVar: "RAZORPAY_PLAN_PREMIUM_MONTHLY",
+    };
+  }
+
+  return {
+    planId: null,
+    envVar: "RAZORPAY_PLAN_ID",
+  };
+}
+
 export function getSubscriptionPlanId(
   purchaseType: SubscriptionPurchaseType,
   eligibleForDiscount: boolean
 ): string | null {
-  switch (purchaseType) {
-    case "subscription_starter_monthly":
-      return process.env.RAZORPAY_PLAN_STARTER_MONTHLY?.trim() || null;
-    case "subscription_starter_annual":
-      return process.env.RAZORPAY_PLAN_STARTER_ANNUAL?.trim() || null;
-    case "subscription_business_monthly":
-      return process.env.RAZORPAY_PLAN_BUSINESS_MONTHLY?.trim() || null;
-    case "subscription_business_annual":
-      return process.env.RAZORPAY_PLAN_BUSINESS_ANNUAL?.trim() || null;
-    case "subscription_premium_annual":
-      return process.env.RAZORPAY_PLAN_PREMIUM_ANNUAL?.trim() || null;
-    case "subscription_premium":
-      if (
-        eligibleForDiscount &&
-        process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED?.trim()
-      ) {
-        return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED.trim();
-      }
+  const tier = getSubscriptionTierFromPurchase(purchaseType);
+  const interval = purchaseType.endsWith("_annual") ? "annual" : "monthly";
 
-      return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY?.trim() || null;
-    default:
-      return null;
-  }
+  return resolveHardcodedSubscriptionPlanId(
+    tier,
+    interval,
+    eligibleForDiscount
+  ).planId;
 }
 
 export function getSubscriptionTotalCount(

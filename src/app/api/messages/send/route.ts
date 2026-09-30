@@ -11,6 +11,10 @@ import {
   assertWorkspacePermission,
   resolveWorkspaceAccess,
 } from "@/lib/workspace-rbac";
+import {
+  COLLECTION_DETAILS_REQUIRED_MESSAGE,
+  workspaceHasCollectionDetails,
+} from "@/lib/collection-details";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { SendWhatsAppReminderPayload } from "@/types";
 
@@ -86,6 +90,22 @@ export async function POST(request: Request) {
 
     if (userError || !userRow) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    const collectionReady = await workspaceHasCollectionDetails(
+      supabase,
+      contextResult.effectiveUserId,
+      ledger.business_id
+    );
+
+    if (!collectionReady) {
+      return NextResponse.json(
+        {
+          error: COLLECTION_DETAILS_REQUIRED_MESSAGE,
+          code: "collection_details_required",
+        },
+        { status: 403 }
+      );
     }
 
     if (ledger.business_id) {

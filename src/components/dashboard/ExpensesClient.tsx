@@ -197,7 +197,10 @@ export function ExpensesClient() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <Badge tone="neutral">
-                        {EXPENSE_CATEGORY_LABELS[expense.category]}
+                        {expense.category === "custom" &&
+                        expense.custom_category_label
+                          ? expense.custom_category_label
+                          : EXPENSE_CATEGORY_LABELS[expense.category]}
                       </Badge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">

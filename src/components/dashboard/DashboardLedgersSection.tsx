@@ -27,7 +27,10 @@ import { downloadDocumentFromApiRoute } from "@/lib/pdf-download";
 import { initiateVapiOutboundCall } from "@/lib/vapi-client";
 import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
-import { sendWhatsAppReminder } from "@/lib/messages";
+import {
+  isCollectionDetailsRequiredError,
+  sendWhatsAppReminder,
+} from "@/lib/messages";
 import {
   recordRecoveryUpsell,
   startRazorpayCheckout,
@@ -434,6 +437,16 @@ export function DashboardLedgersSection({
       });
 
       await refreshDashboard();
+    } catch (sendError) {
+      if (!isCollectionDetailsRequiredError(sendError)) {
+        setToast({
+          message:
+            sendError instanceof Error
+              ? sendError.message
+              : "Failed to send WhatsApp warning.",
+          variant: "error",
+        });
+      }
     } finally {
       setEscalatingWhatsApp(false);
     }
@@ -475,6 +488,19 @@ export function DashboardLedgersSection({
   }
 
   function handleSendFromPhone(ledger: LedgerWithContact) {
+    const state = useWorkspaceStore.getState();
+    const activeBusiness =
+      state.businesses.find((item) => item.id === state.activeBusinessId) ??
+      null;
+
+    if (
+      !activeBusiness?.payout_bank_account_number?.trim() &&
+      !state.defaultUpiVpa?.trim()
+    ) {
+      state.openCollectionGate();
+      return;
+    }
+
     const ledgerBusiness =
       ledger.business_id != null
         ? businesses.find((business) => business.id === ledger.business_id) ?? null
@@ -511,13 +537,15 @@ export function DashboardLedgersSection({
 
       await refreshDashboard();
     } catch (sendError) {
-      setToast({
-        message:
-          sendError instanceof Error
-            ? sendError.message
-            : "Failed to send WhatsApp reminder.",
-        variant: "error",
-      });
+      if (!isCollectionDetailsRequiredError(sendError)) {
+        setToast({
+          message:
+            sendError instanceof Error
+              ? sendError.message
+              : "Failed to send WhatsApp reminder.",
+          variant: "error",
+        });
+      }
     } finally {
       setSendingLedgerId(null);
     }

@@ -10,6 +10,8 @@ import {
 } from "@/lib/business-addons";
 import {
   getPurchaseProduct,
+  getSubscriptionPlanEnvVarName,
+  getSubscriptionPlanId,
   getSubscriptionTierFromPurchase,
   getSubscriptionTotalCount,
   isBankVerificationPurchaseType,
@@ -27,7 +29,6 @@ import { BusinessSubscriptionTier } from "@/types";
 import { fulfillMicroTransaction } from "@/lib/micro-transaction-fulfillment";
 import { fulfillMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
 import { createRazorpaySubscription } from "@/lib/payments/razorpay-client";
-import { requireSubscriptionPlanId } from "@/lib/payments/razorpay-plan-resolver";
 import { MicroTransactionFulfillment } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -415,10 +416,17 @@ export async function createRazorpaySubscriptionRecord(
     };
   }
 
-  const planId = await requireSubscriptionPlanId(
-    purchaseType,
-    eligibleForDiscount
-  );
+  const planId = getSubscriptionPlanId(purchaseType, eligibleForDiscount);
+
+  if (!planId) {
+    const envVar = getSubscriptionPlanEnvVarName(
+      purchaseType,
+      eligibleForDiscount
+    );
+    throw new Error(
+      `Missing Razorpay Plan ID in environment variables (${envVar}).`
+    );
+  }
 
   const subscription = await createRazorpaySubscription({
     planId,

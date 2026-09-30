@@ -1,17 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { setAppRoleCookie } from "@/lib/auth-cookies";
 import { fetchWorkspaceRole } from "@/lib/kiosk-client";
-import { persistActiveContext, merchantHomePath } from "@/lib/post-auth-navigation";
+import {
+  fetchIdentitySurfaces,
+  persistActiveContext,
+  merchantHomePath,
+} from "@/lib/post-auth-navigation";
 
 export default function ChooseContextPage() {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"merchant" | "agent" | null>(null);
+  const [busy, setBusy] = useState<"merchant" | "agent" | "admin" | null>(null);
+  const [hasAgent, setHasAgent] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSurfaces() {
+      try {
+        const identity = await fetchIdentitySurfaces();
+
+        if (!cancelled) {
+          setHasAgent(Boolean(identity.surfaces.has_agent));
+          setIsSuperAdmin(Boolean(identity.is_super_admin));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load account roles."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSurfaces();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function choose(context: "merchant" | "agent") {
     setError("");
@@ -59,19 +99,34 @@ export default function ChooseContextPage() {
 
         <Button
           className="w-full"
-          disabled={busy !== null}
+          disabled={busy !== null || isLoading}
           onClick={() => void choose("merchant")}
         >
           {busy === "merchant" ? "Opening shop…" : "Merchant workspace"}
         </Button>
-        <Button
-          variant="secondary"
-          className="w-full"
-          disabled={busy !== null}
-          onClick={() => void choose("agent")}
-        >
-          {busy === "agent" ? "Opening agent desk…" : "Field agent desk"}
-        </Button>
+        {hasAgent ? (
+          <Button
+            variant="secondary"
+            className="w-full"
+            disabled={busy !== null || isLoading}
+            onClick={() => void choose("agent")}
+          >
+            {busy === "agent" ? "Opening agent desk…" : "Field agent desk"}
+          </Button>
+        ) : null}
+        {isSuperAdmin ? (
+          <Button
+            variant="secondary"
+            className="w-full"
+            disabled={busy !== null || isLoading}
+            onClick={() => {
+              setBusy("admin");
+              router.push("/admin/agents");
+            }}
+          >
+            {busy === "admin" ? "Opening admin…" : "Field agents admin"}
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

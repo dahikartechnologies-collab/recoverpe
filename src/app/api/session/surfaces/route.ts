@@ -14,13 +14,21 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminSupabaseClient();
-  const surfaces = await loadIdentitySurfaces(supabase, identity.actorUserId);
+  const [surfaces, actorResult] = await Promise.all([
+    loadIdentitySurfaces(supabase, identity.actorUserId),
+    supabase
+      .from("users")
+      .select("is_super_admin")
+      .eq("id", identity.actorUserId)
+      .maybeSingle(),
+  ]);
   const activeContext = getActiveContextFromCookieHeader(
     request.headers.get("cookie")
   );
 
   return NextResponse.json({
     surfaces,
+    is_super_admin: Boolean(actorResult.data?.is_super_admin),
     active_context: activeContext,
   });
 }

@@ -12,6 +12,10 @@ import { calculateGstBreakdown } from "@/lib/gst";
 import { buildInvoiceNumber } from "@/lib/invoices";
 import { renderInvoicePdfBuffer } from "@/lib/pdf";
 import { countUserLedgers } from "@/lib/razorpay";
+import {
+  COLLECTION_DETAILS_REQUIRED_MESSAGE,
+  workspaceHasCollectionDetails,
+} from "@/lib/collection-details";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
 import { isValidContactEmail } from "@/lib/notification-settings";
 import { upsertContactForUser } from "@/lib/contact-upsert";
@@ -214,6 +218,22 @@ export async function POST(request: Request) {
 
     if (userError || !userRow) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
+    }
+
+    const collectionReady = await workspaceHasCollectionDetails(
+      supabase,
+      contextResult.effectiveUserId,
+      body.workspace_mode === "business" ? body.business_id : null
+    );
+
+    if (!collectionReady) {
+      return NextResponse.json(
+        {
+          error: COLLECTION_DETAILS_REQUIRED_MESSAGE,
+          code: "collection_details_required",
+        },
+        { status: 403 }
+      );
     }
 
     if (body.generate_tax_invoice && body.workspace_mode === "business") {

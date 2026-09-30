@@ -226,6 +226,7 @@ export function SettingsView() {
       });
 
       setDefaultUpiVpa(result.default_upi_vpa ?? "");
+      useWorkspaceStore.getState().setDefaultUpiVpa(result.default_upi_vpa ?? null);
       setAlert({
         message: "Payment settings saved successfully.",
         variant: "success",

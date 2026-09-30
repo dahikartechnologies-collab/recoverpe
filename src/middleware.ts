@@ -8,7 +8,9 @@ import {
   hasAuthSession,
   isAuthorizedAdmin,
   resolveAdminActorUserId,
+  resolveAgentDeskAccess,
 } from "@/lib/admin-access";
+import { ACTIVE_CONTEXT_COOKIE } from "@/lib/cookie-constants";
 import { getActiveContextFromCookieHeader } from "@/lib/active-context";
 import { isPartnerContextFromCookies } from "@/lib/partner-context";
 import { shouldSkipGlobalApiRateLimit } from "@/lib/api-rate-limit-policy";
@@ -233,8 +235,69 @@ function serviceUnavailableResponse(): NextResponse {
   );
 }
 
+async function applyAgentDeskAccessGuard(
+  request: NextRequest
+): Promise<NextResponse | null> {
+  const pathname = request.nextUrl.pathname;
+  const context = getActiveContextFromCookieHeader(request.headers.get("cookie"));
+  const isAgentApp =
+    pathname === "/agent-dashboard" ||
+    pathname.startsWith("/agent-dashboard/") ||
+    pathname.startsWith("/api/agent/");
+
+  if (context !== "agent" && !isAgentApp) {
+    return null;
+  }
+
+  const actorUserId = resolveAdminActorUserId(request.headers.get("cookie"));
+
+  if (!actorUserId) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    return redirectTo(request, "/login");
+  }
+
+  const access = await resolveAgentDeskAccess(actorUserId);
+
+  if (access === "denied") {
+    const response = pathname.startsWith("/api/")
+      ? NextResponse.json(
+          { error: "Agent desk is limited to field agents and super admins." },
+          { status: 403 }
+        )
+      : redirectTo(request, "/dashboard");
+
+    response.cookies.set(ACTIVE_CONTEXT_COOKIE, "", {
+      path: "/",
+      maxAge: 0,
+    });
+    return response;
+  }
+
+  if (access === "admin_only" && isAgentApp && !pathname.startsWith("/api/")) {
+    return redirectTo(request, "/admin/agents");
+  }
+
+  if (access === "admin_only" && pathname.startsWith("/api/agent/")) {
+    return NextResponse.json(
+      { error: "This account has no RecoverPe agent profile." },
+      { status: 403 }
+    );
+  }
+
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   try {
+    const agentDeskGuard = await applyAgentDeskAccessGuard(request);
+
+    if (agentDeskGuard) {
+      return agentDeskGuard;
+    }
+
     const adminGuardResponse = await applyAdminRouteGuards(request);
 
     if (adminGuardResponse) {

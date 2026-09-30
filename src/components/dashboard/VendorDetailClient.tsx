@@ -34,7 +34,10 @@ import {
   generateVendorPortalLink,
   provisionVendorVirtualAccount,
 } from "@/lib/vendor-client";
-import { sendWhatsAppReminder } from "@/lib/messages";
+import {
+  isCollectionDetailsRequiredError,
+  sendWhatsAppReminder,
+} from "@/lib/messages";
 import { initiateVapiOutboundCall } from "@/lib/vapi-client";
 import { VAPI_UNAVAILABLE_TOAST_MESSAGE } from "@/lib/vapi-messages";
 import { updateLedgerCommunicationPaused } from "@/lib/ledger-settings";
@@ -269,12 +272,14 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
       );
       bumpLedgerRefresh();
     } catch (sendError) {
-      showToast(
-        sendError instanceof Error
-          ? sendError.message
-          : "Failed to send reminder.",
-        "error"
-      );
+      if (!isCollectionDetailsRequiredError(sendError)) {
+        showToast(
+          sendError instanceof Error
+            ? sendError.message
+            : "Failed to send reminder.",
+          "error"
+        );
+      }
     } finally {
       setSendingLedgerId(null);
     }

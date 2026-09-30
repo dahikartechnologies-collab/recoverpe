@@ -8,6 +8,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   utilities: "Utilities",
   salaries: "Salaries",
   office_expense: "Office Expense",
+  custom: "Custom",
 };
 
 export const EXPENSE_PAYMENT_MODE_LABELS: Record<ExpensePaymentMode, string> = {
@@ -49,6 +50,7 @@ export interface CreateExpenseInput {
   reference_number?: string | null;
   expense_date: string;
   notes?: string | null;
+  custom_category_label?: string | null;
   gst_rate?: number;
   /** Defaults to true server-side: MSMEs quote and pay gross. */
   amount_includes_gst?: boolean;

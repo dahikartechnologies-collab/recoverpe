@@ -7,6 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { AddBusinessModal } from "@/components/dashboard/AddBusinessModal";
+import { CollectionDetailsGate } from "@/components/dashboard/CollectionDetailsGate";
 import { AutopilotAlerts } from "@/components/dashboard/AutopilotAlerts";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { AssignedPartnerBanner } from "@/components/dashboard/AssignedPartnerBanner";
@@ -37,7 +38,10 @@ import {
 } from "@/lib/workspace-context";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
 import { useActiveBusinessBilling } from "@/lib/use-active-business-billing";
-import { isAgentContextActive } from "@/lib/post-auth-navigation";
+import {
+  fetchIdentitySurfaces,
+  isAgentContextActive,
+} from "@/lib/post-auth-navigation";
 import { AccountPendingPurgeError, AccountSuspendedError } from "@/lib/users";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import { Button } from "@/components/ui/Button";
@@ -96,6 +100,8 @@ export function DashboardShell({
   const openLedgerModal = useWorkspaceStore((state) => state.openLedgerModal);
   const openUpgradeModal = useWorkspaceStore((state) => state.openUpgradeModal);
   const setUserBillingState = useWorkspaceStore((state) => state.setUserBillingState);
+  const setHasAgentProfile = useWorkspaceStore((state) => state.setHasAgentProfile);
+  const setDefaultUpiVpa = useWorkspaceStore((state) => state.setDefaultUpiVpa);
   const setWorkspaceRole = useWorkspaceStore((state) => state.setWorkspaceRole);
   const setCustomPermissions = useWorkspaceStore((state) => state.setCustomPermissions);
   const setWorkspacePermissionsReady = useWorkspaceStore(
@@ -305,11 +311,19 @@ export function DashboardShell({
       }
 
       setWalletBalance(Number(currentUser.vapi_wallet_balance));
+      setDefaultUpiVpa(currentUser.default_upi_vpa ?? null);
       setUserBillingState(
         currentUser.subscription_plan,
         currentUser.ledger_count,
         currentUser.is_super_admin
       );
+
+      try {
+        const identity = await fetchIdentitySurfaces();
+        setHasAgentProfile(Boolean(identity.surfaces.has_agent));
+      } catch {
+        setHasAgentProfile(false);
+      }
       setLoadError("");
       setIsDashboardReady(true);
     } catch (error) {
@@ -337,6 +351,8 @@ export function DashboardShell({
     setBusinesses,
     setMode,
     setUserBillingState,
+    setHasAgentProfile,
+    setDefaultUpiVpa,
     setWorkspaceRole,
     setCustomPermissions,
     setWorkspacePermissionsReady,
@@ -498,6 +514,7 @@ export function DashboardShell({
       <GlobalLedgerViewHost />
       <AddBusinessModal />
       <GlobalTransactionModal />
+      <CollectionDetailsGate />
       <UpgradeToPremiumModal />
       {multiWorkspaceToast ? (
         <Toast

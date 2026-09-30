@@ -40,6 +40,7 @@ export default function VerifyMobilePage() {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [resendSeconds, setResendSeconds] = useState(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(getFirebaseAuth(), async (user) => {
@@ -65,6 +66,18 @@ export default function VerifyMobilePage() {
 
     return () => unsubscribe();
   }, [router]);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setResendSeconds((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
 
   useEffect(() => {
     setRecaptchaErrorHandler((recaptchaError) => {
@@ -105,6 +118,7 @@ export default function VerifyMobilePage() {
         recaptchaVerifier
       );
       setOtpSent(true);
+      setResendSeconds(30);
     } catch (sendError) {
       clearInvisibleRecaptcha();
       if (
@@ -117,6 +131,19 @@ export default function VerifyMobilePage() {
     } finally {
       setIsSendingOtp(false);
     }
+  }
+
+  async function handleResendOtp() {
+    if (resendSeconds > 0 || isSendingOtp) {
+      return;
+    }
+
+    clearInvisibleRecaptcha();
+    await handleSendOtp({
+      preventDefault() {
+        return undefined;
+      },
+    } as FormEvent<HTMLFormElement>);
   }
 
   async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
@@ -232,6 +259,22 @@ export default function VerifyMobilePage() {
 
                 <Button type="submit" className="w-full" disabled={isVerifying}>
                   {isVerifying ? "Verifying..." : "Verify and continue"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  disabled={isSendingOtp || isVerifying || resendSeconds > 0}
+                  onClick={() => {
+                    void handleResendOtp();
+                  }}
+                >
+                  {resendSeconds > 0
+                    ? `Resend OTP in ${resendSeconds}s`
+                    : isSendingOtp
+                      ? "Sending OTP..."
+                      : "Resend OTP"}
                 </Button>
 
                 <Button

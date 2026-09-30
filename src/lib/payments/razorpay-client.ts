@@ -187,7 +187,7 @@ export async function createRazorpaySubscription(
     const subscription = (await client.subscriptions.create({
       plan_id: input.planId,
       total_count: input.totalCount,
-      customer_notify: 1,
+      customer_notify: 0,
       notes: input.notes,
     })) as CreatedRazorpaySubscriptionEntity;
 

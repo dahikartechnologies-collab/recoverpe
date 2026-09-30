@@ -5,6 +5,7 @@ import {
   isActiveContext,
 } from "@/lib/active-context";
 import { requireActorIdentity } from "@/lib/identity-auth";
+import { FOUNDER_ADMIN_EMAIL } from "@/lib/admin-access";
 import { loadIdentitySurfaces } from "@/lib/identity-surfaces";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -37,9 +38,21 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminSupabaseClient();
-  const surfaces = await loadIdentitySurfaces(supabase, identity.actorUserId);
+  const [surfaces, actorResult] = await Promise.all([
+    loadIdentitySurfaces(supabase, identity.actorUserId),
+    supabase
+      .from("users")
+      .select("is_super_admin, email")
+      .eq("id", identity.actorUserId)
+      .maybeSingle(),
+  ]);
+  const isSuperAdmin = Boolean(
+    actorResult.data?.is_super_admin ||
+      actorResult.data?.email?.trim().toLowerCase() ===
+        FOUNDER_ADMIN_EMAIL.toLowerCase()
+  );
 
-  if (context === "agent" && !surfaces.has_agent) {
+  if (context === "agent" && !surfaces.has_agent && !isSuperAdmin) {
     return NextResponse.json(
       { error: "This account has no RecoverPe agent profile." },
       { status: 403 }

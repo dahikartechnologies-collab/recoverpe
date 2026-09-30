@@ -40,7 +40,7 @@ async function assertExpenseAccess(
 }
 
 const EXPENSE_COLUMNS =
-  "id, user_id, business_id, payee_name, amount, category, payment_mode, reference_number, expense_date, notes, created_at, voucher_number, supplier_gstin, hsn_sac_code, place_of_supply, gst_rate, taxable_value, cgst_amount, sgst_amount, igst_amount, is_input_credit_eligible, tds_section, tds_rate, tds_amount";
+  "id, user_id, business_id, payee_name, amount, category, custom_category_label, payment_mode, reference_number, expense_date, notes, created_at, voucher_number, supplier_gstin, hsn_sac_code, place_of_supply, gst_rate, taxable_value, cgst_amount, sgst_amount, igst_amount, is_input_credit_eligible, tds_section, tds_rate, tds_amount";
 
 // expense_date is a plain DATE, so month comparison stays lexicographic.
 function startOfCurrentIstMonth(): string {
@@ -166,6 +166,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const customCategoryLabel =
+      String(body.custom_category_label ?? "").trim() || null;
+
+    if (body.category === "custom" && !customCategoryLabel) {
+      return NextResponse.json(
+        { error: "Enter a name for the custom category." },
+        { status: 400 }
+      );
+    }
+
     if (!isExpensePaymentMode(body.payment_mode)) {
       return NextResponse.json(
         { error: "A valid payment mode is required." },
@@ -254,6 +264,8 @@ export async function POST(request: Request) {
         payee_name: payeeName,
         amount: tax.grossAmount,
         category: body.category,
+        custom_category_label:
+          body.category === "custom" ? customCategoryLabel : null,
         payment_mode: body.payment_mode,
         reference_number: String(body.reference_number ?? "").trim() || null,
         expense_date: expenseDate,

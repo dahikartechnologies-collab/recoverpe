@@ -79,7 +79,8 @@ export type ExpenseCategory =
   | "rent"
   | "utilities"
   | "salaries"
-  | "office_expense";
+  | "office_expense"
+  | "custom";
 
 export type ExpensePaymentMode = "bank_transfer" | "upi" | "cash" | "cheque";
 
@@ -363,6 +364,7 @@ export interface Expense {
   reference_number?: string | null;
   expense_date: string;
   notes?: string | null;
+  custom_category_label?: string | null;
   created_at: string;
   voucher_number?: string | null;
   supplier_gstin?: string | null;

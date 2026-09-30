@@ -51,6 +51,7 @@ export function DashboardSidebar() {
   const workspaceRole = useWorkspaceStore((state) => state.workspaceRole);
   const customPermissions = useWorkspaceStore((state) => state.customPermissions);
   const isSuperAdmin = useWorkspaceStore((state) => state.isSuperAdmin);
+  const hasAgentProfile = useWorkspaceStore((state) => state.hasAgentProfile);
   const navContext = {
     isOwnWorkspaceContext,
     role: workspaceRole,
@@ -112,20 +113,22 @@ export function DashboardSidebar() {
         </nav>
 
         <div className="mt-auto shrink-0 space-y-3 border-t border-recoverpe-line pt-6">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2"
-            onClick={() => {
-              void persistActiveContext("agent").then(() =>
-                router.push("/agent-dashboard")
-              );
-            }}
-          >
-            <Briefcase className="h-4 w-4" aria-hidden />
-            Switch to Agent Desk
-          </Button>
+          {hasAgentProfile ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2"
+              onClick={() => {
+                void persistActiveContext("agent").then(() =>
+                  router.push("/agent-dashboard")
+                );
+              }}
+            >
+              <Briefcase className="h-4 w-4" aria-hidden />
+              Switch to Agent Desk
+            </Button>
+          ) : null}
           <DashboardLogoutButton />
         </div>
       </div>

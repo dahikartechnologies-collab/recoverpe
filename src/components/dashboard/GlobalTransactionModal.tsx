@@ -348,6 +348,15 @@ export function GlobalTransactionModal() {
         return;
       }
 
+      if (
+        submitError instanceof Error &&
+        submitError.message.includes("Add your UPI ID")
+      ) {
+        closeLedgerModal();
+        useWorkspaceStore.getState().openCollectionGate();
+        return;
+      }
+
       setError(
         submitError instanceof Error
           ? submitError.message

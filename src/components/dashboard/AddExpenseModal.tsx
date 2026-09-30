@@ -50,6 +50,7 @@ export function AddExpenseModal({
   const [referenceNumber, setReferenceNumber] = useState("");
   const [expenseDate, setExpenseDate] = useState(todayInputValue);
   const [notes, setNotes] = useState("");
+  const [customCategoryLabel, setCustomCategoryLabel] = useState("");
   const [gstRate, setGstRate] = useState(0);
   const [supplierGstin, setSupplierGstin] = useState("");
   const [hsnSacCode, setHsnSacCode] = useState("");
@@ -91,6 +92,7 @@ export function AddExpenseModal({
     setReferenceNumber("");
     setExpenseDate(todayInputValue());
     setNotes("");
+    setCustomCategoryLabel("");
     setGstRate(0);
     setSupplierGstin("");
     setHsnSacCode("");
@@ -114,6 +116,8 @@ export function AddExpenseModal({
         reference_number: referenceNumber || null,
         expense_date: expenseDate,
         notes: notes || null,
+        custom_category_label:
+          category === "custom" ? customCategoryLabel.trim() : null,
         gst_rate: gstRate,
         amount_includes_gst: true,
         supplier_gstin: supplierGstin.trim().toUpperCase() || null,
@@ -211,6 +215,17 @@ export function AddExpenseModal({
                 </option>
               ))}
             </select>
+            {category === "custom" ? (
+              <Input
+                id="expense-custom-category"
+                className="mt-2"
+                value={customCategoryLabel}
+                onChange={(event) => setCustomCategoryLabel(event.target.value)}
+                placeholder="Custom category name"
+                required
+                disabled={isSubmitting}
+              />
+            ) : null}
           </div>
           <div>
             <label htmlFor="expense-payment-mode" className={LABEL_CLASS}>
@@ -411,14 +426,14 @@ export function AddExpenseModal({
 
         <div>
           <label htmlFor="expense-notes" className={LABEL_CLASS}>
-            Notes <span className="text-recoverpe-grey-medium">(optional)</span>
+            Narration
           </label>
           <textarea
             id="expense-notes"
-            className={`${SELECT_CLASS} min-h-20 resize-y`}
+            className={`${SELECT_CLASS} min-h-24 resize-y`}
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            placeholder="What was this payment for?"
+            placeholder="Voucher narration, the way you would write it in Tally"
             disabled={isSubmitting}
           />
         </div>
