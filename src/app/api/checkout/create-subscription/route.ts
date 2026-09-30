@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth-gateway";
-import { isDevelopmentAppEnv } from "@/lib/app-env";
 import {
-  formatSubscriptionPlanIntervalLabel,
-  formatSubscriptionPlanTierLabel,
   isSubscriptionPurchaseType,
-  resolveHardcodedSubscriptionPlanId,
   resolveSubscriptionPurchaseType,
 } from "@/lib/razorpay-products";
 import { createRazorpaySubscriptionRecord } from "@/lib/razorpay";
@@ -17,12 +13,73 @@ function isTier(value: string): value is Tier {
   return value === "starter" || value === "business" || value === "premium";
 }
 
+function normalizeBillingInterval(
+  value: string
+): "monthly" | "annual" | null {
+  if (value === "month" || value === "monthly") {
+    return "monthly";
+  }
+
+  if (value === "year" || value === "annual") {
+    return "annual";
+  }
+
+  return null;
+}
+
+/**
+ * Read plan IDs in this route module only.
+ * razorpay-products.ts is imported by client components, and Next replaces
+ * non-public process.env reads in that shared graph with empty values.
+ */
+function readCheckoutPlanId(
+  tier: Tier,
+  interval: "monthly" | "annual",
+  eligibleForDiscount: boolean
+): string | null {
+  if (tier === "starter" && interval === "monthly") {
+    return process.env.RAZORPAY_PLAN_STARTER_MONTHLY?.trim() || null;
+  }
+
+  if (tier === "starter" && interval === "annual") {
+    return process.env.RAZORPAY_PLAN_STARTER_ANNUAL?.trim() || null;
+  }
+
+  if (tier === "business" && interval === "monthly") {
+    return process.env.RAZORPAY_PLAN_BUSINESS_MONTHLY?.trim() || null;
+  }
+
+  if (tier === "business" && interval === "annual") {
+    return process.env.RAZORPAY_PLAN_BUSINESS_ANNUAL?.trim() || null;
+  }
+
+  if (tier === "premium" && interval === "annual") {
+    return process.env.RAZORPAY_PLAN_PREMIUM_ANNUAL?.trim() || null;
+  }
+
+  if (tier === "premium" && interval === "monthly" && eligibleForDiscount) {
+    const discounted =
+      process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY_DISCOUNTED?.trim() || null;
+
+    if (discounted) {
+      return discounted;
+    }
+  }
+
+  if (tier === "premium" && interval === "monthly") {
+    return process.env.RAZORPAY_PLAN_PREMIUM_MONTHLY?.trim() || null;
+  }
+
+  return null;
+}
+
 export const POST = withWorkspaceAuth(async (request, auth) => {
   try {
     const body = (await request.json()) as Partial<CreateSubscriptionCheckoutPayload>;
 
-    const tier = body.tier?.trim() ?? "";
-    const interval = body.interval;
+    const tier = String(body.tier || "").trim().toLowerCase();
+    const interval = String(body.interval || "monthly").trim().toLowerCase();
+    const normalizedInterval = normalizeBillingInterval(interval);
 
     if (!isTier(tier)) {
       return NextResponse.json(
@@ -31,14 +88,14 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       );
     }
 
-    if (interval !== "monthly" && interval !== "annual") {
+    if (!normalizedInterval) {
       return NextResponse.json(
         { error: "interval must be monthly or annual." },
         { status: 400 }
       );
     }
 
-    const purchaseType = resolveSubscriptionPurchaseType(tier, interval);
+    const purchaseType = resolveSubscriptionPurchaseType(tier, normalizedInterval);
 
     if (!isSubscriptionPurchaseType(purchaseType)) {
       return NextResponse.json(
@@ -59,21 +116,47 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
     }
 
     const eligibleForDiscount = Boolean(userRow.eligible_for_discount);
-    const { planId, envVar } = resolveHardcodedSubscriptionPlanId(
-      tier,
-      interval,
-      eligibleForDiscount
-    );
+    const planId = readCheckoutPlanId(tier, normalizedInterval, eligibleForDiscount);
+    const hasKeyId = Boolean(process.env.RAZORPAY_KEY_ID?.trim());
+    const hasSecret = Boolean(process.env.RAZORPAY_KEY_SECRET?.trim());
 
-    if (!planId && !isDevelopmentAppEnv()) {
-      console.error(
-        `[checkout/create-subscription] Missing environment variable: ${envVar}`
-      );
+    console.log("[CHECKOUT DEBUG]", {
+      incomingTier: tier,
+      incomingInterval: interval,
+      resolvedPlanId: planId,
+      hasKeyId,
+      hasSecret,
+      availableEnvKeys: Object.keys(process.env).filter((key) =>
+        key.startsWith("RAZORPAY_PLAN_")
+      ),
+    });
 
+    if (!planId) {
       return NextResponse.json(
         {
-          error: `Missing Razorpay Plan ID in environment variables for ${formatSubscriptionPlanTierLabel(tier)} ${formatSubscriptionPlanIntervalLabel(interval)}.`,
-          missing_env: envVar,
+          error:
+            "Razorpay subscription plans are not configured for production checkout.",
+          debug: {
+            tier,
+            interval: normalizedInterval,
+            expectedEnvVar: `RAZORPAY_PLAN_${tier.toUpperCase()}_${normalizedInterval.toUpperCase()}`,
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!hasKeyId || !hasSecret) {
+      return NextResponse.json(
+        {
+          error:
+            "Razorpay API keys are not available to this deployment. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the Vercel Production environment, then redeploy.",
+          debug: {
+            tier,
+            interval: normalizedInterval,
+            hasKeyId,
+            hasSecret,
+          },
         },
         { status: 400 }
       );
@@ -84,7 +167,8 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
         supabase,
         auth.actorUserId,
         purchaseType,
-        eligibleForDiscount
+        eligibleForDiscount,
+        planId
       );
 
     return NextResponse.json({
@@ -93,7 +177,7 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       subscription,
       key: publicKey,
       tier,
-      interval,
+      interval: normalizedInterval,
       purchase_type: purchaseType,
       amount_paise,
       discount_applied,

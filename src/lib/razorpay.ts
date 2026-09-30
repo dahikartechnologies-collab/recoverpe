@@ -75,9 +75,9 @@ export function isRazorpayConfigured(): boolean {
 }
 
 export function getRazorpayCredentials(): RazorpayCredentials | null {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  const keyId = process.env.RAZORPAY_KEY_ID?.trim();
+  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
 
   if (!keyId || !keySecret) {
     return null;
@@ -360,7 +360,8 @@ export async function createRazorpaySubscriptionRecord(
   supabase: SupabaseClient,
   userId: string,
   purchaseType: SubscriptionPurchaseType,
-  eligibleForDiscount: boolean
+  eligibleForDiscount: boolean,
+  resolvedPlanId?: string | null
 ): Promise<{
   subscription: CreatedRazorpaySubscription;
   simulated: boolean;
@@ -377,7 +378,7 @@ export async function createRazorpaySubscriptionRecord(
   if (!credentials) {
     if (!isDevelopment) {
       throw new Error(
-        "Razorpay subscription plans are not configured for production checkout."
+        "Razorpay API keys are not configured for production checkout."
       );
     }
 
@@ -416,7 +417,9 @@ export async function createRazorpaySubscriptionRecord(
     };
   }
 
-  const planId = getSubscriptionPlanId(purchaseType, eligibleForDiscount);
+  const planId =
+    resolvedPlanId?.trim() ||
+    getSubscriptionPlanId(purchaseType, eligibleForDiscount);
 
   if (!planId) {
     const envVar = getSubscriptionPlanEnvVarName(
