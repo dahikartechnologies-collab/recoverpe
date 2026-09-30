@@ -1,3 +1,17 @@
+export type {
+  DocumentCaptureRow,
+  DocumentCaptureStatus,
+  PurchaseVoucherLineRow,
+  PurchaseVoucherRow,
+  PurchaseVoucherStatus,
+  StockItemRow,
+  StockMovementDirection,
+  StockMovementRow,
+  StockMovementSource,
+  VoiceCommandRow,
+  VoiceCommandStatus,
+} from "@/types/supabase";
+
 export type WorkspaceMode = "personal" | "business";
 
 export type SubscriptionPlan = "free" | "premium";
