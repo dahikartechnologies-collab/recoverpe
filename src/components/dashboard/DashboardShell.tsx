@@ -8,7 +8,6 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { AddBusinessModal } from "@/components/dashboard/AddBusinessModal";
 import { CollectionDetailsGate } from "@/components/dashboard/CollectionDetailsGate";
-import { AutopilotAlerts } from "@/components/dashboard/AutopilotAlerts";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { AssignedPartnerBanner } from "@/components/dashboard/AssignedPartnerBanner";
 import { GhostModeBanner } from "@/components/dashboard/GhostModeBanner";
@@ -503,9 +502,6 @@ export function DashboardShell({
           </header>
 
           <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 pb-44 sm:px-8 sm:pb-8">
-            <div className="mb-6">
-              <AutopilotAlerts />
-            </div>
             {children}
           </main>
         </div>

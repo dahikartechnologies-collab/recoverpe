@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { LegalNoticePreviewModal } from "@/components/dashboard/LegalNoticePreviewModal";
 import { LegalNoticeSuccessModal } from "@/components/dashboard/LegalNoticeSuccessModal";
 import { fetchAutopilotAlerts } from "@/lib/autopilot-alerts-client";
@@ -14,7 +13,18 @@ import {
   MicroTransactionFulfillment,
 } from "@/types";
 
-export function AutopilotAlerts() {
+interface AutopilotEscalationAlertsState {
+  alerts: AutopilotEscalationAlert[];
+  isLoading: boolean;
+  openAlert: (alert: AutopilotEscalationAlert) => void;
+  modals: ReactNode;
+}
+
+/**
+ * Legal escalation alerts plus the ₹999 notice preview/checkout flow. The
+ * caller decides where the alerts surface and must render `modals`.
+ */
+export function useAutopilotEscalationAlerts(): AutopilotEscalationAlertsState {
   const mode = useWorkspaceStore((state) => state.mode);
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const ledgerRefreshKey = useWorkspaceStore((state) => state.ledgerRefreshKey);
@@ -55,9 +65,10 @@ export function AutopilotAlerts() {
     void loadAlerts();
   }, [loadAlerts, ledgerRefreshKey]);
 
-  if (isLoading || alerts.length === 0) {
-    return null;
-  }
+  const openAlert = useCallback((alert: AutopilotEscalationAlert) => {
+    setSelectedAlert(alert);
+    setIsPreviewOpen(true);
+  }, []);
 
   async function handleGenerateNotice() {
     if (!selectedAlert) {
@@ -92,35 +103,8 @@ export function AutopilotAlerts() {
     }
   }
 
-  return (
+  const modals = (
     <>
-      <section className="space-y-3">
-        {alerts.map((alert) => (
-          <button
-            key={alert.ledger_id}
-            type="button"
-            onClick={() => {
-              setSelectedAlert(alert);
-              setIsPreviewOpen(true);
-            }}
-            className="focus-ring flex w-full items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-left transition-colors hover:bg-orange-100/80"
-          >
-            <AlertTriangle
-              className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"
-              aria-hidden
-            />
-            <div>
-              <p className="text-sm font-semibold text-orange-700">
-                Final Warning Sent. Legal escalation ready for {alert.contact_name}.
-              </p>
-              <p className="mt-1 text-xs text-orange-600/90">
-                Tap to preview and issue the official ₹999 legal notice.
-              </p>
-            </div>
-          </button>
-        ))}
-      </section>
-
       <LegalNoticePreviewModal
         alert={selectedAlert}
         isOpen={isPreviewOpen}
@@ -144,4 +128,6 @@ export function AutopilotAlerts() {
       />
     </>
   );
+
+  return { alerts, isLoading, openAlert, modals };
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell } from "lucide-react";
+import { AlertTriangle, Bell, ChevronRight } from "lucide-react";
+import { useAutopilotEscalationAlerts } from "@/components/dashboard/AutopilotAlerts";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatAppRoleLabel } from "@/lib/workspace-permissions";
@@ -28,6 +29,7 @@ export function WorkspaceInvitationsInbox({
   const [error, setError] = useState("");
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const escalations = useAutopilotEscalationAlerts();
 
   const loadInvitations = useCallback(async () => {
     setIsLoading(true);
@@ -128,19 +130,28 @@ export function WorkspaceInvitationsInbox({
     }
   }
 
-  const pendingCount = invitations.length;
+  const escalationAlerts = escalations.alerts;
+  const pendingCount = invitations.length + escalationAlerts.length;
+  const hasNothing =
+    !isLoading && invitations.length === 0 && escalationAlerts.length === 0;
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        aria-label="Workspace invitations"
+        aria-label={
+          pendingCount > 0 ? `Notifications (${pendingCount} unread)` : "Notifications"
+        }
         aria-expanded={isOpen}
         onClick={() => setIsOpen((current) => !current)}
         className="focus-ring relative inline-flex h-11 w-11 items-center justify-center rounded-md border border-recoverpe-grey-light bg-recoverpe-white text-recoverpe-black transition-all duration-200 ease-out hover:bg-recoverpe-grey-light"
       >
         <Bell className="h-4 w-4" strokeWidth={1.75} />
-        {pendingCount > 0 ? (
+        {escalationAlerts.length > 0 ? (
+          <span className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-recoverpe-error px-1 text-[10px] font-semibold leading-none text-recoverpe-white">
+            {pendingCount > 9 ? "9+" : pendingCount}
+          </span>
+        ) : pendingCount > 0 ? (
           <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-recoverpe-error" />
         ) : null}
       </button>
@@ -148,24 +159,66 @@ export function WorkspaceInvitationsInbox({
       {isOpen ? (
         <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-recoverpe-grey-light bg-recoverpe-white shadow-sm transition-all duration-200 ease-out">
           <div className="border-b border-recoverpe-grey-light px-4 py-3">
-            <p className="text-sm font-semibold text-recoverpe-black">Invitations</p>
+            <p className="text-sm font-semibold text-recoverpe-black">Notifications</p>
             <p className="text-xs text-recoverpe-grey-medium">
-              Accept to join a shared workspace.
+              Legal escalations and workspace invitations.
             </p>
           </div>
+
+          {escalationAlerts.length > 0 ? (
+            <ul className="max-h-60 overflow-y-auto border-b border-recoverpe-grey-light">
+              {escalationAlerts.map((alert) => (
+                <li
+                  key={alert.ledger_id}
+                  className="border-b border-recoverpe-grey-light last:border-b-0"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      escalations.openAlert(alert);
+                    }}
+                    className="focus-ring flex w-full items-start gap-3 border-l-2 border-l-recoverpe-error px-4 py-3 text-left transition-colors hover:bg-recoverpe-grey-light/60"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0 text-recoverpe-error"
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-recoverpe-error">
+                          High priority
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block text-sm font-semibold text-recoverpe-black">
+                        Legal Escalation Ready for {alert.contact_name}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-recoverpe-grey-medium">
+                        Final warning sent. Tap to preview the ₹999 legal notice.
+                      </span>
+                    </span>
+                    <ChevronRight
+                      className="mt-0.5 h-4 w-4 shrink-0 text-recoverpe-grey-medium"
+                      aria-hidden
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {error ? (
             <p className="px-4 py-3 text-sm text-recoverpe-error">{error}</p>
           ) : null}
 
-          {isLoading ? (
+          {isLoading && escalationAlerts.length === 0 ? (
             <p className="px-4 py-6 text-sm text-recoverpe-grey-medium">Loading...</p>
-          ) : invitations.length === 0 ? (
+          ) : hasNothing ? (
             <EmptyState
-              title="No pending invites"
-              description="When a business invites you, it will appear here for review."
+              title="You're all caught up"
+              description="Legal escalations and workspace invites will appear here."
             />
-          ) : (
+          ) : invitations.length === 0 ? null : (
             <ul className="max-h-80 overflow-y-auto">
               {invitations.map((invitation) => {
                 const isResponding = respondingId === invitation.id;
@@ -212,6 +265,8 @@ export function WorkspaceInvitationsInbox({
           )}
         </div>
       ) : null}
+
+      {escalations.modals}
     </div>
   );
 }
