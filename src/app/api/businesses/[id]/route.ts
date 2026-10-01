@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { logAndRespondDatabaseError } from "@/lib/api-error-response";
 import { BUSINESS_SELECT } from "@/lib/business-select";
 import { validateBusinessSettingsUpdate } from "@/lib/business-settings-validation";
@@ -14,7 +14,7 @@ interface RouteContext {
   params: { id: string };
 }
 
-export const PATCH = withWorkspaceAuth<RouteContext>(
+export const PATCH = withWorkspaceMutation<RouteContext>(
   async (request, auth, context) => {
     try {
       const businessId = context.params.id?.trim();
@@ -33,15 +33,6 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         smtp_settings?: Business["smtp_settings"];
         autopilot_schedule?: number[];
       };
-
-      console.log("[PATCH /api/businesses] Incoming payload:", JSON.stringify(body));
-      console.log("[PATCH /api/businesses] Auth context:", {
-        actorUserId: auth.actorUserId,
-        workspaceUserId: auth.workspaceUserId,
-        businessId,
-        role: auth.role,
-        isOwner: auth.isOwner,
-      });
 
       const adminSupabase = createAdminSupabaseClient();
 
@@ -97,11 +88,6 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
         }
       }
 
-      console.log(
-        "[PATCH /api/businesses] Sanitized update payload:",
-        JSON.stringify(updatePayload)
-      );
-
       const { data, error } = await adminSupabase
         .from("businesses")
         .update(updatePayload)
@@ -126,10 +112,10 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
       return logAndRespondDatabaseError("businesses PATCH", error);
     }
   },
-  { requiredPermission: "edit_settings" }
+  { permission: "edit_settings", businessIdParam: "id" }
 );
 
-export const DELETE = withWorkspaceAuth<RouteContext>(
+export const DELETE = withWorkspaceMutation<RouteContext>(
   async (request, auth, context) => {
     try {
       const businessId = context.params.id?.trim();
@@ -172,5 +158,5 @@ export const DELETE = withWorkspaceAuth<RouteContext>(
       return logAndRespondDatabaseError("businesses DELETE", error);
     }
   },
-  { ownerOnly: true }
+  { ownerOnly: true, businessIdParam: "id" }
 );

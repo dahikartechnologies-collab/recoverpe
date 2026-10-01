@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import { createWalletRechargeOrder } from "@/lib/wallet-recharge";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { validateWalletRechargeBaseAmount } from "@/lib/vapi-pricing";
 
-export const POST = withWorkspaceAuth(async (request, auth) => {
+export const POST = withWorkspaceMutation(async (request, auth) => {
   try {
     const body = (await request.json()) as { baseAmount?: number };
     const baseAmount = Number(body.baseAmount);
@@ -35,9 +36,19 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
         : "Wallet recharge order created successfully.",
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to create wallet recharge order.";
+    console.error(
+      "[checkout/create-wallet-recharge] Failed:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: getSafeApiErrorMessage(
+          error,
+          "Failed to create wallet recharge order."
+        ),
+      },
+      { status: 500 }
+    );
   }
 }, { ownerOnly: true });

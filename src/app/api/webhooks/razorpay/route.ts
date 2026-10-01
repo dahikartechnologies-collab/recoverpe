@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import {
   extractRazorpayOrderIdFromWebhook,
   fulfillRazorpayOrder,
@@ -52,12 +53,20 @@ export async function POST(request: Request) {
 
         return NextResponse.json(result.body, { status: result.httpStatus });
       } catch (walletError) {
-        const message =
-          walletError instanceof Error
-            ? walletError.message
-            : "Wallet auto-reconciliation failed.";
+        console.error(
+          "[razorpay-webhook] Wallet auto-reconciliation failed:",
+          walletError instanceof Error ? walletError.message : walletError
+        );
 
-        return NextResponse.json({ error: message }, { status: 500 });
+        return NextResponse.json(
+          {
+            error: getSafeApiErrorMessage(
+              walletError,
+              "Wallet auto-reconciliation failed."
+            ),
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -71,6 +80,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         received: true,
         subscription_handled: result.handled,
+        already_processed: result.alreadyProcessed === true,
         user_id: result.userId ?? null,
         purchase_type: result.purchaseType ?? null,
         event: payload.event,
@@ -163,9 +173,19 @@ export async function POST(request: Request) {
       user_id: result.userId,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Razorpay webhook processing failed.";
+    console.error(
+      "[razorpay-webhook] Processing failed:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: getSafeApiErrorMessage(
+          error,
+          "Razorpay webhook processing failed."
+        ),
+      },
+      { status: 500 }
+    );
   }
 }

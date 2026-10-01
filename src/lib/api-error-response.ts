@@ -8,7 +8,7 @@ export function logStructuredError(scope: string, error: unknown): void {
     console.error(`[${scope}]`, {
       name: error.name,
       message: error.message,
-      stack: error.stack,
+      ...(process.env.NODE_ENV === "production" ? {} : { stack: error.stack }),
     });
     return;
   }
@@ -39,6 +39,9 @@ export function getSafeApiErrorStatus(error: unknown): number {
   return 500;
 }
 
+const SCHEMA_LEAK_PATTERN =
+  /\b(relation|column|permission denied|duplicate key|violates|PGRST|schema cache|42P01|22P02|42703)\b/i;
+
 export function getSafeApiErrorMessage(
   error: unknown,
   fallback = DATABASE_ERROR_MESSAGE
@@ -49,5 +52,9 @@ export function getSafeApiErrorMessage(
     return message;
   }
 
-  return fallback;
+  if (process.env.NODE_ENV === "production" || SCHEMA_LEAK_PATTERN.test(message)) {
+    return fallback;
+  }
+
+  return message.trim() || fallback;
 }

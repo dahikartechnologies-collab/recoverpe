@@ -52,7 +52,12 @@ export const EARNINGS_STATUSES = ["accrued", "approved", "paid"] as const;
 /** Merchant paid or subscription live — counts as a closed sale. */
 export const AGENT_CLOSED_SALE_STATUSES = ["activated", "cash_held"] as const;
 
-export const AGENT_EXCLUDED_REFERRAL_STATUSES = ["cancelled", "clawback"] as const;
+/** Pipeline drafts are quotes, not committed discount usage. */
+export const AGENT_EXCLUDED_REFERRAL_STATUSES = [
+  "cancelled",
+  "clawback",
+  "draft",
+] as const;
 
 export function isClosedAgentSale(status: string): boolean {
   return (AGENT_CLOSED_SALE_STATUSES as readonly string[]).includes(status);

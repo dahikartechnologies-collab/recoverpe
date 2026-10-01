@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
+import { resolveWorkspaceAuth, withWorkspaceMutation } from "@/lib/auth-gateway";
 import { resolveDataAccessScope } from "@/lib/workspace-data-scope";
-import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
-import { assertWorkspacePermission, resolveWorkspaceAccess } from "@/lib/workspace-rbac";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import {
   computeDashboardMetrics,
   fetchLedgersForWorkspace,
@@ -137,49 +136,20 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load ledgers.";
+    console.error(
+      "[ledgers] Failed to load ledgers:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: getSafeApiErrorMessage(error, "Failed to load ledgers.") },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: Request) {
+export const POST = withWorkspaceMutation(async (request, auth) => {
   try {
-    const contextResult = await resolveEffectiveUserContext(request);
-
-    if ("error" in contextResult) {
-      return contextResult.error;
-    }
-
-    const ghostBlocked = ghostModeWriteBlockedResponse(contextResult);
-    if (ghostBlocked) {
-      return ghostBlocked;
-    }
-
-    const workspaceAccess = await resolveWorkspaceAccess(
-      contextResult.actorUserId,
-      contextResult.effectiveUserId
-    );
-
-    try {
-      assertWorkspacePermission(
-        workspaceAccess,
-        "edit_ledgers",
-        "Forbidden. Missing required permission: edit_ledgers."
-      );
-    } catch (permissionError) {
-      return NextResponse.json(
-        {
-          error:
-            permissionError instanceof Error
-              ? permissionError.message
-              : "Forbidden.",
-        },
-        { status: 403 }
-      );
-    }
-
     const body = (await request.json()) as CreateLedgerPayload;
 
     if (!body.contact_name?.trim()) {
@@ -213,7 +183,7 @@ export async function POST(request: Request) {
     const { data: userRow, error: userError } = await supabase
       .from("users")
       .select("default_upi_vpa, email")
-      .eq("id", contextResult.effectiveUserId)
+      .eq("id", auth.effectiveUserId)
       .single();
 
     if (userError || !userRow) {
@@ -222,7 +192,7 @@ export async function POST(request: Request) {
 
     const collectionReady = await workspaceHasCollectionDetails(
       supabase,
-      contextResult.effectiveUserId,
+      auth.effectiveUserId,
       body.workspace_mode === "business" ? body.business_id : null
     );
 
@@ -266,7 +236,7 @@ export async function POST(request: Request) {
     // first receivable has crossed from signup into real usage.
     const priorLedgerCount = await countUserLedgers(
       supabase,
-      contextResult.effectiveUserId
+      auth.effectiveUserId
     );
     const isFirstLedger = priorLedgerCount === 0;
 
@@ -278,7 +248,7 @@ export async function POST(request: Request) {
         .from("businesses")
         .select(BUSINESS_INVOICE_POLICY_SELECT)
         .eq("id", body.business_id)
-        .eq("user_id", contextResult.effectiveUserId)
+        .eq("user_id", auth.effectiveUserId)
         .single();
 
       if (businessError || !businessData) {
@@ -310,7 +280,7 @@ export async function POST(request: Request) {
     }
 
     const { contact, isNew: isNewContact } = await upsertContact(
-      contextResult.effectiveUserId,
+      auth.effectiveUserId,
       body.contact_name,
       body.phone_number,
       body.client_gstin ?? null,
@@ -319,7 +289,7 @@ export async function POST(request: Request) {
 
     if (isNewContact) {
       scheduleContactVirtualAccountProvisioning({
-        userId: contextResult.effectiveUserId,
+        userId: auth.effectiveUserId,
         contactId: contact.id,
         contactName: contact.name,
       });
@@ -333,7 +303,7 @@ export async function POST(request: Request) {
     const { data: ledger, error: ledgerError } = await supabase
       .from("ledgers")
       .insert({
-        user_id: contextResult.effectiveUserId,
+        user_id: auth.effectiveUserId,
         contact_id: contact.id,
         business_id: business?.id ?? null,
         invoice_number: invoiceNumber,
@@ -353,7 +323,12 @@ export async function POST(request: Request) {
 
     if (ledgerError || !ledger) {
       return NextResponse.json(
-        { error: ledgerError?.message || "Failed to create ledger entry." },
+        {
+          error: getSafeApiErrorMessage(
+            ledgerError,
+            "Failed to create ledger entry."
+          ),
+        },
         { status: 500 }
       );
     }
@@ -364,7 +339,7 @@ export async function POST(request: Request) {
       const { data: walletApplied, error: walletError } = await supabase.rpc(
         "debit_contact_wallet",
         {
-          p_user_id: contextResult.effectiveUserId,
+          p_user_id: auth.effectiveUserId,
           p_contact_id: contact.id,
           p_amount: body.amount,
         }
@@ -374,7 +349,12 @@ export async function POST(request: Request) {
         await supabase.from("ledgers").delete().eq("id", ledger.id);
 
         return NextResponse.json(
-          { error: walletError.message || "Failed to apply wallet balance." },
+          {
+            error: getSafeApiErrorMessage(
+              walletError,
+              "Failed to apply wallet balance."
+            ),
+          },
           { status: 500 }
         );
       }
@@ -390,12 +370,12 @@ export async function POST(request: Request) {
             amount: appliedAmount,
             payment_method: "system_adjustment",
             reference_id: "khata_wallet",
-            logged_by_user_id: contextResult.actorUserId,
+            logged_by_user_id: auth.actorUserId,
           });
 
         if (walletPaymentError) {
           await supabase.rpc("credit_contact_wallet", {
-            p_user_id: contextResult.effectiveUserId,
+            p_user_id: auth.effectiveUserId,
             p_contact_id: contact.id,
             p_amount: appliedAmount,
           });
@@ -403,9 +383,10 @@ export async function POST(request: Request) {
 
           return NextResponse.json(
             {
-              error:
-                walletPaymentError.message ||
-                "Failed to record wallet payment against invoice.",
+              error: getSafeApiErrorMessage(
+                walletPaymentError,
+                "Failed to record wallet payment against invoice."
+              ),
             },
             { status: 500 }
           );
@@ -423,9 +404,10 @@ export async function POST(request: Request) {
         if (walletLedgerError || !walletSettledLedger) {
           return NextResponse.json(
             {
-              error:
-                walletLedgerError?.message ||
-                "Wallet applied but ledger refresh failed.",
+              error: getSafeApiErrorMessage(
+                walletLedgerError,
+                "Wallet applied but ledger refresh failed."
+              ),
             },
             { status: 500 }
           );
@@ -442,7 +424,7 @@ export async function POST(request: Request) {
 
     try {
       await fireUdhaarReceiptMessage({
-        userId: contextResult.effectiveUserId,
+        userId: auth.effectiveUserId,
         contactId: contact.id,
         contactName: contact.name,
         phone: contact.phone_number,
@@ -494,7 +476,12 @@ export async function POST(request: Request) {
 
       if (updateLedgerError || !updatedLedger) {
         return NextResponse.json(
-          { error: updateLedgerError?.message || "Failed to attach invoice PDF." },
+          {
+            error: getSafeApiErrorMessage(
+              updateLedgerError,
+              "Failed to attach invoice PDF."
+            ),
+          },
           { status: 500 }
         );
       }
@@ -510,7 +497,7 @@ export async function POST(request: Request) {
         await incrementInvoiceUsageSafely(supabase, business.id);
       }
 
-      revalidateDashboardData(contextResult.effectiveUserId);
+      revalidateDashboardData(auth.effectiveUserId);
       refreshContactRiskScoreAsync(supabase, contact.id);
       return NextResponse.json(
         { ledger: updatedLedger as Ledger, is_first_ledger: isFirstLedger },
@@ -518,16 +505,21 @@ export async function POST(request: Request) {
       );
     }
 
-    revalidateDashboardData(contextResult.effectiveUserId);
+    revalidateDashboardData(auth.effectiveUserId);
     refreshContactRiskScoreAsync(supabase, contact.id);
     return NextResponse.json(
       { ledger: finalLedger as Ledger, is_first_ledger: isFirstLedger },
       { status: 201 }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to create ledger entry.";
+    console.error(
+      "[ledgers] Failed to create ledger entry:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: getSafeApiErrorMessage(error, "Failed to create ledger entry.") },
+      { status: 500 }
+    );
   }
-}
+}, { permission: "edit_ledgers" });

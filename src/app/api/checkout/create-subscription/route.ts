@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   isSubscriptionPurchaseType,
   resolveSubscriptionPurchaseType,
@@ -73,7 +73,7 @@ function readCheckoutPlanId(
   return null;
 }
 
-export const POST = withWorkspaceAuth(async (request, auth) => {
+export const POST = withWorkspaceMutation(async (request, auth) => {
   try {
     const body = (await request.json()) as Partial<CreateSubscriptionCheckoutPayload>;
 
@@ -120,43 +120,30 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
     const hasKeyId = Boolean(process.env.RAZORPAY_KEY_ID?.trim());
     const hasSecret = Boolean(process.env.RAZORPAY_KEY_SECRET?.trim());
 
-    console.log("[CHECKOUT DEBUG]", {
-      incomingTier: tier,
-      incomingInterval: interval,
-      resolvedPlanId: planId,
-      hasKeyId,
-      hasSecret,
-      availableEnvKeys: Object.keys(process.env).filter((key) =>
-        key.startsWith("RAZORPAY_PLAN_")
-      ),
-    });
-
     if (!planId) {
+      console.error("[checkout/create-subscription] Missing Razorpay plan mapping", {
+        tier,
+        interval: normalizedInterval,
+      });
+
       return NextResponse.json(
         {
           error:
             "Razorpay subscription plans are not configured for production checkout.",
-          debug: {
-            tier,
-            interval: normalizedInterval,
-            expectedEnvVar: `RAZORPAY_PLAN_${tier.toUpperCase()}_${normalizedInterval.toUpperCase()}`,
-          },
         },
         { status: 400 }
       );
     }
 
     if (!hasKeyId || !hasSecret) {
+      console.error(
+        "[checkout/create-subscription] Razorpay API keys are not configured on this deployment."
+      );
+
       return NextResponse.json(
         {
           error:
             "Razorpay API keys are not available to this deployment. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the Vercel Production environment, then redeploy.",
-          debug: {
-            tier,
-            interval: normalizedInterval,
-            hasKeyId,
-            hasSecret,
-          },
         },
         { status: 400 }
       );
@@ -186,10 +173,9 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
         : "Razorpay subscription created successfully.",
     });
   } catch (error) {
-    console.error("[RAZORPAY SDK ERROR]:", JSON.stringify(error, null, 2));
     console.error(
       "[checkout/create-subscription] Failed to create subscription checkout:",
-      error instanceof Error ? error.message : error
+      extractRazorpaySdkError(error)
     );
 
     return NextResponse.json(

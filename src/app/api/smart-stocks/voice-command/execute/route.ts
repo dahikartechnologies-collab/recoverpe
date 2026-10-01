@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   authorizeSmartStocksBusiness,
@@ -48,7 +49,11 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     .maybeSingle();
 
   if (commandError) {
-    return smartStocksJsonError(SCOPE, commandError.message, 500);
+    return smartStocksJsonError(
+      SCOPE,
+      getSafeApiErrorMessage(commandError, "Failed to load voice command."),
+      500
+    );
   }
 
   if (!command) {
@@ -117,9 +122,13 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
         amount: totalAmount,
       });
     } catch (error) {
+      console.error(
+        `[smart-stocks:${SCOPE}] Khata create failed:`,
+        error instanceof Error ? error.message : error
+      );
       return smartStocksJsonError(
         SCOPE,
-        error instanceof Error ? error.message : "Failed to create the khata entry.",
+        "Failed to create the khata entry.",
         500
       );
     }

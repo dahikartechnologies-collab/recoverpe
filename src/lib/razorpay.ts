@@ -5,6 +5,7 @@ import {
   logCryptoVerificationFailure,
 } from "@/lib/crypto-env";
 import { emitGa4PurchaseEvent } from "@/lib/ga4-measurement";
+import { shouldSkipDuplicateSubscriptionFulfillment } from "@/lib/razorpay-subscription-idempotency";
 import {
   activateBusinessAddon,
 } from "@/lib/business-addons";
@@ -65,6 +66,8 @@ const SUBSCRIPTION_INACTIVE_EVENTS = new Set([
   "subscription.completed",
   "subscription.halted",
 ]);
+
+export { shouldSkipDuplicateSubscriptionFulfillment } from "@/lib/razorpay-subscription-idempotency";
 
 export function isRazorpayConfigured(): boolean {
   return Boolean(
@@ -774,7 +777,12 @@ export async function fulfillRazorpaySubscriptionWebhook(
   supabase: SupabaseClient,
   event: string,
   payload: unknown
-): Promise<{ handled: boolean; userId?: string; purchaseType?: PurchaseType }> {
+): Promise<{
+  handled: boolean;
+  alreadyProcessed?: boolean;
+  userId?: string;
+  purchaseType?: PurchaseType;
+}> {
   const subscriptionEntity = extractSubscriptionEntityFromWebhook(payload);
 
   if (!subscriptionEntity?.id) {
@@ -783,7 +791,7 @@ export async function fulfillRazorpaySubscriptionWebhook(
 
   const { data: subscriptionRow, error: subscriptionError } = await supabase
     .from("razorpay_subscriptions")
-    .select("id, user_id, purchase_type, plan_interval, status")
+    .select("id, user_id, purchase_type, plan_interval, status, current_period_end")
     .eq("razorpay_subscription_id", subscriptionEntity.id)
     .maybeSingle();
 
@@ -803,6 +811,22 @@ export async function fulfillRazorpaySubscriptionWebhook(
     : addIntervalToDate(new Date(), planInterval);
 
   if (SUBSCRIPTION_ACTIVE_EVENTS.has(event)) {
+    if (
+      shouldSkipDuplicateSubscriptionFulfillment({
+        event,
+        storedStatus: subscriptionRow.status as string | null,
+        storedPeriodEnd: subscriptionRow.current_period_end as string | null,
+        incomingPeriodEnd: periodEnd,
+      })
+    ) {
+      return {
+        handled: true,
+        alreadyProcessed: true,
+        userId: subscriptionRow.user_id,
+        purchaseType,
+      };
+    }
+
     await activateBusinessSubscription(
       supabase,
       subscriptionRow.user_id,

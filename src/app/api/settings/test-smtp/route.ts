@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { sendBusinessEmail } from "@/lib/email/nodemailer";
 import { buildSmtpTestEmail } from "@/lib/email/templates";
 import {
@@ -10,7 +10,7 @@ import {
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { BusinessSmtpSettings } from "@/types";
 
-export const POST = withWorkspaceAuth(async (request, auth) => {
+export const POST = withWorkspaceMutation(async (request, auth) => {
   const body = (await request.json()) as {
     business_id?: string;
     recipient_email?: string;
@@ -79,9 +79,14 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       message: result.message,
     });
   } catch (sendError) {
-    const message =
-      sendError instanceof Error ? sendError.message : "SMTP test failed.";
+    console.error(
+      "[settings/test-smtp] SMTP test failed:",
+      sendError instanceof Error ? sendError.message : sendError
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "SMTP test failed. Check host, port, and credentials." },
+      { status: 500 }
+    );
   }
-}, { requiredPermission: "edit_settings" });
+}, { permission: "edit_settings" });

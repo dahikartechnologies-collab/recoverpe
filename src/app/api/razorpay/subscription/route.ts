@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   isSubscriptionPurchaseType,
   SubscriptionPurchaseType,
@@ -7,7 +7,7 @@ import {
 import { createRazorpaySubscriptionRecord } from "@/lib/razorpay";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
-export const POST = withWorkspaceAuth(async (request, auth) => {
+export const POST = withWorkspaceMutation(async (request, auth) => {
     const body = (await request.json()) as {
       purchase_type?: SubscriptionPurchaseType;
     };

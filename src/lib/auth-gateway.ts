@@ -4,6 +4,7 @@ import {
   IMPERSONATE_USER_HEADER,
   requireAuthenticatedUser,
 } from "@/lib/api-auth";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { parseCustomPermissions } from "@/lib/workspace-permissions";
 import { getCookieValue, WORKSPACE_USER_COOKIE } from "@/lib/workspace-context";
@@ -173,8 +174,7 @@ export function withWorkspaceAuth<Context extends { params?: Record<string, stri
 
       return await handler(request, authResult, context);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Request failed.";
+      const message = getSafeApiErrorMessage(error, "Request failed.");
 
       return NextResponse.json({ error: message }, { status: 500 });
     }
@@ -341,12 +341,28 @@ export function withWorkspaceMutation<Context extends RouteParamsContext>(
 
       // Resolve and verify tenant membership. Authorization is applied below so
       // that ownerOnly cannot be satisfied by a spoofed business cookie.
+      const requestedWorkspaceUserId = getCookieValue(
+        request.headers.get("cookie"),
+        WORKSPACE_USER_COOKIE
+      );
       const authResult = await resolveWorkspaceAuth(request, {
         businessId: routeBusinessId,
       });
 
       if ("error" in authResult) {
         return authResult.error;
+      }
+
+      // Reads may fall back to the actor's own workspace when a cookie is stale.
+      // Mutations must fail closed: never silently write to a different tenant.
+      if (
+        requestedWorkspaceUserId &&
+        requestedWorkspaceUserId !== authResult.workspaceUserId
+      ) {
+        return forbidden(
+          "Forbidden. You are not a member of the requested workspace.",
+          "WORKSPACE_ACCESS_DENIED"
+        );
       }
 
       if (authResult.role === "viewer") {
@@ -422,9 +438,12 @@ export function withWorkspaceMutation<Context extends RouteParamsContext>(
 
       return await handler(request, mutationContext, context);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed.";
+      const message = getSafeApiErrorMessage(error, "Request failed.");
 
-      console.error("[auth-gateway] Mutation handler failed:", message);
+      console.error(
+        "[auth-gateway] Mutation handler failed:",
+        error instanceof Error ? error.message : message
+      );
 
       return NextResponse.json({ error: message }, { status: 500 });
     }

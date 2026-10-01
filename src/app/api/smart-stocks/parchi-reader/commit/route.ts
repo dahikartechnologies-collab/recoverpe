@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import {
   ParchiCommitResponse,
   parseParchiCommitPayload,
@@ -40,7 +41,11 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     .maybeSingle();
 
   if (captureError) {
-    return smartStocksJsonError(SCOPE, captureError.message, 500);
+    return smartStocksJsonError(
+      SCOPE,
+      getSafeApiErrorMessage(captureError, "Failed to load parchi."),
+      500
+    );
   }
 
   if (!capture) {
@@ -104,7 +109,10 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
   if (voucherError || !voucher) {
     return smartStocksJsonError(
       SCOPE,
-      voucherError?.message || "Voucher posted but could not be reloaded.",
+      getSafeApiErrorMessage(
+        voucherError,
+        "Voucher posted but could not be reloaded."
+      ),
       500
     );
   }

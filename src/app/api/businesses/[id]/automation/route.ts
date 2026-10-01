@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceAuth, withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   AutomationSettingsResponse,
   parseAutomationSettings,
@@ -59,7 +59,7 @@ export const GET = withWorkspaceAuth<RouteContext>(
     if (error) {
       return isMissingAutomationColumn(error)
         ? migrationRequired()
-        : jsonError(error.message || "Failed to load automation settings.", 500);
+        : jsonError("Failed to load automation settings.", 500);
     }
 
     if (!data) {
@@ -76,7 +76,7 @@ export const GET = withWorkspaceAuth<RouteContext>(
   { requiredPermission: "edit_settings" }
 );
 
-export const PATCH = withWorkspaceAuth<RouteContext>(
+export const PATCH = withWorkspaceMutation<RouteContext>(
   async (request, auth, context) => {
     const businessId = context.params.id?.trim() ?? "";
 
@@ -110,7 +110,7 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
     if (error) {
       return isMissingAutomationColumn(error)
         ? migrationRequired()
-        : jsonError(error.message || "Failed to load automation settings.", 500);
+        : jsonError("Failed to load automation settings.", 500);
     }
 
     if (!data) {
@@ -131,17 +131,8 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
       .single();
 
     if (updateError || !updated) {
-      return jsonError(
-        updateError?.message || "Failed to save automation settings.",
-        500
-      );
+      return jsonError("Failed to save automation settings.", 500);
     }
-
-    console.log(`[${SCOPE}] Updated`, {
-      business_id: businessId,
-      actor_user_id: auth.actorUserId,
-      changes: parsed.patch,
-    });
 
     const response: AutomationSettingsResponse = {
       business_id: businessId,
@@ -150,5 +141,5 @@ export const PATCH = withWorkspaceAuth<RouteContext>(
 
     return NextResponse.json(response);
   },
-  { requiredPermission: "edit_settings" }
+  { permission: "edit_settings", businessIdParam: "id" }
 );

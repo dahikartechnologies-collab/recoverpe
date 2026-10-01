@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ghostModeWriteBlockedResponse, resolveEffectiveUserContext } from "@/lib/api-auth";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import { refreshContactRiskScoreAsync } from "@/lib/contact-risk-score";
 import { revalidateDashboardData } from "@/lib/dashboard-cache";
 import { fetchLedgerById } from "@/lib/ledger-queries";
@@ -68,7 +69,9 @@ async function logWalletAdvance(
 
   if (contactError) {
     return NextResponse.json(
-      { error: contactError.message || "Failed to verify contact." },
+      {
+        error: getSafeApiErrorMessage(contactError, "Failed to verify contact."),
+      },
       { status: 500 }
     );
   }
@@ -88,7 +91,9 @@ async function logWalletAdvance(
 
   if (walletError) {
     return NextResponse.json(
-      { error: walletError.message || "Failed to credit wallet." },
+      {
+        error: getSafeApiErrorMessage(walletError, "Failed to credit wallet."),
+      },
       { status: 500 }
     );
   }
@@ -111,11 +116,25 @@ async function logWalletAdvance(
     .single();
 
   if (transactionError || !transaction) {
+    const { error: rollbackError } = await supabase.rpc("debit_contact_wallet", {
+      p_user_id: effectiveUserId,
+      p_contact_id: contact.id,
+      p_amount: body.amount,
+    });
+
+    if (rollbackError) {
+      console.error(
+        "[transactions] Wallet credit rollback failed after transaction insert error:",
+        rollbackError.message
+      );
+    }
+
     return NextResponse.json(
       {
-        error:
-          transactionError?.message ||
-          "Wallet credited but failed to record the advance transaction.",
+        error: getSafeApiErrorMessage(
+          transactionError,
+          "Failed to record the wallet advance. The credit was rolled back."
+        ),
       },
       { status: 500 }
     );
@@ -263,7 +282,9 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       return NextResponse.json(
-        { error: error?.message || "Failed to log payment." },
+        {
+          error: getSafeApiErrorMessage(error, "Failed to log payment."),
+        },
         { status: 500 }
       );
     }
@@ -278,7 +299,12 @@ export async function POST(request: Request) {
 
     if (ledgerError || !updatedLedger) {
       return NextResponse.json(
-        { error: ledgerError?.message || "Payment logged but ledger refresh failed." },
+        {
+          error: getSafeApiErrorMessage(
+            ledgerError,
+            "Payment logged but ledger refresh failed."
+          ),
+        },
         { status: 500 }
       );
     }
@@ -352,9 +378,14 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to log payment.";
+    console.error(
+      "[transactions] Failed to log payment:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: getSafeApiErrorMessage(error, "Failed to log payment.") },
+      { status: 500 }
+    );
   }
 }

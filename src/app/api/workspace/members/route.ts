@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveEffectiveUserContext } from "@/lib/api-auth";
 import { writeAuditLog } from "@/lib/audit-logs";
-import { withWorkspaceAuth } from "@/lib/auth-gateway";
+import { withWorkspaceMutation } from "@/lib/auth-gateway";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { workspaceHasTeamManagementEntitlement } from "@/lib/workspace-team-entitlement";
 import { resolveWorkspaceAccess } from "@/lib/workspace-rbac";
@@ -89,14 +89,19 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ members });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load team members.";
+    console.error(
+      "[workspace/members] Failed to load team members:",
+      error instanceof Error ? error.message : error
+    );
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load team members." },
+      { status: 500 }
+    );
   }
 }
 
-export const POST = withWorkspaceAuth(async (request, auth) => {
+export const POST = withWorkspaceMutation(async (request, auth) => {
     const supabase = createAdminSupabaseClient();
     const hasTeamEntitlement = await workspaceHasTeamManagementEntitlement(
       supabase,
@@ -303,4 +308,4 @@ export const POST = withWorkspaceAuth(async (request, auth) => {
       },
       { status: 201 }
     );
-}, { ownerOnly: true });
+}, { permission: "manage_team" });

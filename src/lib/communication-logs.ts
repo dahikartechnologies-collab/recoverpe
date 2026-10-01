@@ -41,6 +41,14 @@ const STATUS_RANK: Record<CommunicationStatus, number> = {
   failed: 4,
 };
 
+export function shouldApplyWhatsAppStatus(
+  currentStatus: string | null | undefined,
+  nextStatus: CommunicationStatus
+): boolean {
+  const currentRank = STATUS_RANK[currentStatus as CommunicationStatus] ?? 0;
+  return STATUS_RANK[nextStatus] > currentRank;
+}
+
 const META_STATUS_MAP: Record<string, CommunicationStatus> = {
   sent: "sent",
   delivered: "delivered",
@@ -421,9 +429,7 @@ export async function applyWhatsAppDeliveryStatuses(
       nextStatus === "failed" ? describeMetaFailure(entry.errors) : null;
 
     for (const existing of rows ?? []) {
-      const currentRank = STATUS_RANK[existing.status as CommunicationStatus] ?? 0;
-
-      if (STATUS_RANK[nextStatus] <= currentRank) {
+      if (!shouldApplyWhatsAppStatus(existing.status as string, nextStatus)) {
         continue;
       }
 

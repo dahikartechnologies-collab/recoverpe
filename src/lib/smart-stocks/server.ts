@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { getSafeApiErrorMessage } from "@/lib/api-error-response";
 import { WorkspaceAuthContext } from "@/lib/auth-gateway";
 import { fetchBusinessAutomationSettings } from "@/lib/automation-settings-server";
 import {
@@ -78,7 +79,7 @@ export async function authorizeSmartStocksBusiness(
     .maybeSingle();
 
   if (error) {
-    return { error: smartStocksJsonError(scope, error.message, 500) };
+    return { error: smartStocksJsonError(scope, getSafeApiErrorMessage(error, "Failed to load business."), 500) };
   }
 
   if (!data) {
@@ -146,7 +147,11 @@ export function mapSmartStocksRpcError(error: {
     };
   }
 
-  return { status: 500, code: "DATABASE_ERROR", message: raw || "Database error." };
+  return {
+    status: 500,
+    code: "DATABASE_ERROR",
+    message: getSafeApiErrorMessage(error, "Database error."),
+  };
 }
 
 function addDaysToDateString(date: string, days: number): string {
@@ -259,7 +264,7 @@ export async function createVoiceSaleLedger(
     .single();
 
   if (error || !ledger) {
-    throw new Error(error?.message || "Failed to create the khata entry.");
+    throw new Error("Failed to create the khata entry.");
   }
 
   return {

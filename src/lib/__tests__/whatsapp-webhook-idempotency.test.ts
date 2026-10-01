@@ -26,6 +26,7 @@ import {
   isStatusOnlyWebhook,
   isSupportedInboundMessageType,
 } from "@/lib/whatsapp/webhook-inbound";
+import { shouldApplyWhatsAppStatus } from "@/lib/communication-logs";
 
 describe("WhatsApp webhook payload filters", () => {
   it("treats delivery receipts without messages as status-only", () => {
@@ -85,6 +86,15 @@ describe("WhatsApp webhook payload filters", () => {
         image: {},
       })
     ).toBe(false);
+  });
+});
+
+describe("WhatsApp delivery receipt ranking", () => {
+  it("does not overwrite a read receipt with a delayed delivered payload", () => {
+    expect(shouldApplyWhatsAppStatus("read", "delivered")).toBe(false);
+    expect(shouldApplyWhatsAppStatus("delivered", "read")).toBe(true);
+    expect(shouldApplyWhatsAppStatus("sent", "delivered")).toBe(true);
+    expect(shouldApplyWhatsAppStatus("failed", "delivered")).toBe(false);
   });
 });
 
