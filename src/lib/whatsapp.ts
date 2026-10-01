@@ -1,5 +1,12 @@
 import { getPayPageUrl } from "@/lib/app-url";
+import {
+  beginOutboundWhatsAppLog,
+  completeOutboundWhatsAppLog,
+  OutboundWhatsAppLogContext,
+  OutboundWhatsAppLogHandle,
+} from "@/lib/communication-logs";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
+import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { resilientFetch } from "@/lib/resilient-fetch";
 import { getTraiCurfewMessage, isTraiCurfewActive } from "@/lib/trai-curfew";
 import {
@@ -62,6 +69,58 @@ export interface WhatsAppTextMetaPayload {
 
 export interface WhatsAppSendOptions {
   skipCurfewCheck?: boolean;
+  /** Records the exact text in the merchant-visible outbox (communication_logs). */
+  log?: OutboundWhatsAppLogContext;
+}
+
+export type { OutboundWhatsAppLogContext };
+
+const loggedFailures = new WeakSet<object>();
+
+/** True when the send already wrote a `failed` outbox row for this error. */
+export function isOutboundFailureLogged(error: unknown): boolean {
+  return typeof error === "object" && error !== null && loggedFailures.has(error);
+}
+
+async function openOutbox(
+  context: OutboundWhatsAppLogContext | undefined,
+  recipientPhone: string,
+  messageBody: string
+): Promise<OutboundWhatsAppLogHandle | null> {
+  if (!context) {
+    return null;
+  }
+
+  try {
+    return await beginOutboundWhatsAppLog(createAdminSupabaseClient(), context, {
+      recipientPhone,
+      messageBody,
+    });
+  } catch (error) {
+    console.error(
+      "[WHATSAPP OUTBOX] Could not open log entry:",
+      error instanceof Error ? error.message : error
+    );
+    return null;
+  }
+}
+
+async function closeOutbox(
+  handle: OutboundWhatsAppLogHandle | null,
+  outcome: Parameters<typeof completeOutboundWhatsAppLog>[2]
+): Promise<void> {
+  if (!handle) {
+    return;
+  }
+
+  try {
+    await completeOutboundWhatsAppLog(createAdminSupabaseClient(), handle, outcome);
+  } catch (error) {
+    console.error(
+      "[WHATSAPP OUTBOX] Could not close log entry:",
+      error instanceof Error ? error.message : error
+    );
+  }
 }
 
 export class TraiCurfewError extends Error {
@@ -369,6 +428,35 @@ export async function sendWhatsAppMessage(
     throw new TraiCurfewError();
   }
 
+  const outbox = await openOutbox(options.log, draft.to, draft.body);
+
+  try {
+    const result = await dispatchWhatsAppDraft(draft);
+    await closeOutbox(outbox, {
+      status: "sent",
+      externalMessageId: result.externalMessageId ?? null,
+      simulated: result.simulated,
+    });
+    return result;
+  } catch (error) {
+    if (outbox) {
+      await closeOutbox(outbox, {
+        status: "failed",
+        failureReason: error instanceof Error ? error.message : "WhatsApp send failed.",
+      });
+
+      if (typeof error === "object" && error !== null) {
+        loggedFailures.add(error);
+      }
+    }
+
+    throw error;
+  }
+}
+
+async function dispatchWhatsAppDraft(
+  draft: WhatsAppMessageDraft
+): Promise<WhatsAppSendResult> {
   const forceReal = process.env.TEST_REAL_WHATSAPP_LOCALLY === "true";
   const isDev = process.env.APP_ENV === "development";
 
@@ -459,9 +547,32 @@ export async function sendWhatsAppMessage(
 
 export async function sendWhatsAppTextMessageDetailed(
   to: string,
-  messageBody: string
+  messageBody: string,
+  options: { log?: OutboundWhatsAppLogContext } = {}
 ): Promise<{ ok: boolean; externalMessageId: string | null }> {
   const cleanPhone = sanitizeMetaWhatsAppRecipient(to);
+  const outbox = await openOutbox(options.log, cleanPhone, messageBody);
+  const result = await dispatchWhatsAppText(cleanPhone, messageBody);
+  const simulated = Boolean(result.externalMessageId?.startsWith("wamid_dev_"));
+
+  await closeOutbox(
+    outbox,
+    result.ok
+      ? {
+          status: "sent",
+          externalMessageId: simulated ? null : result.externalMessageId,
+          simulated,
+        }
+      : { status: "failed", failureReason: "Meta rejected or did not accept the message." }
+  );
+
+  return result;
+}
+
+async function dispatchWhatsAppText(
+  cleanPhone: string,
+  messageBody: string
+): Promise<{ ok: boolean; externalMessageId: string | null }> {
   const forceReal = process.env.TEST_REAL_WHATSAPP_LOCALLY === "true";
   const isDev = process.env.APP_ENV === "development";
 
@@ -530,8 +641,9 @@ export async function sendWhatsAppTextMessageDetailed(
 
 export async function sendWhatsAppTextMessage(
   to: string,
-  messageBody: string
+  messageBody: string,
+  options: { log?: OutboundWhatsAppLogContext } = {}
 ): Promise<boolean> {
-  const result = await sendWhatsAppTextMessageDetailed(to, messageBody);
+  const result = await sendWhatsAppTextMessageDetailed(to, messageBody, options);
   return result.ok;
 }

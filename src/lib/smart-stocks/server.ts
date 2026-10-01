@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { WorkspaceAuthContext } from "@/lib/auth-gateway";
+import { fetchBusinessAutomationSettings } from "@/lib/automation-settings-server";
 import {
   COLLECTION_DETAILS_REQUIRED_MESSAGE,
   workspaceHasCollectionDetails,
@@ -13,6 +14,7 @@ import { countUserLedgers } from "@/lib/razorpay";
 import { FREE_PLAN_LEDGER_LIMIT } from "@/lib/razorpay-products";
 import { shouldApplyFreeInvoiceLimits } from "@/lib/tier-fulfillment";
 import { getTodayDateStringInIst } from "@/lib/timezone";
+import { VoiceReceiptStatus } from "@/lib/smart-stocks/shared";
 import { fireUdhaarReceiptMessage } from "@/lib/whatsapp/udhaar-receipt";
 import { Business } from "@/types";
 
@@ -278,12 +280,30 @@ export function finalizeVoiceSaleLedger(
   refreshContactRiskScoreAsync(supabase, contactId);
 }
 
-export async function sendVoiceSaleReceipt(input: {
-  workspaceUserId: string;
-  business: Business;
-  ledger: VoiceSaleLedgerResult;
-  amount: number;
-}): Promise<boolean> {
+export async function sendVoiceSaleReceipt(
+  supabase: SupabaseClient,
+  input: {
+    workspaceUserId: string;
+    business: Business;
+    ledger: VoiceSaleLedgerResult;
+    amount: number;
+  }
+): Promise<VoiceReceiptStatus> {
+  try {
+    const settings = await fetchBusinessAutomationSettings(supabase, input.business.id);
+
+    if (!settings.smart_stocks_receipts) {
+      return "disabled";
+    }
+  } catch (error) {
+    console.error(
+      "[smart-stocks:voice-execute] Automation settings unreadable; receipt withheld:",
+      error instanceof Error ? error.message : error
+    );
+
+    return "failed";
+  }
+
   try {
     await fireUdhaarReceiptMessage({
       userId: input.workspaceUserId,
@@ -296,13 +316,13 @@ export async function sendVoiceSaleReceipt(input: {
       ledgerId: input.ledger.ledgerId,
     });
 
-    return true;
+    return "sent";
   } catch (error) {
     console.error(
       "[smart-stocks:voice-execute] WhatsApp receipt failed:",
       error instanceof Error ? error.message : error
     );
 
-    return false;
+    return "failed";
   }
 }

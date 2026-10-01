@@ -1,4 +1,6 @@
+import { fetchBusinessAutomationSettings } from "@/lib/automation-settings-server";
 import {
+  deferCadenceRunsForDisabledAutopilot,
   fetchDueCadenceRuns,
   ProcessAutopilotRunResult,
   processAutopilotRun,
@@ -46,6 +48,7 @@ export async function runAutopilotCadenceJob(
   const results: ProcessAutopilotRunResult[] = [];
 
   const businessCache = new Map<string, BusinessRow | null>();
+  const autopilotEnabledCache = new Map<string, boolean>();
 
   const groupedRuns = new Map<
     string,
@@ -114,6 +117,42 @@ export async function runAutopilotCadenceJob(
           : null;
 
         businessCache.set(sampleLedger.business_id, business);
+      }
+
+      let autopilotEnabled = autopilotEnabledCache.get(sampleLedger.business_id);
+
+      if (autopilotEnabled === undefined) {
+        try {
+          const settings = await fetchBusinessAutomationSettings(
+            supabase,
+            sampleLedger.business_id
+          );
+          autopilotEnabled = settings.recovery_autopilot;
+        } catch (settingsError) {
+          // Fail closed: without a readable switch we must not message debtors.
+          for (const dueRun of groupRuns) {
+            results.push({
+              cadence_run_id: dueRun.id,
+              ledger_id: dueRun.ledger_id,
+              step_index: dueRun.step_index,
+              status: "failed",
+              message:
+                settingsError instanceof Error
+                  ? settingsError.message
+                  : "Failed to read automation settings.",
+            });
+          }
+          continue;
+        }
+
+        autopilotEnabledCache.set(sampleLedger.business_id, autopilotEnabled);
+      }
+
+      if (!autopilotEnabled) {
+        results.push(
+          ...(await deferCadenceRunsForDisabledAutopilot(supabase, groupRuns))
+        );
+        continue;
       }
     }
 

@@ -16,6 +16,7 @@ import {
   sumLineTotal,
   VoiceCommandExecuteResponse,
   voiceIntentDirection,
+  VoiceReceiptStatus,
 } from "@/lib/smart-stocks/shared";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -162,11 +163,11 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     });
   }
 
-  let whatsappSent = false;
+  let whatsappStatus: VoiceReceiptStatus = "not_applicable";
 
   if (ledger) {
     finalizeVoiceSaleLedger(supabase, auth.workspaceUserId, ledger.contactId);
-    whatsappSent = await sendVoiceSaleReceipt({
+    whatsappStatus = await sendVoiceSaleReceipt(supabase, {
       workspaceUserId: auth.workspaceUserId,
       business: access.business,
       ledger,
@@ -183,7 +184,8 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     intent,
     total_amount: totalAmount,
     ledger_id: ledger?.ledgerId ?? null,
-    whatsapp_sent: whatsappSent,
+    whatsapp_sent: whatsappStatus === "sent",
+    whatsapp_status: whatsappStatus,
     items: (outcome.items ?? []).map((item) => ({
       item_id: item.item_id,
       name: item.name,

@@ -244,6 +244,9 @@ export async function sendOwnerInboxReply(
     status: "sent",
     externalMessageId: sent.externalMessageId,
     summary,
+    recipientPhone: contact.phone_number as string,
+    messageBody: input.body,
+    messageType: "reply",
   });
 
   return {

@@ -684,5 +684,9 @@ export interface VoiceCommandExecuteResponse {
   total_amount: number;
   ledger_id: string | null;
   whatsapp_sent: boolean;
+  whatsapp_status: VoiceReceiptStatus;
   items: Array<{ item_id: string; name: string; qty: number; rate: number }>;
 }
+
+/** `disabled` means the merchant switched off Smart Stocks Receipts. */
+export type VoiceReceiptStatus = "sent" | "failed" | "disabled" | "not_applicable";

@@ -564,6 +564,9 @@ export async function processInboundWhatsAppMessage(
         direction: "outbound",
         status: "sent",
         summary: "Automated assistant reply",
+        recipientPhone: rawFrom,
+        messageBody: aiResponse,
+        messageType: "reply",
       })
     )
   );

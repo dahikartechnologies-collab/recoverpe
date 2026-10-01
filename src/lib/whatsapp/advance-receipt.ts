@@ -14,6 +14,7 @@ export interface AdvanceReceiptMessageInput {
   walletBalance: number;
   contactId: string;
   businessId?: string | null;
+  userId?: string;
 }
 
 function normalizeWhatsAppRecipient(phone: string): string {
@@ -52,7 +53,19 @@ export async function sendAdvanceReceiptMessage(
   input: AdvanceReceiptMessageInput
 ): Promise<void> {
   const draft = draftAdvanceReceiptMessage(input);
-  await sendWhatsAppMessage(draft, { skipCurfewCheck: true });
+  await sendWhatsAppMessage(draft, {
+    skipCurfewCheck: true,
+    log: input.userId
+      ? {
+          userId: input.userId,
+          businessId: input.businessId ?? null,
+          contactId: input.contactId,
+          ledgerId: null,
+          messageType: "receipt",
+          summary: "Advance (jama) receipt sent on WhatsApp",
+        }
+      : undefined,
+  });
 }
 
 export async function fireAdvanceReceiptMessage(

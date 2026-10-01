@@ -16,6 +16,8 @@ export interface KhataReceiptMessageInput {
   upiLink?: string | null;
   ledgerId: string;
   businessId?: string | null;
+  userId?: string;
+  contactId?: string;
 }
 
 export function formatE164IndianPhone(phone: string): string {
@@ -82,7 +84,19 @@ export async function sendKhataReceiptMessage(
 ): Promise<void> {
   const draft = draftKhataReceiptMessage(input);
 
-  await sendWhatsAppMessage(draft, { skipCurfewCheck: true });
+  await sendWhatsAppMessage(draft, {
+    skipCurfewCheck: true,
+    log: input.userId
+      ? {
+          userId: input.userId,
+          businessId: input.businessId ?? null,
+          contactId: input.contactId ?? null,
+          ledgerId: input.ledgerId,
+          messageType: "receipt",
+          summary: "Khata receipt sent on WhatsApp",
+        }
+      : undefined,
+  });
 }
 
 export async function computeContactOutstandingBalance(input: {
@@ -153,6 +167,8 @@ export function fireKhataReceiptMessage(input: {
         upiLink,
         ledgerId: input.ledgerId,
         businessId: input.businessId,
+        userId: input.userId,
+        contactId: input.contactId,
       });
     } catch (error) {
       console.error("[khata-receipt] Failed to send WhatsApp receipt:", error);

@@ -8,6 +8,7 @@ import {
   resolveAutopilotSchedule,
   resolveAutopilotTone,
 } from "@/lib/autopilot-schedule";
+import { hasReminderInWindow } from "@/lib/communication-logs";
 import { fetchLedgerById } from "@/lib/ledger-queries";
 import { dispatchOmnichannelMessage } from "@/lib/notifications/dispatcher";
 import { captureHandledError } from "@/lib/observability";
@@ -33,6 +34,7 @@ export interface ProcessAutopilotRunResult {
     | "skipped_curfew"
     | "skipped_idempotent"
     | "skipped_contact_batch"
+    | "skipped_disabled"
     | "failed";
   message?: string;
   monetization_flagged?: boolean;
@@ -126,28 +128,14 @@ export async function wasContactRemindedToday(
     contactId,
     businessId
   );
-  const ledgerIds = unpaidLedgers.map((ledger) => ledger.id);
-
-  if (ledgerIds.length === 0) {
-    return false;
-  }
-
   const { startIso, endIso } = getIstDayBounds(referenceDate);
 
-  const { data, error } = await supabase
-    .from("communication_logs")
-    .select("id")
-    .in("ledger_id", ledgerIds)
-    .in("type", ["whatsapp_reminder", "email_reminder"])
-    .gte("executed_at", startIso)
-    .lte("executed_at", endIso)
-    .limit(1);
-
-  if (error) {
-    throw new Error(error.message || "Failed to check contact reminder dedup.");
-  }
-
-  return (data?.length ?? 0) > 0;
+  return hasReminderInWindow(supabase, {
+    ledgerIds: unpaidLedgers.map((ledger) => ledger.id),
+    types: ["whatsapp_reminder", "email_reminder"],
+    startIso,
+    endIso,
+  });
 }
 
 type DueCadenceRunRow = CadenceRun & {
@@ -473,6 +461,44 @@ export async function fetchDueCadenceRuns(
   }
 
   return rows;
+}
+
+const DISABLED_AUTOPILOT_DEFER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Leaves the cadence step untouched so it resumes where it stopped once the
+ * merchant re-enables autopilot, but pushes it out of the due window so a
+ * disabled business cannot crowd out every other business in the batch.
+ */
+export async function deferCadenceRunsForDisabledAutopilot(
+  supabase: SupabaseClient,
+  cadenceRuns: CadenceRun[]
+): Promise<ProcessAutopilotRunResult[]> {
+  if (cadenceRuns.length === 0) {
+    return [];
+  }
+
+  const nextRunAt = new Date(Date.now() + DISABLED_AUTOPILOT_DEFER_MS).toISOString();
+  const { error } = await supabase
+    .from("cadence_runs")
+    .update({ next_run_at: nextRunAt })
+    .in(
+      "id",
+      cadenceRuns.map((run) => run.id)
+    )
+    .eq("status", "pending");
+
+  if (error) {
+    captureHandledError("autopilot.defer_disabled", error);
+  }
+
+  return cadenceRuns.map((run) => ({
+    cadence_run_id: run.id,
+    ledger_id: run.ledger_id,
+    step_index: run.step_index,
+    status: "skipped_disabled" as const,
+    message: "Recovery Autopilot is turned off for this business.",
+  }));
 }
 
 export async function processAutopilotRun(

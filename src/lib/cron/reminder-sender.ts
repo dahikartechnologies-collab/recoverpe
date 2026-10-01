@@ -1,3 +1,5 @@
+import { fetchBusinessAutomationSettings } from "@/lib/automation-settings-server";
+import { hasReminderInWindow } from "@/lib/communication-logs";
 import {
   CronLedgerTarget,
   fetchCronReminderTargets,
@@ -16,6 +18,7 @@ export interface CronReminderSendResult {
     | "skipped_idempotent"
     | "skipped_missing_ledger"
     | "skipped_curfew"
+    | "skipped_disabled"
     | "failed";
   message?: string;
   simulated?: boolean;
@@ -30,22 +33,33 @@ async function wasReminderSentToday(
 ): Promise<boolean> {
   const { startIso, endIso } = getIstDayBounds(referenceDate);
 
-  const { data, error } = await supabase
-    .from("communication_logs")
-    .select("id")
-    .eq("ledger_id", ledgerId)
-    .in("type", ["whatsapp_reminder", "email_reminder", "email_invoice", "sms_reminder"])
-    .gte("executed_at", startIso)
-    .lte("executed_at", endIso)
-    .limit(1);
+  return hasReminderInWindow(supabase, {
+    ledgerIds: [ledgerId],
+    types: ["whatsapp_reminder", "email_reminder", "email_invoice", "sms_reminder"],
+    startIso,
+    endIso,
+  });
+}
 
-  if (error) {
-    throw new Error(
-      error.message || "Failed to check reminder idempotency."
-    );
+async function isRecoveryAutopilotEnabled(
+  supabase: SupabaseClient,
+  businessId: string | null,
+  cache: Map<string, boolean>
+): Promise<boolean> {
+  if (!businessId) {
+    return true;
   }
 
-  return (data?.length ?? 0) > 0;
+  const cached = cache.get(businessId);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const settings = await fetchBusinessAutomationSettings(supabase, businessId);
+  cache.set(businessId, settings.recovery_autopilot);
+
+  return settings.recovery_autopilot;
 }
 
 export async function processCronReminderTargets(
@@ -66,9 +80,26 @@ export async function processCronReminderTargets(
   }
 
   const results: CronReminderSendResult[] = [];
+  const autopilotEnabledByBusiness = new Map<string, boolean>();
 
   for (const target of targets) {
     try {
+      const autopilotEnabled = await isRecoveryAutopilotEnabled(
+        supabase,
+        target.business_id ?? null,
+        autopilotEnabledByBusiness
+      );
+
+      if (!autopilotEnabled) {
+        results.push({
+          ledger_id: target.ledger_id,
+          cadence: target.cadence,
+          status: "skipped_disabled",
+          message: "Recovery Autopilot is turned off for this business.",
+        });
+        continue;
+      }
+
       const alreadySent = await wasReminderSentToday(
         supabase,
         target.ledger_id,

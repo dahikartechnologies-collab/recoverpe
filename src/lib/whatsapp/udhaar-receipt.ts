@@ -15,6 +15,8 @@ export interface UdhaarReceiptMessageInput {
   outstandingBalance: number;
   ledgerId: string;
   businessId?: string | null;
+  userId?: string;
+  contactId?: string;
 }
 
 function normalizeWhatsAppRecipient(phone: string): string {
@@ -85,7 +87,19 @@ export async function sendUdhaarReceiptMessage(
   input: UdhaarReceiptMessageInput
 ): Promise<void> {
   const draft = draftUdhaarReceiptMessage(input);
-  await sendWhatsAppMessage(draft, { skipCurfewCheck: true });
+  await sendWhatsAppMessage(draft, {
+    skipCurfewCheck: true,
+    log: input.userId
+      ? {
+          userId: input.userId,
+          businessId: input.businessId ?? null,
+          contactId: input.contactId ?? null,
+          ledgerId: input.ledgerId,
+          messageType: "receipt",
+          summary: "Udhaar receipt sent on WhatsApp",
+        }
+      : undefined,
+  });
 }
 
 export async function fireUdhaarReceiptMessage(input: {
@@ -112,5 +126,7 @@ export async function fireUdhaarReceiptMessage(input: {
     outstandingBalance,
     ledgerId: input.ledgerId,
     businessId: input.businessId,
+    userId: input.userId,
+    contactId: input.contactId,
   });
 }

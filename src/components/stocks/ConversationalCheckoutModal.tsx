@@ -592,8 +592,20 @@ export function ConversationalCheckoutModal({
             {result.ledger_id ? (
               <div className="flex flex-wrap justify-center gap-2">
                 <Badge tone="success">Added to khata</Badge>
-                <Badge tone={result.whatsapp_sent ? "success" : "warning"}>
-                  {result.whatsapp_sent ? "WhatsApp receipt sent" : "WhatsApp receipt not sent"}
+                <Badge
+                  tone={
+                    result.whatsapp_status === "sent"
+                      ? "success"
+                      : result.whatsapp_status === "disabled"
+                        ? "neutral"
+                        : "warning"
+                  }
+                >
+                  {result.whatsapp_status === "sent"
+                    ? "WhatsApp receipt sent"
+                    : result.whatsapp_status === "disabled"
+                      ? "Auto receipts are off in Settings"
+                      : "WhatsApp receipt not sent"}
                 </Badge>
               </div>
             ) : null}

@@ -72,6 +72,7 @@ export type CommunicationType =
   | "email_reminder";
 
 export type CommunicationStatus =
+  | "pending"
   | "sent"
   | "delivered"
   | "read"
@@ -86,6 +87,20 @@ export type CommunicationChannel =
   | "voice_ai";
 
 export type CommunicationDirection = "inbound" | "outbound";
+
+export type WhatsAppMessageType =
+  | "reminder"
+  | "receipt"
+  | "legal_notice"
+  | "reply"
+  | "parchi"
+  | "marketing";
+
+export interface BusinessAutomationSettings {
+  recovery_autopilot: boolean;
+  smart_stocks_receipts: boolean;
+  b2b_network: boolean;
+}
 
 export type ExpenseCategory =
   | "raw_material"
@@ -357,6 +372,12 @@ export interface CommunicationLog {
   status: CommunicationStatus;
   cost_deducted: number;
   executed_at: string;
+  recipient_phone?: string | null;
+  message_body?: string | null;
+  message_type?: WhatsAppMessageType | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failure_reason?: string | null;
   recording_url?: string | null;
   sentiment?: VapiSentimentBadge | null;
   executive_summary?: string | null;

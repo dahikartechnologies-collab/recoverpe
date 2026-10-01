@@ -150,6 +150,7 @@ async function logWalletAdvance(
       walletBalance: Number(walletBalance),
       contactId: contact.id,
       businessId: (businessRow?.id as string | undefined) ?? null,
+      userId: effectiveUserId,
     });
   } catch (receiptError) {
     console.error("[advance-receipt] Failed to send WhatsApp receipt:", receiptError);
@@ -306,14 +307,15 @@ export async function POST(request: Request) {
               body.amount,
               body.payment_method
             );
-            const sendResult = await sendWhatsAppMessage(draft);
-
-            await supabase.from("communication_logs").insert({
-              ledger_id: ledger.id,
-              type: "whatsapp_reminder",
-              status: "sent",
-              cost_deducted: 0,
-              executed_at: new Date().toISOString(),
+            const sendResult = await sendWhatsAppMessage(draft, {
+              log: {
+                userId: refreshedLedger.user_id,
+                businessId: refreshedLedger.business_id ?? null,
+                contactId: refreshedLedger.contact_id,
+                ledgerId: ledger.id,
+                messageType: "receipt",
+                summary: "Payment confirmation sent on WhatsApp",
+              },
             });
 
             courtesyWhatsApp = {

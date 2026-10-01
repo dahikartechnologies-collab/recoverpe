@@ -21,6 +21,7 @@ import {
   draftLegalNoticeWhatsAppMessage,
   draftSmartCollectPaymentReceiptMessage,
   draftWhatsAppReminderMessage,
+  isOutboundFailureLogged,
   sendWhatsAppMessage,
   TraiCurfewError,
 } from "@/lib/whatsapp";
@@ -170,22 +171,23 @@ async function tryWhatsAppDispatch(input: {
         totalOutstandingBalance: input.totalOutstandingBalance,
       });
 
-  const sendResult = await sendWhatsAppMessage(draft);
-
-  await logCommunication({
-    supabase: input.supabase,
-    userId: input.userId,
-    businessId: input.businessId,
-    contactId: input.contactId,
-    ledgerId: input.ledgerId,
-    type: "whatsapp_reminder",
-    channel: "whatsapp",
-    externalMessageId: sendResult.externalMessageId,
-    summary: input.isLegalNotice
-      ? "Legal notice sent on WhatsApp"
-      : input.isPaymentReceipt
-        ? "Payment receipt sent on WhatsApp"
-        : "Payment reminder sent on WhatsApp",
+  const sendResult = await sendWhatsAppMessage(draft, {
+    log: {
+      userId: input.userId,
+      businessId: input.businessId,
+      contactId: input.contactId,
+      ledgerId: input.ledgerId,
+      messageType: input.isLegalNotice
+        ? "legal_notice"
+        : input.isPaymentReceipt
+          ? "receipt"
+          : "reminder",
+      summary: input.isLegalNotice
+        ? "Legal notice sent on WhatsApp"
+        : input.isPaymentReceipt
+          ? "Payment receipt sent on WhatsApp"
+          : "Payment reminder sent on WhatsApp",
+    },
   });
 
   if (input.businessId && !sendResult.simulated) {
@@ -460,16 +462,18 @@ export async function dispatchOmnichannelMessage(
         const reason =
           error instanceof Error ? error.message : "WhatsApp dispatch failed.";
 
-        await logFailedDelivery({
-          supabase,
-          userId,
-          businessId,
-          contactId,
-          ledgerId,
-          channel: "whatsapp",
-          type: "whatsapp_reminder",
-          reason,
-        });
+        if (!isOutboundFailureLogged(error)) {
+          await logFailedDelivery({
+            supabase,
+            userId,
+            businessId,
+            contactId,
+            ledgerId,
+            channel: "whatsapp",
+            type: "whatsapp_reminder",
+            reason,
+          });
+        }
 
         if (!notificationPreferences.auto_fallback) {
           return { success: false, message: reason, error: reason };

@@ -9,7 +9,7 @@ import { revalidateDashboardData } from "@/lib/dashboard-cache";
 import { createShortLivedSignedUrl } from "@/lib/firebase-storage-admin";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
-import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTextMessageDetailed } from "@/lib/whatsapp";
 import {
   assertWorkspacePermission,
   resolveWorkspaceAccess,
@@ -377,7 +377,10 @@ export async function PATCH(request: Request) {
           ? `Your payment of Rs. ${settledAmount.toLocaleString("en-IN")} (UTR: ${utrText}) has been approved and settled against your khata. Thank you! - RecoverPe`
           : `Your payment proof (UTR: ${utrText}) could not be verified by our accounts team. Please contact us to resolve this. - RecoverPe`;
 
-      await sendWhatsAppTextMessage(contact.phone_number as string, messageBody);
+      const sent = await sendWhatsAppTextMessageDetailed(
+        contact.phone_number as string,
+        messageBody
+      );
 
       await recordCommunicationSafely(supabase, {
         userId: context.effectiveUserId,
@@ -387,11 +390,15 @@ export async function PATCH(request: Request) {
         type: "whatsapp_reminder",
         channel: "whatsapp",
         direction: "outbound",
-        status: "sent",
+        status: sent.ok ? "sent" : "failed",
+        externalMessageId: sent.ok ? sent.externalMessageId : null,
         summary:
           action === "approve"
             ? "Payment proof approved and settled"
             : "Payment proof rejected",
+        recipientPhone: contact.phone_number as string,
+        messageBody,
+        messageType: "receipt",
       });
     }
 
