@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Boxes,
   Briefcase,
   Home,
   BarChart3,
@@ -30,6 +31,7 @@ const SIDEBAR_LINKS = [
   { href: "/dashboard", label: "Home", icon: Home, exact: true },
   { href: "/dashboard/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/dashboard/vendors", label: "Vendors", icon: Users, highlight: true },
+  { href: "/dashboard/stocks", label: "Stocks", icon: Boxes },
   { href: "/dashboard/expenses", label: "Expenses", icon: Receipt },
   {
     href: "/dashboard/reconciliations",

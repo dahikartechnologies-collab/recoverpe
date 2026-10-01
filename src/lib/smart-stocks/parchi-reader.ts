@@ -1,13 +1,13 @@
+import { ResponseSchema, SchemaType } from "@google-cloud/vertexai";
+import { generateStructuredJson } from "@/lib/smart-stocks/vertex";
 import {
-  GenerateContentResponse,
-  ResponseSchema,
-  SchemaType,
-  VertexAI,
-} from "@google-cloud/vertexai";
-import { normalizeFirebasePrivateKey } from "@/lib/crypto-env";
+  normalizeParchiExtraction,
+  ParchiExtraction,
+} from "@/lib/smart-stocks/shared";
 
-export const PARCHI_READER_MODEL = "gemini-2.5-flash";
-export const PARCHI_VERTEX_LOCATION = "us-central1";
+export { normalizeParchiExtraction } from "@/lib/smart-stocks/shared";
+export type { ParchiExtraction, ParchiLineItem } from "@/lib/smart-stocks/shared";
+
 export const SMART_STOCKS_BUCKET = "smart_stocks_documents";
 export const PARCHI_MAX_BYTES = 4 * 1024 * 1024;
 export const PARCHI_DEFAULT_CONFIDENCE = 0.95;
@@ -54,167 +54,38 @@ const PARCHI_PROMPT = [
   "If a number is unreadable, use 0. If a name or description is unreadable, use an empty string.",
 ].join(" ");
 
-export interface ParchiLineItem {
-  description: string;
-  qty: number;
-  rate: number;
-  amount: number;
-}
-
-export interface ParchiExtraction {
-  supplier_name: string;
-  bill_date: string;
-  credit_amount: number;
-  line_items: ParchiLineItem[];
-}
-
 export function isAllowedParchiMimeType(mimeType: string): boolean {
   return ALLOWED_MIME_TYPES.has(mimeType);
 }
 
-function asFiniteNumber(value: unknown): number {
-  const parsed = typeof value === "number" ? value : Number(value);
+/** Recovers the object path from a stored signed URL so it can be re-signed. */
+export function storagePathFromSignedUrl(url: string): string | null {
+  const marker = `/object/sign/${SMART_STOCKS_BUCKET}/`;
+  const start = url.indexOf(marker);
 
-  if (!Number.isFinite(parsed)) {
-    return 0;
+  if (start === -1) {
+    return null;
   }
 
-  return parsed;
-}
+  const rest = url.slice(start + marker.length);
+  const path = rest.split("?")[0];
 
-function asIsoDate(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim();
-  const isoDay = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
-
-  if (isoDay) {
-    return isoDay[1];
-  }
-
-  const parsed = new Date(trimmed);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return trimmed;
-  }
-
-  return parsed.toISOString().slice(0, 10);
-}
-
-export function normalizeParchiExtraction(value: unknown): ParchiExtraction {
-  const record =
-    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const rawLines = Array.isArray(record.line_items) ? record.line_items : [];
-
-  return {
-    supplier_name:
-      typeof record.supplier_name === "string" ? record.supplier_name.trim() : "",
-    bill_date: asIsoDate(record.bill_date),
-    credit_amount: asFiniteNumber(record.credit_amount),
-    line_items: rawLines.map((line) => {
-      const item =
-        line && typeof line === "object" ? (line as Record<string, unknown>) : {};
-
-      return {
-        description:
-          typeof item.description === "string" ? item.description.trim() : "",
-        qty: asFiniteNumber(item.qty),
-        rate: asFiniteNumber(item.rate),
-        amount: asFiniteNumber(item.amount),
-      };
-    }),
-  };
-}
-
-function readVertexProjectId(): string {
-  return (
-    process.env.FIREBASE_PROJECT_ID?.trim() ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
-    ""
-  );
-}
-
-function readCandidateText(response: GenerateContentResponse): string {
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-
-  return parts
-    .map((part) =>
-      "text" in part && typeof part.text === "string" ? part.text : ""
-    )
-    .join("")
-    .trim();
-}
-
-function getParchiVertexModel() {
-  const project = readVertexProjectId();
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim();
-  const privateKey = normalizeFirebasePrivateKey(
-    process.env.FIREBASE_ADMIN_PRIVATE_KEY
-  );
-
-  if (!project || !clientEmail || !privateKey) {
-    throw new Error(
-      "Firebase Admin credentials are not configured for Vertex AI."
-    );
-  }
-
-  const vertex = new VertexAI({
-    project,
-    location: process.env.VERTEX_AI_LOCATION?.trim() || PARCHI_VERTEX_LOCATION,
-    googleAuthOptions: {
-      credentials: {
-        client_email: clientEmail,
-        private_key: privateKey,
-      },
-      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-    },
-  });
-
-  return vertex.preview.getGenerativeModel({
-    model: process.env.GEMINI_MODEL?.trim() || PARCHI_READER_MODEL,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: PARCHI_RESPONSE_SCHEMA,
-    },
-  });
+  return path ? decodeURIComponent(path) : null;
 }
 
 export async function extractParchiWithGemini(input: {
   imageBase64: string;
   mimeType: string;
 }): Promise<ParchiExtraction> {
-  const model = getParchiVertexModel();
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: PARCHI_PROMPT },
-          {
-            inlineData: {
-              mimeType: input.mimeType,
-              data: input.imageBase64,
-            },
-          },
-        ],
+  const parsed = await generateStructuredJson(PARCHI_RESPONSE_SCHEMA, [
+    { text: PARCHI_PROMPT },
+    {
+      inlineData: {
+        mimeType: input.mimeType,
+        data: input.imageBase64,
       },
-    ],
-  });
-  const text = readCandidateText(result.response);
-
-  if (!text) {
-    throw new Error("Vertex AI returned an empty parchi reading.");
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("Vertex AI did not return valid JSON for the parchi.");
-  }
+    },
+  ]);
 
   return normalizeParchiExtraction(parsed);
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { withWorkspaceMutation } from "@/lib/auth-gateway";
+import { resolveWorkspaceAuth, withWorkspaceMutation } from "@/lib/auth-gateway";
 import {
   extractParchiWithGemini,
   isAllowedParchiMimeType,
@@ -8,7 +8,13 @@ import {
   PARCHI_MAX_BYTES,
   PARCHI_SIGNED_URL_SECONDS,
   SMART_STOCKS_BUCKET,
+  storagePathFromSignedUrl,
 } from "@/lib/smart-stocks/parchi-reader";
+import {
+  authorizeSmartStocksBusiness,
+  smartStocksJsonError,
+} from "@/lib/smart-stocks/server";
+import { ParchiInboxResponse } from "@/lib/smart-stocks/shared";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { DocumentCaptureRow } from "@/types";
 
@@ -182,6 +188,66 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
     const message =
       error instanceof Error ? error.message : "Failed to read the parchi.";
 
+    console.error("[smart-stocks:parchi-reader] Extraction failed:", message);
+
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }, { permission: "edit_ledgers" });
+
+const INBOX_SIGNED_URL_SECONDS = 60 * 60;
+const INBOX_LIMIT = 50;
+
+export async function GET(request: Request) {
+  const authResult = await resolveWorkspaceAuth(request);
+
+  if ("error" in authResult) {
+    return authResult.error;
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const businessId = new URL(request.url).searchParams.get("business_id");
+  const access = await authorizeSmartStocksBusiness(
+    supabase,
+    authResult,
+    businessId,
+    "parchi-inbox"
+  );
+
+  if ("error" in access) {
+    return access.error;
+  }
+
+  const { data, error } = await supabase
+    .from("document_captures")
+    .select(
+      "id, business_id, photo_url, raw_ai_json, confidence_score, status, created_at, updated_at"
+    )
+    .eq("business_id", access.business.id)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(INBOX_LIMIT);
+
+  if (error) {
+    return smartStocksJsonError("parchi-inbox", error.message, 500);
+  }
+
+  const captures = await Promise.all(
+    ((data ?? []) as DocumentCaptureRow[]).map(async (capture) => {
+      const path = storagePathFromSignedUrl(capture.photo_url);
+
+      if (!path) {
+        return { ...capture, view_url: capture.photo_url };
+      }
+
+      const { data: signed } = await supabase.storage
+        .from(SMART_STOCKS_BUCKET)
+        .createSignedUrl(path, INBOX_SIGNED_URL_SECONDS);
+
+      return { ...capture, view_url: signed?.signedUrl ?? capture.photo_url };
+    })
+  );
+
+  const response: ParchiInboxResponse = { captures };
+
+  return NextResponse.json(response);
+}

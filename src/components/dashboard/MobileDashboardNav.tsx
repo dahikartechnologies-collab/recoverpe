@@ -14,6 +14,7 @@ const MOBILE_NAV_LINKS = [
   { href: "/dashboard", label: "Home", exact: true },
   { href: "/dashboard/inbox", label: "Inbox" },
   { href: "/dashboard/vendors", label: "Vendors", highlight: true },
+  { href: "/dashboard/stocks", label: "Stocks" },
   { href: "/dashboard/reconciliations", label: "Payment Proofs" },
   { href: "/dashboard/expenses", label: "Expenses" },
   { href: "/dashboard/import", label: "Import" },

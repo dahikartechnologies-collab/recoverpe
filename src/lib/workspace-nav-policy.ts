@@ -67,6 +67,14 @@ export function canAccessExpensesNav({
   return permissions.edit_ledgers || permissions.manage_team;
 }
 
+/** Smart Stocks RLS is can_manage_workspace: owner or admin only. */
+export function canAccessStocksNav({
+  isOwnWorkspaceContext,
+  role,
+}: Pick<WorkspaceNavContext, "isOwnWorkspaceContext" | "role">): boolean {
+  return isOwnWorkspaceContext || role === "owner" || role === "admin";
+}
+
 /** True restricted partners lack both settings delegation flags. */
 export function isRestrictedPartnerContext({
   isOwnWorkspaceContext,
@@ -110,6 +118,10 @@ export function filterNavLinksForContext<
 
     if (link.href === "/dashboard/expenses" || link.href.startsWith("/dashboard/expenses")) {
       return canAccessExpensesNav(navContext);
+    }
+
+    if (link.href === "/dashboard/stocks" || link.href.startsWith("/dashboard/stocks")) {
+      return canAccessStocksNav(navContext);
     }
 
     // Settling a claim writes a payment, so it follows ledger-edit rights.
