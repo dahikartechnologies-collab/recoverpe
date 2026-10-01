@@ -426,10 +426,7 @@ export function DashboardShell({
     return <AuthLoadingScreen />;
   }
 
-  if (
-    !hasSessionHint &&
-    (!isDashboardReady || !isWorkspacePermissionsReady)
-  ) {
+  if (!isDashboardReady || !isWorkspacePermissionsReady) {
     return <AuthLoadingScreen />;
   }
 

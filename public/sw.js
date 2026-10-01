@@ -1,9 +1,5 @@
-const CACHE_NAME = "recoverpe-shell-v2";
+const CACHE_NAME = "recoverpe-shell-v3";
 const SHELL_ASSETS = ["/manifest.json"];
-
-function isDashboardNavigation(url) {
-  return url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/");
-}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -16,16 +12,59 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key))
+        )
       )
-    )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
+
+function isHashedStaticAsset(url) {
+  return url.pathname.startsWith("/_next/static/");
+}
+
+function isDocumentOrRscRequest(request) {
+  if (request.mode === "navigate") {
+    return true;
+  }
+
+  const accept = request.headers.get("accept") || "";
+  if (accept.includes("text/html")) {
+    return true;
+  }
+
+  if (request.headers.get("RSC") === "1") {
+    return true;
+  }
+
+  if (request.headers.get("Next-Router-State-Tree")) {
+    return true;
+  }
+
+  if (request.headers.get("Next-Router-Prefetch")) {
+    return true;
+  }
+
+  return false;
+}
+
+function shouldBypassCache(url, request) {
+  if (url.pathname === "/sw.js" || url.pathname === "/manifest.json") {
+    return true;
+  }
+
+  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+    return true;
+  }
+
+  return isDocumentOrRscRequest(request);
+}
 
 function networkFirst(request) {
   return fetch(request)
@@ -94,9 +133,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (shouldBypassCache(requestUrl, event.request)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
-    isDashboardNavigation(requestUrl)
-      ? networkFirst(event.request)
-      : cacheFirst(event.request)
+    isHashedStaticAsset(requestUrl)
+      ? cacheFirst(event.request)
+      : networkFirst(event.request)
   );
 });

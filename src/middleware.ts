@@ -235,6 +235,20 @@ function serviceUnavailableResponse(): NextResponse {
   );
 }
 
+function nextWithAdminCacheHeaders(request: NextRequest): NextResponse {
+  const response = NextResponse.next();
+  const pathname = request.nextUrl.pathname;
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    response.headers.set(
+      "Cache-Control",
+      "private, no-store, must-revalidate"
+    );
+  }
+
+  return response;
+}
+
 async function applyAgentDeskAccessGuard(
   request: NextRequest
 ): Promise<NextResponse | null> {
@@ -277,7 +291,7 @@ async function applyAgentDeskAccessGuard(
   }
 
   if (access === "admin_only" && isAgentApp && !pathname.startsWith("/api/")) {
-    return redirectTo(request, "/admin/agents");
+    return redirectTo(request, "/admin");
   }
 
   if (access === "admin_only" && pathname.startsWith("/api/agent/")) {
@@ -333,7 +347,7 @@ export async function middleware(request: NextRequest) {
     const isPublicPath = isPublicRateLimitedPath(pathname);
 
     if (!isApiPath && !isPublicPath) {
-      return NextResponse.next();
+      return nextWithAdminCacheHeaders(request);
     }
 
     if (isApiPath && shouldSkipGlobalApiRateLimit(pathname, request)) {

@@ -1,6 +1,10 @@
 import { ReactNode } from "react";
 import { AdminNav } from "@/components/admin/AdminNav";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 export default function AdminLayout({
   children,
 }: Readonly<{
@@ -9,8 +13,13 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-recoverpe-canvas">
       <header className="border-b border-recoverpe-line bg-recoverpe-white px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4">
-          <p className="text-sm font-semibold text-recoverpe-black">Recoverpe Admin</p>
+        <div className="mx-auto flex max-w-6xl flex-col gap-3">
+          <div>
+            <p className="type-eyebrow">Recoverpe Control Room</p>
+            <p className="mt-1 text-sm font-semibold text-recoverpe-black">
+              Admin Console
+            </p>
+          </div>
           <AdminNav />
         </div>
       </header>

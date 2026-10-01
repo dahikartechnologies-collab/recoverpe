@@ -12,7 +12,41 @@ export function ServiceWorkerRegister() {
       return;
     }
 
-    void navigator.serviceWorker.register("/sw.js");
+    let cancelled = false;
+    let refreshing = false;
+    const hadController = Boolean(navigator.serviceWorker.controller);
+
+    function reloadOnceOnControllerChange() {
+      if (!hadController || refreshing) {
+        return;
+      }
+
+      refreshing = true;
+      window.location.reload();
+    }
+
+    navigator.serviceWorker.addEventListener(
+      "controllerchange",
+      reloadOnceOnControllerChange
+    );
+
+    void navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => {
+        if (cancelled) {
+          return;
+        }
+
+        void registration.update();
+      });
+
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker.removeEventListener(
+        "controllerchange",
+        reloadOnceOnControllerChange
+      );
+    };
   }, []);
 
   return null;

@@ -121,10 +121,10 @@ export default function ChooseContextPage() {
             disabled={busy !== null || isLoading}
             onClick={() => {
               setBusy("admin");
-              router.push("/admin/agents");
+              router.push("/admin");
             }}
           >
-            {busy === "admin" ? "Opening admin…" : "Field agents admin"}
+            {busy === "admin" ? "Opening admin…" : "Admin console"}
           </Button>
         ) : null}
       </CardContent>
