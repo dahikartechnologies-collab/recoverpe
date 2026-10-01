@@ -138,7 +138,12 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   generateEtags: false,
-  serverExternalPackages: ["jwks-rsa", "jose", "firebase-admin"],
+  serverExternalPackages: [
+    "jwks-rsa",
+    "jose",
+    "firebase-admin",
+    "@google-cloud/vertexai",
+  ],
   experimental: {
     // Next 14 gates src/instrumentation.ts behind this flag; it is how the
     // Sentry server and edge clients get initialised.
@@ -148,6 +153,7 @@ const nextConfig = {
       "jwks-rsa",
       "jose",
       "firebase-admin",
+      "@google-cloud/vertexai",
     ],
   },
   eslint: {

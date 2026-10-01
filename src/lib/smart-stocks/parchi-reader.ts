@@ -1,10 +1,13 @@
 import {
-  GoogleGenerativeAI,
-  ObjectSchema,
+  GenerateContentResponse,
+  ResponseSchema,
   SchemaType,
-} from "@google/generative-ai";
+  VertexAI,
+} from "@google-cloud/vertexai";
+import { normalizeFirebasePrivateKey } from "@/lib/crypto-env";
 
-export const PARCHI_READER_MODEL = "gemini-3.5-flash";
+export const PARCHI_READER_MODEL = "gemini-2.5-flash";
+export const PARCHI_VERTEX_LOCATION = "us-central1";
 export const SMART_STOCKS_BUCKET = "smart_stocks_documents";
 export const PARCHI_MAX_BYTES = 4 * 1024 * 1024;
 export const PARCHI_DEFAULT_CONFIDENCE = 0.95;
@@ -16,7 +19,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/webp",
 ]);
 
-const PARCHI_RESPONSE_SCHEMA: ObjectSchema = {
+const PARCHI_RESPONSE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
     supplier_name: { type: SchemaType.STRING },
@@ -125,42 +128,84 @@ export function normalizeParchiExtraction(value: unknown): ParchiExtraction {
   };
 }
 
-export async function extractParchiWithGemini(input: {
-  imageBase64: string;
-  mimeType: string;
-}): Promise<ParchiExtraction> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+function readVertexProjectId(): string {
+  return (
+    process.env.FIREBASE_PROJECT_ID?.trim() ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
+    ""
+  );
+}
 
-  if (!apiKey) {
+function readCandidateText(response: GenerateContentResponse): string {
+  const parts = response.candidates?.[0]?.content?.parts ?? [];
+
+  return parts
+    .map((part) =>
+      "text" in part && typeof part.text === "string" ? part.text : ""
+    )
+    .join("")
+    .trim();
+}
+
+function getParchiVertexModel() {
+  const project = readVertexProjectId();
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim();
+  const privateKey = normalizeFirebasePrivateKey(
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY
+  );
+
+  if (!project || !clientEmail || !privateKey) {
     throw new Error(
-      "GEMINI_API_KEY is not configured. Add it to the server environment before reading parchis."
+      "Firebase Admin credentials are not configured for Vertex AI."
     );
   }
 
-  const modelName = process.env.GEMINI_MODEL?.trim() || PARCHI_READER_MODEL;
-  const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({
-    model: modelName,
+  const vertex = new VertexAI({
+    project,
+    location: process.env.VERTEX_AI_LOCATION?.trim() || PARCHI_VERTEX_LOCATION,
+    googleAuthOptions: {
+      credentials: {
+        client_email: clientEmail,
+        private_key: privateKey,
+      },
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    },
+  });
+
+  return vertex.preview.getGenerativeModel({
+    model: process.env.GEMINI_MODEL?.trim() || PARCHI_READER_MODEL,
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: PARCHI_RESPONSE_SCHEMA,
     },
   });
+}
 
-  const result = await model.generateContent([
-    { text: PARCHI_PROMPT },
-    {
-      inlineData: {
-        mimeType: input.mimeType,
-        data: input.imageBase64,
+export async function extractParchiWithGemini(input: {
+  imageBase64: string;
+  mimeType: string;
+}): Promise<ParchiExtraction> {
+  const model = getParchiVertexModel();
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: PARCHI_PROMPT },
+          {
+            inlineData: {
+              mimeType: input.mimeType,
+              data: input.imageBase64,
+            },
+          },
+        ],
       },
-    },
-  ]);
-
-  const text = result.response.text()?.trim();
+    ],
+  });
+  const text = readCandidateText(result.response);
 
   if (!text) {
-    throw new Error("Gemini returned an empty parchi reading.");
+    throw new Error("Vertex AI returned an empty parchi reading.");
   }
 
   let parsed: unknown;
@@ -168,7 +213,7 @@ export async function extractParchiWithGemini(input: {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("Gemini did not return valid JSON for the parchi.");
+    throw new Error("Vertex AI did not return valid JSON for the parchi.");
   }
 
   return normalizeParchiExtraction(parsed);
