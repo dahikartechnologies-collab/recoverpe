@@ -15,6 +15,7 @@ import { SamadhaanGuideModal } from "@/components/dashboard/SamadhaanGuideModal"
 import { ContactVirtualAccountCard } from "@/components/dashboard/ContactVirtualAccountCard";
 import { SmartCollectCard } from "@/components/dashboard/SmartCollectCard";
 import { WalletBalanceCard } from "@/components/dashboard/WalletBalanceCard";
+import { MessageSquare, ScrollText } from "lucide-react";
 import { Toast } from "@/components/ui/Toast";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -79,9 +80,17 @@ interface ToastState {
 
 type VendorDetailTab = "ledger" | "communications";
 
-const VENDOR_DETAIL_TABS: Array<{ id: VendorDetailTab; label: string }> = [
-  { id: "ledger", label: "Statement & Wallet" },
-  { id: "communications", label: "Communication History" },
+const VENDOR_DETAIL_TABS: Array<{
+  id: VendorDetailTab;
+  label: string;
+  icon: typeof ScrollText;
+}> = [
+  { id: "ledger", label: "Statement & Transactions", icon: ScrollText },
+  {
+    id: "communications",
+    label: "Communications & WhatsApp Log",
+    icon: MessageSquare,
+  },
 ];
 
 export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
@@ -487,6 +496,39 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
         ) : null}
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Vendor detail sections"
+        className="grid w-full grid-cols-2 gap-2"
+      >
+        {VENDOR_DETAIL_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-md border px-2 py-2.5 text-center text-xs font-medium sm:px-3 sm:text-sm ${
+                isActive
+                  ? "border-recoverpe-black bg-recoverpe-black text-recoverpe-white"
+                  : "border-recoverpe-grey-light bg-recoverpe-white text-recoverpe-black hover:border-recoverpe-black"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="leading-snug">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "communications" ? (
+        <CommunicationHistory contactId={contactId} />
+      ) : (
+        <>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="space-y-3">
           <WalletBalanceCard
@@ -538,29 +580,6 @@ export function VendorDetailClient({ contactId }: VendorDetailClientProps) {
         />
       ) : null}
 
-      <div className="border-b border-recoverpe-grey-light">
-        <nav className="-mb-px flex gap-2 overflow-x-auto">
-          {VENDOR_DETAIL_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? "border-recoverpe-black text-recoverpe-black"
-                  : "border-transparent text-recoverpe-grey-medium hover:text-recoverpe-black"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {activeTab === "communications" ? (
-        <CommunicationHistory contactId={contactId} />
-      ) : (
-        <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="type-section-title">Statement of Account</h2>

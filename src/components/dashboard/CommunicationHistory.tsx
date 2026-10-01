@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getAuthHeaders } from "@/lib/auth-headers";
 import {
   CommunicationChannel,
@@ -205,6 +206,35 @@ export function CommunicationHistory({ contactId }: CommunicationHistoryProps) {
     );
   }
 
+  if (entries.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-0">
+          <div className="flex justify-end border-b border-recoverpe-grey-light px-5 py-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void loadHistory("refresh")}
+              disabled={isRefreshing}
+            >
+              <RefreshCw
+                className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                aria-hidden
+              />
+              Refresh
+            </Button>
+          </div>
+          <EmptyState
+            title="No WhatsApp messages yet"
+            description="No automated or manual WhatsApp messages sent to this contact yet."
+            icon={<MessageSquare className="h-5 w-5" aria-hidden />}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardContent className="p-0">
@@ -237,12 +267,7 @@ export function CommunicationHistory({ contactId }: CommunicationHistoryProps) {
 
         {error ? <p className="px-5 pt-3 text-sm text-recoverpe-error">{error}</p> : null}
 
-        {entries.length === 0 ? (
-          <p className="p-5 text-sm text-recoverpe-grey-medium">
-            No messages have been exchanged with this contact yet.
-          </p>
-        ) : (
-          <ol className="divide-y divide-recoverpe-grey-light">
+        <ol className="divide-y divide-recoverpe-grey-light">
             {entries.map((entry) => {
               const ChannelIcon = CHANNEL_ICON[entry.channel] ?? MessageSquare;
               const isInbound = entry.direction === "inbound";
@@ -321,7 +346,6 @@ export function CommunicationHistory({ contactId }: CommunicationHistoryProps) {
               );
             })}
           </ol>
-        )}
       </CardContent>
     </Card>
   );
