@@ -1,8 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { DashboardAnalyticsSection } from "@/components/dashboard/analytics/DashboardAnalyticsSection";
 import { DashboardLedgersSection } from "@/components/dashboard/DashboardLedgersSection";
+import { LedgerTableSkeleton } from "@/components/dashboard/LedgerTableSkeleton";
+import { SkeletonCards } from "@/components/dashboard/MetricCardSkeleton";
 import { useReconciliationActivity } from "@/hooks/use-reconciliation-activity";
 
 export function PersonalDashboardView() {
@@ -20,9 +23,13 @@ export function PersonalDashboardView() {
 
       <ActivityFeed items={items} isLoading={isLoading} />
 
-      <DashboardAnalyticsSection workspaceMode="personal" />
+      <Suspense fallback={<SkeletonCards />}>
+        <DashboardAnalyticsSection workspaceMode="personal" />
+      </Suspense>
 
-      <DashboardLedgersSection workspaceMode="personal" />
+      <Suspense fallback={<LedgerTableSkeleton />}>
+        <DashboardLedgersSection workspaceMode="personal" />
+      </Suspense>
     </div>
   );
 }

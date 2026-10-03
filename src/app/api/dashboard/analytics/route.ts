@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
-import {
-  DASHBOARD_ANALYTICS_TAG,
-  dashboardAnalyticsUserTag,
-} from "@/lib/dashboard-cache";
 import {
   EMPTY_DASHBOARD_ANALYTICS,
   fetchDashboardAnalytics,
@@ -12,6 +7,8 @@ import {
 import { resolveDataAccessScope } from "@/lib/workspace-data-scope";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 import { WorkspaceMode } from "@/types";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
@@ -37,39 +34,20 @@ export async function GET(request: Request) {
       return NextResponse.json(EMPTY_DASHBOARD_ANALYTICS);
     }
 
-    const assignedScope = dataScope.restrictToAssignedUserId ?? "all";
-    const cacheKey = [
+    const supabase = createAdminSupabaseClient();
+    const analytics = await fetchDashboardAnalytics(
+      supabase,
       authResult.effectiveUserId,
       workspaceMode,
-      businessId ?? "none",
-      assignedScope,
-    ].join(":");
-
-    const getCachedAnalytics = unstable_cache(
-      async () => {
-        const supabase = createAdminSupabaseClient();
-
-        return fetchDashboardAnalytics(
-          supabase,
-          authResult.effectiveUserId,
-          workspaceMode,
-          businessId,
-          dataScope.restrictToAssignedUserId
-        );
-      },
-      ["dashboard-analytics", cacheKey],
-      {
-        tags: [
-          DASHBOARD_ANALYTICS_TAG,
-          dashboardAnalyticsUserTag(authResult.effectiveUserId),
-        ],
-        revalidate: 30,
-      }
+      businessId,
+      dataScope.restrictToAssignedUserId
     );
 
-    const analytics = await getCachedAnalytics();
-
-    return NextResponse.json(analytics);
+    return NextResponse.json(analytics, {
+      headers: {
+        "Cache-Control": "private, no-store",
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load dashboard analytics.";

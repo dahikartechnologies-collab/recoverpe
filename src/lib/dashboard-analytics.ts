@@ -1,7 +1,11 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { buildDsoCohortHeatmap, DsoCohortHeatmapData } from "@/lib/analytics-dso";
-import { buildSankeyFlowFromLedgers, SankeyFlowData } from "@/lib/analytics-sankey";
+import {
+  buildSankeyFlowFromAggregates,
+  buildSankeyFlowFromLedgers,
+  SankeyFlowData,
+} from "@/lib/analytics-sankey";
 import {
   daysBetweenDateOnly,
   getTodayDateStringInIst,
@@ -360,6 +364,135 @@ export function buildDashboardAnalytics(
   };
 }
 
+type AnalyticsRpcPayload = {
+  total_outstanding?: number | string;
+  collected_this_month?: number | string;
+  active_defaulters?: number | string;
+  expected_this_month?: number | string;
+  collected_previous_month?: number | string;
+  expected_previous_month?: number | string;
+  aging?: Record<string, number | string>;
+  cash_flow?: Array<{
+    month_key?: string;
+    expected?: number | string;
+    collected?: number | string;
+  }>;
+  sankey?: {
+    collected_on_time?: number | string;
+    bucket_0_30?: number | string;
+    bucket_31_60?: number | string;
+    bucket_60_plus?: number | string;
+    legal_samadhaan?: number | string;
+    unrecovered?: number | string;
+  };
+};
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function parseDashboardAnalyticsRpc(
+  payload: AnalyticsRpcPayload,
+  referenceDate = new Date()
+): DashboardAnalytics {
+  const collectedThisMonth = toFiniteNumber(payload.collected_this_month);
+  const expectedThisMonth = toFiniteNumber(payload.expected_this_month);
+  const collectedPreviousMonth = toFiniteNumber(payload.collected_previous_month);
+  const expectedPreviousMonth = toFiniteNumber(payload.expected_previous_month);
+  const collectionRate = collectionRateForMonth(
+    expectedThisMonth,
+    collectedThisMonth
+  );
+  const previousCollectionRate = collectionRateForMonth(
+    expectedPreviousMonth,
+    collectedPreviousMonth
+  );
+  const monthKeys = getLastTwelveMonthKeys(referenceDate);
+  const cashFlowByKey = new Map(
+    (payload.cash_flow ?? []).map((point) => [
+      String(point.month_key ?? ""),
+      {
+        expected: toFiniteNumber(point.expected),
+        collected: toFiniteNumber(point.collected),
+      },
+    ])
+  );
+
+  return {
+    summary: {
+      totalOutstanding: toFiniteNumber(payload.total_outstanding),
+      collectedThisMonth,
+      activeDefaulters: Math.round(toFiniteNumber(payload.active_defaulters)),
+      collectionRate,
+      collectedThisMonthChangePercent: percentChange(
+        collectedThisMonth,
+        collectedPreviousMonth
+      ),
+      collectionRateChangePercent: percentChange(
+        collectionRate,
+        previousCollectionRate
+      ),
+      totalOutstandingChangePercent: null,
+      activeDefaultersChangePercent: null,
+    },
+    cashFlow: monthKeys.map((monthKey) => ({
+      monthKey,
+      month: formatMonthLabel(monthKey),
+      expected: cashFlowByKey.get(monthKey)?.expected ?? 0,
+      collected: cashFlowByKey.get(monthKey)?.collected ?? 0,
+    })),
+    aging: [
+      {
+        key: "0-30",
+        label: "0–30 days",
+        amount: toFiniteNumber(payload.aging?.["0-30"]),
+      },
+      {
+        key: "31-60",
+        label: "31–60 days",
+        amount: toFiniteNumber(payload.aging?.["31-60"]),
+      },
+      {
+        key: "61+",
+        label: "61+ days",
+        amount: toFiniteNumber(payload.aging?.["61+"]),
+      },
+    ],
+    sankey: buildSankeyFlowFromAggregates({
+      collectedOnTime: toFiniteNumber(payload.sankey?.collected_on_time),
+      bucket0_30: toFiniteNumber(payload.sankey?.bucket_0_30),
+      bucket31_60: toFiniteNumber(payload.sankey?.bucket_31_60),
+      bucket60Plus: toFiniteNumber(payload.sankey?.bucket_60_plus),
+      legalSamadhaan: toFiniteNumber(payload.sankey?.legal_samadhaan),
+      unrecovered: toFiniteNumber(payload.sankey?.unrecovered),
+    }),
+    dsoCohort: buildDsoCohortHeatmap([], [], referenceDate),
+  };
+}
+
+async function fetchDashboardAnalyticsViaRpc(
+  supabase: SupabaseClient,
+  userId: string,
+  workspaceMode: WorkspaceMode,
+  businessId: string | null,
+  assignedToUserId?: string | null
+): Promise<DashboardAnalytics> {
+  const { data, error } = await supabase.rpc("get_dashboard_analytics_summary", {
+    p_user_id: userId,
+    p_workspace_mode: workspaceMode,
+    p_business_id: workspaceMode === "business" ? businessId : null,
+    p_assigned_to_user_id: assignedToUserId ?? null,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load dashboard analytics.");
+  }
+
+  const payload = (data ?? {}) as AnalyticsRpcPayload;
+  return parseDashboardAnalyticsRpc(payload);
+}
+
 async function fetchAnalyticsTransactionsByLedgerIds(
   supabase: SupabaseClient,
   ledgerIds: string[]
@@ -401,6 +534,22 @@ export async function fetchDashboardAnalytics(
   businessId: string | null,
   assignedToUserId?: string | null
 ): Promise<DashboardAnalytics> {
+  if (workspaceMode === "business" && !businessId) {
+    return EMPTY_DASHBOARD_ANALYTICS;
+  }
+
+  try {
+    return await fetchDashboardAnalyticsViaRpc(
+      supabase,
+      userId,
+      workspaceMode,
+      businessId,
+      assignedToUserId
+    );
+  } catch (rpcError) {
+    console.error("[dashboard-analytics] RPC aggregation failed:", rpcError);
+  }
+
   try {
     const [ledgers, transactions] = await Promise.all([
       fetchAnalyticsLedgers(

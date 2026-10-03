@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   buildUsageDashboardPayload,
   fetchVapiCallUsageHistory,
+  hydrateBusinessUsageFromLiveCounts,
   syncBusinessUsageQuotas,
 } from "@/lib/business-usage-metering";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
@@ -46,11 +47,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
 
-    const row = await syncBusinessUsageQuotas(supabase, businessId);
+    const quotaRow = await syncBusinessUsageQuotas(supabase, businessId);
 
-    if (!row) {
+    if (!quotaRow) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
+
+    const row = await hydrateBusinessUsageFromLiveCounts(supabase, quotaRow);
 
     const { data: userRow, error: userError } = await supabase
       .from("users")
@@ -72,7 +75,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {

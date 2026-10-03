@@ -12,3 +12,19 @@ export function MetricCardSkeleton() {
     </Card>
   );
 }
+
+export function SkeletonCards({
+  count = 4,
+  columnsClassName = "grid gap-4 sm:grid-cols-2 xl:grid-cols-4",
+}: {
+  count?: number;
+  columnsClassName?: string;
+}) {
+  return (
+    <div className={columnsClassName}>
+      {Array.from({ length: count }, (_, index) => (
+        <MetricCardSkeleton key={index} />
+      ))}
+    </div>
+  );
+}

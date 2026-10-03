@@ -1,6 +1,6 @@
 import { AnalyticsChartSkeleton } from "@/components/dashboard/analytics/AnalyticsChartSkeleton";
 import { LedgerTableSkeleton } from "@/components/dashboard/LedgerTableSkeleton";
-import { MetricCardSkeleton } from "@/components/dashboard/MetricCardSkeleton";
+import { SkeletonCards } from "@/components/dashboard/MetricCardSkeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function DashboardLoading() {
@@ -11,12 +11,7 @@ export default function DashboardLoading() {
         <Skeleton className="h-4 w-72 max-w-full" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCardSkeleton />
-        <MetricCardSkeleton />
-        <MetricCardSkeleton />
-        <MetricCardSkeleton />
-      </div>
+      <SkeletonCards />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <AnalyticsChartSkeleton heightClassName="h-72" />

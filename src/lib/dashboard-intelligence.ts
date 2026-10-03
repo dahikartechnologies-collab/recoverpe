@@ -52,13 +52,23 @@ export async function fetchDashboardMetricsViaRpc(
   supabase: SupabaseClient,
   userId: string,
   workspaceMode: WorkspaceMode,
-  businessId: string | null
+  businessId: string | null,
+  assignedToUserId?: string | null
 ): Promise<DashboardMetrics> {
-  const { data, error } = await supabase.rpc("get_dashboard_metrics", {
-    p_user_id: userId,
-    p_workspace_mode: workspaceMode,
-    p_business_id: workspaceMode === "business" ? businessId : null,
-  });
+  const args = assignedToUserId
+    ? {
+        p_user_id: userId,
+        p_workspace_mode: workspaceMode,
+        p_business_id: workspaceMode === "business" ? businessId : null,
+        p_assigned_to_user_id: assignedToUserId,
+      }
+    : {
+        p_user_id: userId,
+        p_workspace_mode: workspaceMode,
+        p_business_id: workspaceMode === "business" ? businessId : null,
+      };
+
+  const { data, error } = await supabase.rpc("get_dashboard_metrics", args);
 
   if (error) {
     throw new Error(error.message || "Failed to load dashboard metrics.");

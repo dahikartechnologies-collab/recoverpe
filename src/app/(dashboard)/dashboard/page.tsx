@@ -1,10 +1,19 @@
+import { Suspense } from "react";
+import DashboardLoading from "@/app/(dashboard)/loading";
 import { DashboardHomeClient } from "@/components/dashboard/DashboardHomeClient";
 import { enforceDashboardHomeRoute } from "@/lib/server/partner-route-guard";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+async function DashboardHomeContent() {
   await enforceDashboardHomeRoute();
-
   return <DashboardHomeClient />;
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardHomeContent />
+    </Suspense>
+  );
 }

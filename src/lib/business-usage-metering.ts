@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { resolveCurrentBillingPeriod } from "@/lib/billing-period";
 import {
   BusinessEntitlementRow,
   resolveEffectiveTier,
@@ -8,7 +9,7 @@ import { BusinessSubscriptionTier } from "@/types";
 export const UNLIMITED_USAGE_QUOTA = 99_999;
 
 export const USAGE_METERING_SELECT =
-  "id, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, razorpay_subscription_id, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
+  "id, subscription_tier, subscription_status, subscription_expires_at, subscription_billing_tier, subscription_interval, subscription_current_period_end, razorpay_subscription_id, addons, quota_smart_collect, usage_smart_collect, quota_sms, usage_sms, quota_whatsapp, usage_whatsapp, quota_vapi_minutes, usage_vapi_minutes, quota_invoices, usage_invoices, pass_through_overages, total_volume_collected_inr, total_gateway_fees_inr";
 
 export interface BusinessUsageMeteringRow {
   id: string;
@@ -16,6 +17,8 @@ export interface BusinessUsageMeteringRow {
   subscription_status?: string | null;
   subscription_expires_at?: string | null;
   subscription_billing_tier?: BusinessSubscriptionTier | null;
+  subscription_interval?: "monthly" | "annual" | string | null;
+  subscription_current_period_end?: string | null;
   razorpay_subscription_id?: string | null;
   addons?: unknown;
   quota_smart_collect: number;
@@ -56,6 +59,15 @@ export interface UsageDashboardPayload {
   metrics: UsageMetricSnapshot[];
 }
 
+export interface LiveBusinessUsageCounts {
+  invoices: number;
+  whatsapp: number;
+  sms: number;
+  smartCollect: number;
+  vapiMinutes: number;
+  stockMovements: number;
+}
+
 export interface VapiCallUsageRecord {
   id: string;
   executed_at: string;
@@ -76,6 +88,8 @@ const TIER_QUOTAS: Record<
     | "subscription_tier"
     | "subscription_status"
     | "addons"
+    | "subscription_interval"
+    | "subscription_current_period_end"
     | "pass_through_overages"
     | "total_volume_collected_inr"
     | "total_gateway_fees_inr"
@@ -181,6 +195,10 @@ export function normalizeUsageMeteringRow(
     subscription_expires_at: (data.subscription_expires_at as string | null) ?? null,
     subscription_billing_tier:
       (data.subscription_billing_tier as BusinessSubscriptionTier | null) ?? null,
+    subscription_interval:
+      (data.subscription_interval as "monthly" | "annual" | string | null) ?? null,
+    subscription_current_period_end:
+      (data.subscription_current_period_end as string | null) ?? null,
     razorpay_subscription_id: (data.razorpay_subscription_id as string | null) ?? null,
     addons: data.addons,
     quota_smart_collect: toNumber(data.quota_smart_collect),
@@ -262,6 +280,160 @@ export async function syncBusinessUsageQuotas(
   }
 
   return normalizeUsageMeteringRow(data as Record<string, unknown>);
+}
+
+async function countExact(
+  query: PromiseLike<{
+    count: number | null;
+    error: { message?: string } | null;
+  }>,
+  label: string
+): Promise<number> {
+  const { count, error } = await query;
+
+  if (error) {
+    throw new Error(error.message || `Failed to count ${label}.`);
+  }
+
+  return count ?? 0;
+}
+
+async function sumNumeric(
+  query: PromiseLike<{
+    data: Array<{ sum?: number | string | null }> | null;
+    error: { message?: string } | null;
+  }>,
+  label: string
+): Promise<number> {
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message || `Failed to sum ${label}.`);
+  }
+
+  return toNumber(data?.[0]?.sum);
+}
+
+export function applyLiveUsageCounts(
+  row: BusinessUsageMeteringRow,
+  live: LiveBusinessUsageCounts
+): BusinessUsageMeteringRow {
+  return {
+    ...row,
+    usage_invoices: live.invoices,
+    usage_whatsapp: live.whatsapp,
+    usage_sms: live.sms,
+    usage_smart_collect: live.smartCollect,
+    usage_vapi_minutes: live.vapiMinutes,
+  };
+}
+
+export async function countLiveBusinessUsage(
+  supabase: SupabaseClient,
+  businessId: string,
+  period: { startIso: string; endIso: string }
+): Promise<LiveBusinessUsageCounts> {
+  const countBilledComms = (channel: "whatsapp" | "sms", label: string) =>
+    countExact(
+      supabase
+        .from("communication_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .eq("channel", channel)
+        .eq("direction", "outbound")
+        .gte("executed_at", period.startIso)
+        .lt("executed_at", period.endIso)
+        .not("status", "in", "(failed,pending)"),
+      label
+    );
+
+  const [
+    invoices,
+    whatsapp,
+    sms,
+    smartCollect,
+    vapiSeconds,
+    stockMovements,
+  ] = await Promise.all([
+    countExact(
+      supabase
+        .from("ledgers")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .gte("created_at", period.startIso)
+        .lt("created_at", period.endIso)
+        .neq("status", "cancelled"),
+      "invoices"
+    ),
+    countBilledComms("whatsapp", "whatsapp alerts"),
+    countBilledComms("sms", "sms alerts"),
+    countExact(
+      supabase
+        .from("inbound_payments")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .gte("received_at", period.startIso)
+        .lt("received_at", period.endIso),
+      "smart collect settlements"
+    ),
+    sumNumeric(
+      supabase
+        .from("communication_logs")
+        .select("duration_seconds.sum()")
+        .eq("business_id", businessId)
+        .eq("type", "vapi_call")
+        .gte("executed_at", period.startIso)
+        .lt("executed_at", period.endIso),
+      "vapi minutes"
+    ),
+    countExact(
+      supabase
+        .from("stock_movements")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .gte("created_at", period.startIso)
+        .lt("created_at", period.endIso),
+      "stock movements"
+    ),
+  ]);
+
+  return {
+    invoices,
+    whatsapp,
+    sms,
+    smartCollect,
+    vapiMinutes: Math.ceil(vapiSeconds / 60),
+    stockMovements,
+  };
+}
+
+export async function hydrateBusinessUsageFromLiveCounts(
+  supabase: SupabaseClient,
+  row: BusinessUsageMeteringRow
+): Promise<BusinessUsageMeteringRow> {
+  const period = resolveCurrentBillingPeriod({
+    subscriptionCurrentPeriodEnd: row.subscription_current_period_end,
+    subscriptionInterval: row.subscription_interval,
+  });
+  const live = await countLiveBusinessUsage(supabase, row.id, period);
+  const hydrated = applyLiveUsageCounts(row, live);
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      usage_invoices: hydrated.usage_invoices,
+      usage_whatsapp: hydrated.usage_whatsapp,
+      usage_sms: hydrated.usage_sms,
+      usage_smart_collect: hydrated.usage_smart_collect,
+      usage_vapi_minutes: hydrated.usage_vapi_minutes,
+    })
+    .eq("id", row.id);
+
+  if (error) {
+    console.error("[usage-metering] Failed to persist live usage counts:", error);
+  }
+
+  return hydrated;
 }
 
 export async function fetchVapiCallUsageHistory(

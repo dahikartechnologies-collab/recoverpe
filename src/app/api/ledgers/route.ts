@@ -119,7 +119,7 @@ export async function GET(request: Request) {
       workspaceMode,
       businessId,
       ledgerPage.ledgers,
-      { forceFallback: Boolean(dataScope.restrictToAssignedUserId) }
+      { assignedToUserId: dataScope.restrictToAssignedUserId }
     );
 
     const hasMore = ledgerPage.offset + ledgerPage.ledgers.length < ledgerPage.total;
@@ -439,6 +439,10 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
 
     let pdfUrl: string | null = null;
 
+    if (business?.id) {
+      await incrementInvoiceUsageSafely(supabase, business.id);
+    }
+
     if (shouldGeneratePdf && business && body.upi_vpa) {
       const gstBreakdown = calculateGstBreakdown(
         body.amount,
@@ -493,8 +497,6 @@ export const POST = withWorkspaceMutation(async (request, auth) => {
             next_invoice_sequence: (business.next_invoice_sequence ?? 1) + 1,
           })
           .eq("id", business.id);
-
-        await incrementInvoiceUsageSafely(supabase, business.id);
       }
 
       revalidateDashboardData(auth.effectiveUserId);

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SkeletonCards } from "@/components/dashboard/MetricCardSkeleton";
 import {
   Table,
   TableBody,
@@ -253,28 +254,35 @@ export function StocksClient() {
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
 
+      {isLoading ? (
+        <SkeletonCards
+          count={3}
+          columnsClassName="grid gap-4 sm:grid-cols-3"
+        />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard
           label="Inventory Value"
-          value={isLoading || !metrics ? "—" : formatCurrency(metrics.total_inventory_value)}
+          value={!metrics ? "—" : formatCurrency(metrics.total_inventory_value)}
           hint="Units in stock × last purchase cost."
           icon={<Package className="h-4 w-4" aria-hidden />}
         />
         <MetricCard
           label="Low Stock Alerts"
-          value={isLoading || !metrics ? "—" : formatQty(metrics.low_stock_count)}
+          value={!metrics ? "—" : formatQty(metrics.low_stock_count)}
           hint="Items at or below their reorder level."
           icon={<AlertTriangle className="h-4 w-4" aria-hidden />}
           tone={metrics && metrics.low_stock_count > 0 ? "warning" : "neutral"}
         />
         <MetricCard
           label="Trapped Cash"
-          value={isLoading || !metrics ? "—" : formatCurrency(metrics.dead_stock_value)}
+          value={!metrics ? "—" : formatCurrency(metrics.dead_stock_value)}
           hint={`${metrics?.dead_stock_count ?? 0} items with no sale in ${dashboard?.dead_stock_days ?? 60}+ days.`}
           icon={<Wallet className="h-4 w-4" aria-hidden />}
           tone={metrics && metrics.dead_stock_value > 0 ? "danger" : "neutral"}
         />
       </div>
+      )}
 
       {inbox.length > 0 ? (
         <Card>

@@ -180,22 +180,141 @@ export async function computeDashboardMetrics(
   workspaceMode: WorkspaceMode,
   businessId: string | null,
   ledgers: LedgerWithContact[],
-  options?: { forceFallback?: boolean }
+  options?: { forceFallback?: boolean; assignedToUserId?: string | null }
 ): Promise<DashboardMetrics> {
-  if (options?.forceFallback) {
-    return computeDashboardMetricsFallback(ledgers);
-  }
+  const assignedToUserId = options?.assignedToUserId ?? null;
 
   try {
     return await fetchDashboardMetricsViaRpc(
       supabase,
       userId,
       workspaceMode,
-      businessId
+      businessId,
+      assignedToUserId
     );
-  } catch {
+  } catch (rpcError) {
+    console.error("[dashboard-metrics] RPC failed:", rpcError);
+  }
+
+  try {
+    return await computeDashboardMetricsFromDb(
+      supabase,
+      userId,
+      workspaceMode,
+      businessId,
+      assignedToUserId
+    );
+  } catch (dbError) {
+    console.error("[dashboard-metrics] Count aggregation failed:", dbError);
     return computeDashboardMetricsFallback(ledgers);
   }
+}
+
+async function computeDashboardMetricsFromDb(
+  supabase: SupabaseClient,
+  userId: string,
+  workspaceMode: WorkspaceMode,
+  businessId: string | null,
+  assignedToUserId: string | null
+): Promise<DashboardMetrics> {
+  const applyLedgerScope = (query: Record<string, unknown>) => {
+    const builder = query as {
+      eq: (column: string, value: string) => unknown;
+      is: (column: string, value: null) => unknown;
+    };
+    let scoped: unknown = builder.eq("user_id", userId);
+
+    if (workspaceMode === "personal") {
+      scoped = (scoped as typeof builder).is("business_id", null);
+    } else {
+      scoped = (scoped as typeof builder).eq("business_id", businessId as string);
+    }
+
+    if (assignedToUserId) {
+      scoped = (scoped as typeof builder).eq(
+        "assigned_to_user_id",
+        assignedToUserId
+      );
+    }
+
+    return scoped as Promise<{
+      data: unknown;
+      error: { message?: string } | null;
+    }>;
+  };
+
+  const outstandingBase = supabase
+    .from("ledgers")
+    .select("balance_due.sum()")
+    .gt("balance_due", 0)
+    .not("status", "in", "(paid,cancelled,refunded)");
+  const overdueBase = supabase
+    .from("ledgers")
+    .select("balance_due.sum()")
+    .gt("balance_due", 0)
+    .not("status", "in", "(paid,cancelled,refunded)")
+    .lt("due_date", new Date().toISOString().slice(0, 10));
+  const recoveredBase = supabase
+    .from("transactions")
+    .select("amount.sum(), ledgers!inner(user_id, business_id, assigned_to_user_id)")
+    .eq("transaction_type", "payment_received")
+    .eq("ledgers.user_id", userId);
+
+  const [outstanding, overdue, recovered] = await Promise.all([
+    applyLedgerScope(outstandingBase as unknown as Record<string, unknown>),
+    applyLedgerScope(overdueBase as unknown as Record<string, unknown>),
+    (async () => {
+      let scoped: unknown = recoveredBase;
+
+      if (workspaceMode === "personal") {
+        scoped = (
+          scoped as { is: (column: string, value: null) => unknown }
+        ).is("ledgers.business_id", null);
+      } else {
+        scoped = (
+          scoped as { eq: (column: string, value: string) => unknown }
+        ).eq("ledgers.business_id", businessId as string);
+      }
+
+      if (assignedToUserId) {
+        scoped = (
+          scoped as { eq: (column: string, value: string) => unknown }
+        ).eq("ledgers.assigned_to_user_id", assignedToUserId);
+      }
+
+      return scoped as Promise<{
+        data: unknown;
+        error: { message?: string } | null;
+      }>;
+    })(),
+  ]);
+
+  if (outstanding.error) {
+    throw new Error(outstanding.error.message);
+  }
+
+  if (overdue.error) {
+    throw new Error(overdue.error.message);
+  }
+
+  if (recovered.error) {
+    throw new Error(recovered.error.message);
+  }
+
+  const readSum = (data: unknown): number => {
+    const row = Array.isArray(data) ? data[0] : data;
+    const value =
+      row && typeof row === "object" && "sum" in row
+        ? Number((row as { sum?: number | string | null }).sum)
+        : 0;
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  return {
+    totalOutstanding: readSum(outstanding.data),
+    severelyOverdue: readSum(overdue.data),
+    recoveredViaRecoverpe: readSum(recovered.data),
+  };
 }
 
 function computeDashboardMetricsFallback(

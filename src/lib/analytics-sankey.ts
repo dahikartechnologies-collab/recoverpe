@@ -57,12 +57,18 @@ function addLink(
   links.push({ source, target, value: Math.round(value), color });
 }
 
-/** Transforms raw ledger rows into a Recharts Sankey money-river dataset. */
-export function buildSankeyFlowFromLedgers(
-  ledgers: AnalyticsSankeyLedgerRow[],
-  referenceDate = new Date()
+export interface SankeyAggregateBuckets {
+  collectedOnTime: number;
+  bucket0_30: number;
+  bucket31_60: number;
+  bucket60Plus: number;
+  legalSamadhaan: number;
+  unrecovered: number;
+}
+
+export function buildSankeyFlowFromAggregates(
+  buckets: SankeyAggregateBuckets
 ): SankeyFlowData {
-  const today = getTodayDateStringInIst(referenceDate);
   const nodes = [
     { name: "Total Invoiced", color: SANKEY_LINK_COLORS.navy },
     { name: "Collected On Time", color: SANKEY_LINK_COLORS.collected },
@@ -73,6 +79,70 @@ export function buildSankeyFlowFromLedgers(
     { name: "Legal / Samadhaan", color: SANKEY_LINK_COLORS.critical },
     { name: "Unrecovered", color: SANKEY_LINK_COLORS.critical },
   ];
+
+  const overdueTotal =
+    buckets.bucket0_30 + buckets.bucket31_60 + buckets.bucket60Plus;
+  const links: SankeyLinkDatum[] = [];
+
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.totalInvoiced,
+    SANKEY_NODE_INDEX.collectedOnTime,
+    buckets.collectedOnTime,
+    SANKEY_LINK_COLORS.collected
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.totalInvoiced,
+    SANKEY_NODE_INDEX.overdue,
+    overdueTotal,
+    SANKEY_LINK_COLORS.pending
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.overdue,
+    SANKEY_NODE_INDEX.days0_30,
+    buckets.bucket0_30,
+    SANKEY_LINK_COLORS.pending
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.overdue,
+    SANKEY_NODE_INDEX.days31_60,
+    buckets.bucket31_60,
+    SANKEY_LINK_COLORS.pending
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.overdue,
+    SANKEY_NODE_INDEX.days60Plus,
+    buckets.bucket60Plus,
+    SANKEY_LINK_COLORS.critical
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.days60Plus,
+    SANKEY_NODE_INDEX.legalSamadhaan,
+    buckets.legalSamadhaan,
+    SANKEY_LINK_COLORS.critical
+  );
+  addLink(
+    links,
+    SANKEY_NODE_INDEX.days60Plus,
+    SANKEY_NODE_INDEX.unrecovered,
+    buckets.unrecovered,
+    SANKEY_LINK_COLORS.critical
+  );
+
+  return { nodes, links };
+}
+
+/** Transforms raw ledger rows into a Recharts Sankey money-river dataset. */
+export function buildSankeyFlowFromLedgers(
+  ledgers: AnalyticsSankeyLedgerRow[],
+  referenceDate = new Date()
+): SankeyFlowData {
+  const today = getTodayDateStringInIst(referenceDate);
 
   let collectedOnTime = 0;
   let bucket0_30 = 0;
@@ -113,58 +183,12 @@ export function buildSankeyFlowFromLedgers(
     }
   }
 
-  const overdueTotal = bucket0_30 + bucket31_60 + bucket60Plus;
-  const links: SankeyLinkDatum[] = [];
-
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.totalInvoiced,
-    SANKEY_NODE_INDEX.collectedOnTime,
+  return buildSankeyFlowFromAggregates({
     collectedOnTime,
-    SANKEY_LINK_COLORS.collected
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.totalInvoiced,
-    SANKEY_NODE_INDEX.overdue,
-    overdueTotal,
-    SANKEY_LINK_COLORS.pending
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.overdue,
-    SANKEY_NODE_INDEX.days0_30,
     bucket0_30,
-    SANKEY_LINK_COLORS.pending
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.overdue,
-    SANKEY_NODE_INDEX.days31_60,
     bucket31_60,
-    SANKEY_LINK_COLORS.pending
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.overdue,
-    SANKEY_NODE_INDEX.days60Plus,
     bucket60Plus,
-    SANKEY_LINK_COLORS.critical
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.days60Plus,
-    SANKEY_NODE_INDEX.legalSamadhaan,
     legalSamadhaan,
-    SANKEY_LINK_COLORS.critical
-  );
-  addLink(
-    links,
-    SANKEY_NODE_INDEX.days60Plus,
-    SANKEY_NODE_INDEX.unrecovered,
     unrecovered,
-    SANKEY_LINK_COLORS.critical
-  );
-
-  return { nodes, links };
+  });
 }

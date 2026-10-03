@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Suspense } from "react";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { DashboardAnalyticsSection } from "@/components/dashboard/analytics/DashboardAnalyticsSection";
 import { DashboardLedgersSection } from "@/components/dashboard/DashboardLedgersSection";
@@ -8,6 +9,8 @@ import { KhataOnboardQueue } from "@/components/dashboard/KhataOnboardQueue";
 import { MorningBriefingCard } from "@/components/dashboard/MorningBriefingCard";
 import { PromiseRegisterCard } from "@/components/dashboard/PromiseRegisterCard";
 import { ShopQrDownloadButton } from "@/components/dashboard/ShopQrDownloadButton";
+import { LedgerTableSkeleton } from "@/components/dashboard/LedgerTableSkeleton";
+import { SkeletonCards } from "@/components/dashboard/MetricCardSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import DashboardLoading from "@/app/(dashboard)/loading";
@@ -88,20 +91,24 @@ export function BusinessDashboardView() {
 
       <PromiseRegisterCard businessId={activeBusiness.id} />
 
-      <DashboardAnalyticsSection
-        workspaceMode="business"
-        businessId={activeBusiness.id}
-      />
+      <Suspense fallback={<SkeletonCards />}>
+        <DashboardAnalyticsSection
+          workspaceMode="business"
+          businessId={activeBusiness.id}
+        />
+      </Suspense>
 
       <KhataOnboardQueue
         businessId={activeBusiness.id}
         businessName={activeBusiness.business_name}
       />
 
-      <DashboardLedgersSection
-        workspaceMode="business"
-        businessId={activeBusiness.id}
-      />
+      <Suspense fallback={<LedgerTableSkeleton />}>
+        <DashboardLedgersSection
+          workspaceMode="business"
+          businessId={activeBusiness.id}
+        />
+      </Suspense>
     </div>
   );
 }
