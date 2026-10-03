@@ -54,6 +54,11 @@ describe("usage live counts", () => {
       sms: 0,
     });
     expect(payload.metrics.every((metric) => metric.usage === 0)).toBe(true);
+    expect(payload.usage_window).toEqual({
+      source: "all_time",
+      startIso: null,
+      endIso: null,
+    });
   });
 });
 

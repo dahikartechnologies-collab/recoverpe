@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveCurrentBillingPeriod } from "@/lib/billing-period";
+import { resolveCurrentBillingPeriod, resolveUsageCountWindow } from "@/lib/billing-period";
 
 describe("resolveCurrentBillingPeriod", () => {
   it("uses the Razorpay period when current_period_end is in the future", () => {
@@ -33,5 +33,33 @@ describe("resolveCurrentBillingPeriod", () => {
     });
 
     expect(period.source).toBe("calendar_month");
+  });
+});
+
+describe("resolveUsageCountWindow", () => {
+  it("uses the Razorpay window for live usage cards when a period is active", () => {
+    const window = resolveUsageCountWindow({
+      subscriptionCurrentPeriodEnd: "2026-10-20T00:00:00.000Z",
+      subscriptionInterval: "monthly",
+      now: new Date("2026-10-03T09:00:00.000Z"),
+    });
+
+    expect(window).toEqual({
+      source: "subscription",
+      startIso: "2026-09-20T00:00:00.000Z",
+      endIso: "2026-10-20T00:00:00.000Z",
+    });
+  });
+
+  it("counts all workspace activity when there is no active subscription period", () => {
+    const window = resolveUsageCountWindow({
+      now: new Date("2026-10-03T09:00:00.000Z"),
+    });
+
+    expect(window).toEqual({
+      source: "all_time",
+      startIso: null,
+      endIso: null,
+    });
   });
 });

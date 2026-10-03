@@ -4,6 +4,7 @@ import {
   buildUsageDashboardPayload,
   EMPTY_LIVE_BUSINESS_USAGE,
   EMPTY_USAGE_TABLE_COUNTS,
+  EMPTY_USAGE_WINDOW,
   fetchVapiCallUsageHistory,
   hydrateBusinessUsageFromLiveCounts,
   syncBusinessUsageQuotas,
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
 
     let meteringRow = quotaRow;
     let liveCounts = { ...EMPTY_USAGE_TABLE_COUNTS };
+    let usageWindow = { ...EMPTY_USAGE_WINDOW };
 
     try {
       const hydrated = await hydrateBusinessUsageFromLiveCounts(
@@ -72,10 +74,12 @@ export async function GET(request: Request) {
       );
       meteringRow = hydrated.row;
       liveCounts = hydrated.live_counts;
+      usageWindow = hydrated.usage_window;
     } catch (countError) {
       console.error("[dashboard-usage] Live count failed:", countError);
       meteringRow = applyLiveUsageCounts(quotaRow, EMPTY_LIVE_BUSINESS_USAGE);
       liveCounts = { ...EMPTY_USAGE_TABLE_COUNTS };
+      usageWindow = { ...EMPTY_USAGE_WINDOW };
     }
 
     let vapiWalletBalance = 0;
@@ -107,6 +111,7 @@ export async function GET(request: Request) {
       vapi_wallet_balance_inr: vapiWalletBalance,
       vapi_call_history: vapiCallHistory,
       live_counts: liveCounts,
+      usage_window: usageWindow,
     });
 
     return NextResponse.json(payload, {

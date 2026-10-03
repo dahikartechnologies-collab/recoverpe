@@ -1,5 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { resolveCurrentBillingPeriod } from "@/lib/billing-period";
+import {
+  resolveUsageCountWindow,
+  type UsageCountWindow,
+} from "@/lib/billing-period";
 import {
   BusinessEntitlementRow,
   resolveEffectiveTier,
@@ -58,6 +61,7 @@ export interface UsageDashboardPayload {
   vapi_call_history: VapiCallUsageRecord[];
   metrics: UsageMetricSnapshot[];
   live_counts: UsageTableCounts;
+  usage_window: UsageCountWindow;
 }
 
 export interface LiveBusinessUsageCounts {
@@ -94,6 +98,12 @@ export const EMPTY_USAGE_TABLE_COUNTS: UsageTableCounts = {
   stock_movements: 0,
   whatsapp: 0,
   sms: 0,
+};
+
+export const EMPTY_USAGE_WINDOW: UsageCountWindow = {
+  source: "all_time",
+  startIso: null,
+  endIso: null,
 };
 
 export interface VapiCallUsageRecord {
@@ -403,23 +413,38 @@ export function applyLiveUsageCounts(
   };
 }
 
+function applyCountWindow<
+  Query extends {
+    gte: (column: string, value: string) => Query;
+    lt: (column: string, value: string) => Query;
+  },
+>(query: Query, column: string, window: UsageCountWindow): Query {
+  if (!window.startIso || !window.endIso) {
+    return query;
+  }
+
+  return query.gte(column, window.startIso).lt(column, window.endIso);
+}
+
 export async function countLiveBusinessUsage(
   supabase: SupabaseClient,
   businessId: string,
-  period: { startIso: string; endIso: string }
+  window: UsageCountWindow = EMPTY_USAGE_WINDOW
 ): Promise<LiveBusinessUsageCounts> {
   try {
     const countBilledComms = (channel: "whatsapp" | "sms", label: string) =>
       countExact(
-        supabase
-          .from("communication_logs")
-          .select("id", { count: "exact", head: true })
-          .eq("business_id", businessId)
-          .eq("channel", channel)
-          .eq("direction", "outbound")
-          .gte("executed_at", period.startIso)
-          .lt("executed_at", period.endIso)
-          .not("status", "in", "(failed,pending)"),
+        applyCountWindow(
+          supabase
+            .from("communication_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", businessId)
+            .eq("channel", channel)
+            .eq("direction", "outbound")
+            .not("status", "in", "(failed,pending)"),
+          "executed_at",
+          window
+        ),
         label
       );
 
@@ -432,44 +457,52 @@ export async function countLiveBusinessUsage(
       stockMovements,
     ] = await Promise.all([
       countExact(
-        supabase
-          .from("ledgers")
-          .select("id", { count: "exact", head: true })
-          .eq("business_id", businessId)
-          .gte("created_at", period.startIso)
-          .lt("created_at", period.endIso)
-          .neq("status", "cancelled"),
+        applyCountWindow(
+          supabase
+            .from("ledgers")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", businessId)
+            .neq("status", "cancelled"),
+          "created_at",
+          window
+        ),
         "invoices"
       ),
       countBilledComms("whatsapp", "whatsapp alerts"),
       countBilledComms("sms", "sms alerts"),
       countExact(
-        supabase
-          .from("inbound_payments")
-          .select("id", { count: "exact", head: true })
-          .eq("business_id", businessId)
-          .gte("received_at", period.startIso)
-          .lt("received_at", period.endIso),
+        applyCountWindow(
+          supabase
+            .from("inbound_payments")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", businessId),
+          "received_at",
+          window
+        ),
         "smart collect settlements"
       ),
       sumColumnInMemory(
-        supabase
-          .from("communication_logs")
-          .select("duration_seconds")
-          .eq("business_id", businessId)
-          .eq("type", "vapi_call")
-          .gte("executed_at", period.startIso)
-          .lt("executed_at", period.endIso),
+        applyCountWindow(
+          supabase
+            .from("communication_logs")
+            .select("duration_seconds")
+            .eq("business_id", businessId)
+            .eq("type", "vapi_call"),
+          "executed_at",
+          window
+        ),
         "duration_seconds",
         "vapi minutes"
       ),
       countExact(
-        supabase
-          .from("stock_movements")
-          .select("id", { count: "exact", head: true })
-          .eq("business_id", businessId)
-          .gte("created_at", period.startIso)
-          .lt("created_at", period.endIso),
+        applyCountWindow(
+          supabase
+            .from("stock_movements")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", businessId),
+          "created_at",
+          window
+        ),
         "stock movements"
       ),
     ]);
@@ -494,13 +527,14 @@ export async function hydrateBusinessUsageFromLiveCounts(
 ): Promise<{
   row: BusinessUsageMeteringRow;
   live_counts: UsageTableCounts;
+  usage_window: UsageCountWindow;
 }> {
   try {
-    const period = resolveCurrentBillingPeriod({
+    const usageWindow = resolveUsageCountWindow({
       subscriptionCurrentPeriodEnd: row.subscription_current_period_end,
       subscriptionInterval: row.subscription_interval,
     });
-    const live = await countLiveBusinessUsage(supabase, row.id, period);
+    const live = await countLiveBusinessUsage(supabase, row.id, usageWindow);
     const hydrated = applyLiveUsageCounts(row, live);
 
     const { error } = await supabase
@@ -521,12 +555,14 @@ export async function hydrateBusinessUsageFromLiveCounts(
     return {
       row: hydrated,
       live_counts: toUsageTableCounts(live),
+      usage_window: usageWindow,
     };
   } catch (error) {
     console.error("[usage-metering] Live usage hydrate failed:", error);
     return {
       row: applyLiveUsageCounts(row, EMPTY_LIVE_BUSINESS_USAGE),
       live_counts: { ...EMPTY_USAGE_TABLE_COUNTS },
+      usage_window: { ...EMPTY_USAGE_WINDOW },
     };
   }
 }
@@ -608,6 +644,7 @@ export function buildUsageDashboardPayload(
     vapi_wallet_balance_inr?: number;
     vapi_call_history?: VapiCallUsageRecord[];
     live_counts?: UsageTableCounts;
+    usage_window?: UsageCountWindow;
   } = {}
 ): UsageDashboardPayload {
   const effectiveTier = resolveEffectiveTier(toEntitlementRow(row));
@@ -679,6 +716,7 @@ export function buildUsageDashboardPayload(
     vapi_call_history: options.vapi_call_history ?? [],
     metrics,
     live_counts: liveCounts ?? { ...EMPTY_USAGE_TABLE_COUNTS },
+    usage_window: options.usage_window ?? { ...EMPTY_USAGE_WINDOW },
   };
 }
 

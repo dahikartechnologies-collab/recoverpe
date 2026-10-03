@@ -213,7 +213,11 @@ export function UsageSpendingView() {
       <PageHeader
         eyebrow="Workspace activity"
         title="Usage Analytics"
-        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. Progress bars show activity — not hard billing caps.`}
+        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. ${
+          payload?.usage_window?.source === "subscription"
+            ? "Counts cover the current billing period."
+            : "Counts cover all workspace activity."
+        } Progress bars show activity — not hard billing caps.`}
       />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}

@@ -31,6 +31,40 @@ function istCalendarMonthPeriod(now: Date): BillingPeriod {
   };
 }
 
+export type UsageCountWindow =
+  | {
+      source: "subscription";
+      startIso: string;
+      endIso: string;
+    }
+  | {
+      source: "all_time";
+      startIso: null;
+      endIso: null;
+    };
+
+export function resolveUsageCountWindow(input: {
+  subscriptionCurrentPeriodEnd?: string | null;
+  subscriptionInterval?: "monthly" | "annual" | string | null;
+  now?: Date;
+}): UsageCountWindow {
+  const period = resolveCurrentBillingPeriod(input);
+
+  if (period.source === "subscription") {
+    return {
+      source: "subscription",
+      startIso: period.startIso,
+      endIso: period.endIso,
+    };
+  }
+
+  return {
+    source: "all_time",
+    startIso: null,
+    endIso: null,
+  };
+}
+
 export function resolveCurrentBillingPeriod(input: {
   subscriptionCurrentPeriodEnd?: string | null;
   subscriptionInterval?: "monthly" | "annual" | string | null;
