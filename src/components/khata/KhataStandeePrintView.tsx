@@ -103,14 +103,14 @@ export function KhataStandeePrintView({
           </div>
         </div>
 
-        <footer className="relative mt-auto border-t-2 border-[#00695C] bg-white px-8 py-5 text-center">
+        <footer className="relative mt-auto border-t-2 border-[#00695C] bg-white px-8 py-6 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo.png"
+            src="/recoverpelogo.png"
             alt="RecoverPe"
-            className="mx-auto h-8 w-auto max-w-[160px] object-contain"
+            className="mx-auto h-20 w-auto max-w-[220px] object-contain"
           />
-          <p className="mt-2 text-[11px] text-[#6B7280]">Powered by RecoverPe</p>
+          <p className="mt-2 text-sm font-semibold text-[#0A0A0A]">Powered by RecoverPe</p>
         </footer>
       </article>
     </>

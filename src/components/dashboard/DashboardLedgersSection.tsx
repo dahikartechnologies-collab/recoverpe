@@ -364,10 +364,6 @@ export function DashboardLedgersSection({
   }
 
   function handleViewPdf(ledger: LedgerWithContact) {
-    if (ledger.pdf_url && !ledger.is_custom_pdf && !requireCompleteProfile()) {
-      return;
-    }
-
     setSelectedLedger(ledger);
     setIsInvoiceModalOpen(true);
   }

@@ -10,7 +10,28 @@ export const STANDEE_INK = "#0A0A0A";
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1520;
 const SAFE_INSET = 64;
-const FOOTER_SAFE_HEIGHT = 132;
+const FOOTER_SAFE_HEIGHT = 210;
+
+export async function fetchPublicAssetDataUrl(src: string): Promise<string | null> {
+  try {
+    const response = await fetch(src);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const blob = await response.blob();
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
 
 function wrapCanvasText(
   context: CanvasRenderingContext2D,
@@ -197,28 +218,34 @@ export async function generateKhataStandeePoster(input: {
   context.fillStyle = STANDEE_TEAL;
   context.fillRect(SAFE_INSET, footerTop, POSTER_WIDTH - SAFE_INSET * 2, 3);
 
+  context.fillStyle = "#0A0A0A";
+  context.font = "700 28px Inter, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "alphabetic";
+
   try {
-    const logo = await loadImage("/logo.png");
-    const maxLogoHeight = 40;
-    const maxLogoWidth = 200;
+    const logo = await loadImage("/recoverpelogo.png");
+    const maxLogoHeight = 96;
+    const maxLogoWidth = 440;
     const scale = Math.min(maxLogoWidth / logo.width, maxLogoHeight / logo.height);
-    const logoWidth = logo.width * scale;
-    const logoHeight = logo.height * scale;
-    const logoY = footerTop + 28;
+    const cappedWidth = logo.width * scale;
+    const cappedHeight = logo.height * scale;
+    const logoY = footerTop + 22;
     context.drawImage(
       logo,
-      (POSTER_WIDTH - logoWidth) / 2,
+      (POSTER_WIDTH - cappedWidth) / 2,
       logoY,
-      logoWidth,
-      logoHeight
+      cappedWidth,
+      cappedHeight
     );
-    context.fillStyle = "#6B7280";
-    context.font = "500 18px Inter, system-ui, sans-serif";
-    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, logoY + logoHeight + 28);
+    context.fillStyle = "#374151";
+    context.font = "600 22px Inter, system-ui, sans-serif";
+    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, logoY + cappedHeight + 36);
   } catch {
-    context.fillStyle = "#6B7280";
-    context.font = "600 20px Inter, system-ui, sans-serif";
-    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, footerTop + 72);
+    context.fillText("RecoverPe", POSTER_WIDTH / 2, footerTop + 88);
+    context.fillStyle = "#374151";
+    context.font = "600 22px Inter, system-ui, sans-serif";
+    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, footerTop + 128);
   }
 
   return canvas.toDataURL("image/png");

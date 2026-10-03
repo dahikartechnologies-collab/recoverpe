@@ -29,6 +29,7 @@ export const PATCH = withWorkspaceMutation<RouteContext>(
         business_name?: string;
         business_address?: string | null;
         gstin?: string | null;
+        gst_not_required?: boolean;
         notification_preferences?: Business["notification_preferences"];
         smtp_settings?: Business["smtp_settings"];
         autopilot_schedule?: number[];

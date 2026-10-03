@@ -157,6 +157,7 @@ export interface Business {
   business_name: string;
   business_address: string | null;
   gstin: string | null;
+  gst_not_required?: boolean;
   logo_url: string | null;
   msme_reg_no: string | null;
   invoice_prefix: string | null;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { GstExemptionCheckbox } from "@/components/settings/GstExemptionCheckbox";
 import {
   fetchBusinesses,
   updateBusinessSettings,
@@ -22,6 +23,7 @@ export function BusinessProfileView() {
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
   const [gstin, setGstin] = useState("");
+  const [gstNotRequired, setGstNotRequired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +58,7 @@ export function BusinessProfileView() {
       setBusinessName(selectedBusiness.business_name);
       setBusinessAddress(selectedBusiness.business_address ?? "");
       setGstin(selectedBusiness.gstin ?? "");
+      setGstNotRequired(Boolean(selectedBusiness.gst_not_required));
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -86,7 +89,8 @@ export function BusinessProfileView() {
       const updatedBusiness = await updateBusinessSettings(business.id, {
         business_name: businessName,
         business_address: businessAddress,
-        gstin,
+        gstin: gstNotRequired ? null : gstin,
+        gst_not_required: gstNotRequired,
       });
 
       setBusiness(updatedBusiness);
@@ -184,11 +188,28 @@ export function BusinessProfileView() {
                 <Input
                   id="business-gstin"
                   value={gstin}
-                  onChange={(event) => setGstin(event.target.value.toUpperCase())}
+                  onChange={(event) => {
+                    setGstin(event.target.value.toUpperCase());
+                    if (event.target.value.trim()) {
+                      setGstNotRequired(false);
+                    }
+                  }}
                   placeholder="15-character GSTIN"
                   maxLength={15}
+                  disabled={gstNotRequired}
                 />
               </div>
+
+              <GstExemptionCheckbox
+                checked={gstNotRequired}
+                onChange={(checked) => {
+                  setGstNotRequired(checked);
+                  if (checked) {
+                    setGstin("");
+                  }
+                }}
+                disabled={isSaving}
+              />
 
               {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
               {successMessage ? (

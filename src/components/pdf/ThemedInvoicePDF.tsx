@@ -212,7 +212,9 @@ export function ThemedInvoicePDF({
             <Text style={styles.headerTitle}>{businessName}</Text>
             {businessGstin ? (
               <Text style={styles.headerMeta}>GSTIN {businessGstin}</Text>
-            ) : null}
+            ) : (
+              <Text style={styles.headerMeta}>GST not registered · Bill of Supply</Text>
+            )}
           </View>
           <View>
             <Text style={styles.docLabel}>{documentTitle}</Text>

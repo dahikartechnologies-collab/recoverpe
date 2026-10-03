@@ -7,11 +7,11 @@ import { ThemedInvoicePDF } from "@/components/pdf/ThemedInvoicePDF";
 import { LedgerLegalToolkit } from "@/components/dashboard/LedgerLegalToolkit";
 import { LedgerNotes } from "@/components/dashboard/LedgerNotes";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { getAuthHeaders } from "@/lib/businesses";
 import { calculateGstBreakdown } from "@/lib/gst";
 import { formatDisplayInvoice } from "@/lib/invoice-display";
 import {
+  INVOICE_THEME_OPTIONS,
   InvoiceLayoutTheme,
   InvoiceLineItem,
   defaultInvoiceLineItems,
@@ -82,6 +82,7 @@ export function InvoiceViewModal({
   const [isOpening, setIsOpening] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState("");
+  const [showRecovery, setShowRecovery] = useState(false);
 
   useEffect(() => {
     if (!ledger) {
@@ -91,7 +92,30 @@ export function InvoiceViewModal({
     setLineItems(defaultInvoiceLineItems(ledger.total_amount));
     setTheme("corporate");
     setError("");
+    setShowRecovery(false);
   }, [ledger?.id, ledger?.total_amount, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen, onClose]);
 
   const grandTotal = sumInvoiceLineItems(lineItems);
   const gstBreakdown = useMemo(
@@ -110,14 +134,13 @@ export function InvoiceViewModal({
 
   const ledgerId = ledger.id;
   const downloadRoute = buildDocumentDownloadRoute("invoice", ledgerId);
-  const requiresLegalProfile = gateLegalDocuments && !ledger.is_custom_pdf;
   const invoiceNumber = formatDisplayInvoice(ledger);
   const invoiceDate = formatInvoiceDate(ledger.created_at);
   const dueDate = formatInvoiceDate(ledger.due_date);
   const businessName = activeBusiness?.business_name ?? "RecoverPe merchant";
 
-  function handleProfileGate(action: () => void) {
-    if (requiresLegalProfile && onProfileIncomplete) {
+  function handleLegalAction(action: () => void) {
+    if (gateLegalDocuments && onProfileIncomplete) {
       onProfileIncomplete();
       return;
     }
@@ -223,25 +246,22 @@ export function InvoiceViewModal({
   }
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={ledger.is_custom_pdf ? "Custom Invoice PDF" : "Invoice builder"}
-      panelClassName="max-w-4xl"
-      bodyClassName="max-h-[80vh]"
-    >
-      <div className="space-y-4">
-        {ledger.is_custom_pdf ? (
-          <>
-            <p className="text-sm text-recoverpe-grey-medium">
-              Custom PDF for {ledger.contact.name}
-              {ledger.invoice_number ? ` (${ledger.invoice_number})` : ""}.
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#F8FAFC]">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-recoverpe-line bg-white px-4 py-3 sm:px-6">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-recoverpe-muted">
+            {ledger.is_custom_pdf ? "Custom PDF" : "Invoice studio"}
+          </p>
+          <h2 className="truncate text-lg font-semibold text-recoverpe-black">
+            {ledger.contact.name} · {invoiceNumber}
+          </h2>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {ledger.is_custom_pdf ? (
+            <>
               <Button
                 type="button"
-                className="w-full sm:w-auto"
-                onClick={() => handleProfileGate(() => void handleOpenStored())}
+                onClick={() => void handleOpenStored()}
                 disabled={isOpening || isDownloading}
               >
                 {isOpening ? "Opening..." : "Open PDF"}
@@ -249,83 +269,147 @@ export function InvoiceViewModal({
               <Button
                 type="button"
                 variant="secondary"
-                className="w-full sm:w-auto"
-                onClick={() => handleProfileGate(() => void handleDownloadStored())}
+                onClick={() => void handleDownloadStored()}
                 disabled={isOpening || isDownloading || !ledger.pdf_url}
               >
-                {isDownloading ? "Downloading..." : "Download Tax Invoice PDF"}
+                {isDownloading ? "Downloading..." : "Download"}
               </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <EditableInvoicePreview
-              theme={theme}
-              onThemeChange={setTheme}
-              businessName={businessName}
-              businessGstin={activeBusiness?.gstin ?? null}
-              contactName={ledger.contact.name}
-              contactPhone={ledger.contact.phone_number}
-              invoiceNumber={invoiceNumber}
-              invoiceDate={invoiceDate}
-              dueDate={dueDate}
-              lineItems={lineItems}
-              onLineItemsChange={setLineItems}
-              taxableAmount={gstBreakdown.taxableAmount}
-              cgst={gstBreakdown.cgst}
-              sgst={gstBreakdown.sgst}
-              igst={gstBreakdown.igst}
-              grandTotal={gstBreakdown.totalAmount}
-              documentTitle={
-                gstBreakdown.documentType === "tax_invoice"
-                  ? "Tax Invoice"
-                  : "Bill of Supply"
-              }
-            />
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button
-                type="button"
-                onClick={() => handleProfileGate(() => void handleDownloadThemed())}
-                disabled={isDownloading || readOnly}
-              >
-                {isDownloading ? "Preparing PDF..." : "Download PDF"}
-              </Button>
-              {ledger.pdf_url ? (
-                <Button
+            </>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => void handleDownloadThemed()}
+              disabled={isDownloading || readOnly}
+            >
+              {isDownloading ? "Preparing PDF..." : "Download PDF"}
+            </Button>
+          )}
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </header>
+
+      {!ledger.is_custom_pdf ? (
+        <div className="shrink-0 border-b border-recoverpe-line bg-white px-4 py-3 sm:px-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-recoverpe-muted">
+            Layout
+          </p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {INVOICE_THEME_OPTIONS.map((option) => {
+              const selected = option.id === theme;
+              return (
+                <button
+                  key={option.id}
                   type="button"
-                  variant="secondary"
-                  onClick={() => handleProfileGate(() => void handleOpenStored())}
-                  disabled={isOpening || isDownloading}
+                  onClick={() => setTheme(option.id)}
+                  className={`rounded-md border px-3 py-2 text-left text-sm ${
+                    selected
+                      ? "border-recoverpe-black bg-recoverpe-fill"
+                      : "border-recoverpe-line bg-white hover:bg-recoverpe-fill"
+                  }`}
                 >
-                  {isOpening ? "Opening..." : "Open original PDF"}
-                </Button>
-              ) : null}
-            </div>
-          </>
+                  <span className="block font-medium text-recoverpe-black">
+                    {option.label}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-recoverpe-muted">
+                    {option.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+        {ledger.is_custom_pdf ? (
+          <div className="mx-auto max-w-xl rounded-xl border border-recoverpe-line bg-white p-6">
+            <p className="text-sm text-recoverpe-grey-medium">
+              Custom PDF for {ledger.contact.name}
+              {ledger.invoice_number ? ` (${ledger.invoice_number})` : ""}.
+            </p>
+          </div>
+        ) : (
+          <EditableInvoicePreview
+            theme={theme}
+            businessName={businessName}
+            businessAddress={activeBusiness?.business_address ?? null}
+            businessGstin={activeBusiness?.gstin ?? null}
+            gstNotRequired={Boolean(activeBusiness?.gst_not_required)}
+            contactName={ledger.contact.name}
+            contactPhone={ledger.contact.phone_number}
+            invoiceNumber={invoiceNumber}
+            invoiceDate={invoiceDate}
+            dueDate={dueDate}
+            lineItems={lineItems}
+            onLineItemsChange={setLineItems}
+            taxableAmount={gstBreakdown.taxableAmount}
+            cgst={gstBreakdown.cgst}
+            sgst={gstBreakdown.sgst}
+            igst={gstBreakdown.igst}
+            grandTotal={gstBreakdown.totalAmount}
+            documentTitle={
+              gstBreakdown.documentType === "tax_invoice"
+                ? "Tax Invoice"
+                : "Bill of Supply"
+            }
+          />
         )}
-        <LedgerLegalToolkit
-          ledger={ledger}
-          canViewEvidenceDocket={canViewEvidenceDocket}
-          canSpendFunds={canSpendFunds}
-          readOnly={readOnly}
-          onGenerateSamadhaanKit={
-            onGenerateSamadhaanKit
-              ? (targetLedger) =>
-                  handleProfileGate(() => onGenerateSamadhaanKit(targetLedger))
-              : undefined
-          }
-          onViewSamadhaanKit={
-            onViewSamadhaanKit
-              ? (targetLedger) =>
-                  handleProfileGate(() => onViewSamadhaanKit(targetLedger))
-              : undefined
-          }
-          isGeneratingSamadhaan={isGeneratingSamadhaan}
-          isViewingSamadhaan={isViewingSamadhaan}
-        />
-        <LedgerNotes ledgerId={ledger.id} compact />
-        {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
+
+        {ledger.pdf_url && !ledger.is_custom_pdf ? (
+          <div className="mx-auto mt-4 max-w-[210mm]">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleOpenStored()}
+              disabled={isOpening || isDownloading}
+            >
+              {isOpening ? "Opening..." : "Open original PDF"}
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="mx-auto mt-8 max-w-[210mm] border-t border-recoverpe-line pt-4">
+          <button
+            type="button"
+            className="text-sm font-medium text-recoverpe-black"
+            onClick={() => setShowRecovery((open) => !open)}
+          >
+            {showRecovery ? "Hide recovery tools" : "Recovery tools & notes"}
+          </button>
+          {showRecovery ? (
+            <div className="mt-4 space-y-4">
+              <LedgerLegalToolkit
+                ledger={ledger}
+                canViewEvidenceDocket={canViewEvidenceDocket}
+                canSpendFunds={canSpendFunds}
+                readOnly={readOnly}
+                onGenerateSamadhaanKit={
+                  onGenerateSamadhaanKit
+                    ? (targetLedger) =>
+                        handleLegalAction(() => onGenerateSamadhaanKit(targetLedger))
+                    : undefined
+                }
+                onViewSamadhaanKit={
+                  onViewSamadhaanKit
+                    ? (targetLedger) =>
+                        handleLegalAction(() => onViewSamadhaanKit(targetLedger))
+                    : undefined
+                }
+                isGeneratingSamadhaan={isGeneratingSamadhaan}
+                isViewingSamadhaan={isViewingSamadhaan}
+              />
+              <LedgerNotes ledgerId={ledger.id} compact />
+            </div>
+          ) : null}
+        </div>
+        {error ? (
+          <p className="mx-auto mt-4 max-w-[210mm] text-sm text-recoverpe-error">
+            {error}
+          </p>
+        ) : null}
       </div>
-    </Modal>
+    </div>
   );
 }

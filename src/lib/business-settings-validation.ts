@@ -19,6 +19,7 @@ export interface UpdateBusinessSettingsPayload {
   business_name?: string;
   business_address?: string | null;
   gstin?: string | null;
+  gst_not_required?: boolean;
   notification_preferences?: BusinessNotificationPreferences;
   smtp_settings?: BusinessSmtpSettings;
   autopilot_schedule?: number[];
@@ -30,6 +31,7 @@ export interface ValidatedBusinessSettingsUpdate {
   business_name?: string;
   business_address?: string | null;
   gstin?: string | null;
+  gst_not_required?: boolean;
   notification_preferences?: BusinessNotificationPreferences;
   smtp_settings?: BusinessSmtpSettings;
   autopilot_schedule?: number[];
@@ -67,6 +69,7 @@ export function validateBusinessSettingsUpdate(
     body.business_name === undefined &&
     body.business_address === undefined &&
     body.gstin === undefined &&
+    body.gst_not_required === undefined &&
     body.notification_preferences === undefined &&
     body.smtp_settings === undefined &&
     body.autopilot_schedule === undefined
@@ -118,6 +121,22 @@ export function validateBusinessSettingsUpdate(
     } else {
       data.gstin = null;
     }
+  }
+
+  if (body.gst_not_required !== undefined) {
+    if (typeof body.gst_not_required !== "boolean") {
+      return { error: "gst_not_required must be a boolean." };
+    }
+
+    data.gst_not_required = body.gst_not_required;
+
+    if (body.gst_not_required) {
+      data.gstin = null;
+    }
+  }
+
+  if (data.gstin) {
+    data.gst_not_required = false;
   }
 
   if (body.msme_reg_no !== undefined) {
