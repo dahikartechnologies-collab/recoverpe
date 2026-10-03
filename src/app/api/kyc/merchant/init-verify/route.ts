@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/api-auth";
+import { parseMerchantBankAccountType } from "@/lib/payments/merchant-bank-account-type";
 import { createMerchantBankVerificationOrder } from "@/lib/payments/merchant-bank-verification";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -15,9 +16,11 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => null)) as {
       business_id?: string;
+      account_type?: string;
     } | null;
 
     const businessId = body?.business_id?.trim();
+    const accountType = parseMerchantBankAccountType(body?.account_type);
 
     if (!businessId) {
       return NextResponse.json({ error: "business_id is required." }, { status: 400 });
@@ -38,7 +41,8 @@ export async function POST(request: Request) {
     const result = await createMerchantBankVerificationOrder(
       supabase,
       auth.userId,
-      businessId
+      businessId,
+      accountType
     );
 
     return NextResponse.json({
@@ -48,6 +52,7 @@ export async function POST(request: Request) {
       key: result.publicKey,
       amount_paise: result.amount_paise,
       business_id: businessId,
+      account_type: result.account_type,
       message: result.simulated
         ? "Simulated ₹5 bank verification order created."
         : "Bank verification order created successfully.",

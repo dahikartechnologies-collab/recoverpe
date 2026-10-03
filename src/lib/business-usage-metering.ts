@@ -57,6 +57,7 @@ export interface UsageDashboardPayload {
   vapi_trial_minutes_remaining: number;
   vapi_call_history: VapiCallUsageRecord[];
   metrics: UsageMetricSnapshot[];
+  live_counts: UsageTableCounts;
 }
 
 export interface LiveBusinessUsageCounts {
@@ -67,6 +68,29 @@ export interface LiveBusinessUsageCounts {
   vapiMinutes: number;
   stockMovements: number;
 }
+
+export interface UsageTableCounts {
+  ledgers: number;
+  communications: number;
+  inbound_payments: number;
+  stock_movements: number;
+}
+
+export const EMPTY_LIVE_BUSINESS_USAGE: LiveBusinessUsageCounts = {
+  invoices: 0,
+  whatsapp: 0,
+  sms: 0,
+  smartCollect: 0,
+  vapiMinutes: 0,
+  stockMovements: 0,
+};
+
+export const EMPTY_USAGE_TABLE_COUNTS: UsageTableCounts = {
+  ledgers: 0,
+  communications: 0,
+  inbound_payments: 0,
+  stock_movements: 0,
+};
 
 export interface VapiCallUsageRecord {
   id: string;
@@ -289,13 +313,19 @@ async function countExact(
   }>,
   label: string
 ): Promise<number> {
-  const { count, error } = await query;
+  try {
+    const { count, error } = await query;
 
-  if (error) {
-    throw new Error(error.message || `Failed to count ${label}.`);
+    if (error) {
+      console.error(`[usage-metering] Failed to count ${label}:`, error.message);
+      return 0;
+    }
+
+    return count ?? 0;
+  } catch (error) {
+    console.error(`[usage-metering] Failed to count ${label}:`, error);
+    return 0;
   }
-
-  return count ?? 0;
 }
 
 async function sumNumeric(
@@ -305,13 +335,31 @@ async function sumNumeric(
   }>,
   label: string
 ): Promise<number> {
-  const { data, error } = await query;
+  try {
+    const { data, error } = await query;
 
-  if (error) {
-    throw new Error(error.message || `Failed to sum ${label}.`);
+    if (error) {
+      console.error(`[usage-metering] Failed to sum ${label}:`, error.message);
+      return 0;
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return toNumber(row?.sum);
+  } catch (error) {
+    console.error(`[usage-metering] Failed to sum ${label}:`, error);
+    return 0;
   }
+}
 
-  return toNumber(data?.[0]?.sum);
+export function toUsageTableCounts(
+  live: LiveBusinessUsageCounts
+): UsageTableCounts {
+  return {
+    ledgers: live.invoices,
+    communications: live.whatsapp + live.sms,
+    inbound_payments: live.smartCollect,
+    stock_movements: live.stockMovements,
+  };
 }
 
 export function applyLiveUsageCounts(
@@ -333,107 +381,126 @@ export async function countLiveBusinessUsage(
   businessId: string,
   period: { startIso: string; endIso: string }
 ): Promise<LiveBusinessUsageCounts> {
-  const countBilledComms = (channel: "whatsapp" | "sms", label: string) =>
-    countExact(
-      supabase
-        .from("communication_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .eq("channel", channel)
-        .eq("direction", "outbound")
-        .gte("executed_at", period.startIso)
-        .lt("executed_at", period.endIso)
-        .not("status", "in", "(failed,pending)"),
-      label
-    );
+  try {
+    const countBilledComms = (channel: "whatsapp" | "sms", label: string) =>
+      countExact(
+        supabase
+          .from("communication_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", businessId)
+          .eq("channel", channel)
+          .eq("direction", "outbound")
+          .gte("executed_at", period.startIso)
+          .lt("executed_at", period.endIso)
+          .not("status", "in", "(failed,pending)"),
+        label
+      );
 
-  const [
-    invoices,
-    whatsapp,
-    sms,
-    smartCollect,
-    vapiSeconds,
-    stockMovements,
-  ] = await Promise.all([
-    countExact(
-      supabase
-        .from("ledgers")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .gte("created_at", period.startIso)
-        .lt("created_at", period.endIso)
-        .neq("status", "cancelled"),
-      "invoices"
-    ),
-    countBilledComms("whatsapp", "whatsapp alerts"),
-    countBilledComms("sms", "sms alerts"),
-    countExact(
-      supabase
-        .from("inbound_payments")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .gte("received_at", period.startIso)
-        .lt("received_at", period.endIso),
-      "smart collect settlements"
-    ),
-    sumNumeric(
-      supabase
-        .from("communication_logs")
-        .select("duration_seconds.sum()")
-        .eq("business_id", businessId)
-        .eq("type", "vapi_call")
-        .gte("executed_at", period.startIso)
-        .lt("executed_at", period.endIso),
-      "vapi minutes"
-    ),
-    countExact(
-      supabase
-        .from("stock_movements")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", businessId)
-        .gte("created_at", period.startIso)
-        .lt("created_at", period.endIso),
-      "stock movements"
-    ),
-  ]);
+    const [
+      invoices,
+      whatsapp,
+      sms,
+      smartCollect,
+      vapiSeconds,
+      stockMovements,
+    ] = await Promise.all([
+      countExact(
+        supabase
+          .from("ledgers")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", businessId)
+          .gte("created_at", period.startIso)
+          .lt("created_at", period.endIso)
+          .neq("status", "cancelled"),
+        "invoices"
+      ),
+      countBilledComms("whatsapp", "whatsapp alerts"),
+      countBilledComms("sms", "sms alerts"),
+      countExact(
+        supabase
+          .from("inbound_payments")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", businessId)
+          .gte("received_at", period.startIso)
+          .lt("received_at", period.endIso),
+        "smart collect settlements"
+      ),
+      sumNumeric(
+        supabase
+          .from("communication_logs")
+          .select("duration_seconds.sum()")
+          .eq("business_id", businessId)
+          .eq("type", "vapi_call")
+          .gte("executed_at", period.startIso)
+          .lt("executed_at", period.endIso),
+        "vapi minutes"
+      ),
+      countExact(
+        supabase
+          .from("stock_movements")
+          .select("id", { count: "exact", head: true })
+          .eq("business_id", businessId)
+          .gte("created_at", period.startIso)
+          .lt("created_at", period.endIso),
+        "stock movements"
+      ),
+    ]);
 
-  return {
-    invoices,
-    whatsapp,
-    sms,
-    smartCollect,
-    vapiMinutes: Math.ceil(vapiSeconds / 60),
-    stockMovements,
-  };
+    return {
+      invoices,
+      whatsapp,
+      sms,
+      smartCollect,
+      vapiMinutes: Math.ceil(vapiSeconds / 60),
+      stockMovements,
+    };
+  } catch (error) {
+    console.error("[usage-metering] Live usage count failed:", error);
+    return { ...EMPTY_LIVE_BUSINESS_USAGE };
+  }
 }
 
 export async function hydrateBusinessUsageFromLiveCounts(
   supabase: SupabaseClient,
   row: BusinessUsageMeteringRow
-): Promise<BusinessUsageMeteringRow> {
-  const period = resolveCurrentBillingPeriod({
-    subscriptionCurrentPeriodEnd: row.subscription_current_period_end,
-    subscriptionInterval: row.subscription_interval,
-  });
-  const live = await countLiveBusinessUsage(supabase, row.id, period);
-  const hydrated = applyLiveUsageCounts(row, live);
+): Promise<{
+  row: BusinessUsageMeteringRow;
+  live_counts: UsageTableCounts;
+}> {
+  try {
+    const period = resolveCurrentBillingPeriod({
+      subscriptionCurrentPeriodEnd: row.subscription_current_period_end,
+      subscriptionInterval: row.subscription_interval,
+    });
+    const live = await countLiveBusinessUsage(supabase, row.id, period);
+    const hydrated = applyLiveUsageCounts(row, live);
 
-  const { error } = await supabase
-    .from("businesses")
-    .update({
-      usage_invoices: hydrated.usage_invoices,
-      usage_whatsapp: hydrated.usage_whatsapp,
-      usage_sms: hydrated.usage_sms,
-      usage_smart_collect: hydrated.usage_smart_collect,
-      usage_vapi_minutes: hydrated.usage_vapi_minutes,
-    })
-    .eq("id", row.id);
+    const { error } = await supabase
+      .from("businesses")
+      .update({
+        usage_invoices: hydrated.usage_invoices,
+        usage_whatsapp: hydrated.usage_whatsapp,
+        usage_sms: hydrated.usage_sms,
+        usage_smart_collect: hydrated.usage_smart_collect,
+        usage_vapi_minutes: hydrated.usage_vapi_minutes,
+      })
+      .eq("id", row.id);
 
-  if (error) {
-    console.error("[usage-metering] Failed to persist live usage counts:", error);
+    if (error) {
+      console.error("[usage-metering] Failed to persist live usage counts:", error);
+    }
+
+    return {
+      row: hydrated,
+      live_counts: toUsageTableCounts(live),
+    };
+  } catch (error) {
+    console.error("[usage-metering] Live usage hydrate failed:", error);
+    return {
+      row: applyLiveUsageCounts(row, EMPTY_LIVE_BUSINESS_USAGE),
+      live_counts: { ...EMPTY_USAGE_TABLE_COUNTS },
+    };
   }
-
-  return hydrated;
 }
 
 export async function fetchVapiCallUsageHistory(
@@ -441,61 +508,70 @@ export async function fetchVapiCallUsageHistory(
   businessId: string,
   limit = 25
 ): Promise<VapiCallUsageRecord[]> {
-  const { data, error } = await supabase
-    .from("communication_logs")
-    .select(
-      `
-        id,
-        executed_at,
-        duration_seconds,
-        billed_amount_inr,
-        cost_deducted,
-        vapi_cost_usd,
-        applied_fx_rate,
-        applied_margin_pct,
-        summary,
-        contacts (
-          name
-        )
-      `
-    )
-    .eq("business_id", businessId)
-    .eq("type", "vapi_call")
-    .eq("status", "call_completed")
-    .order("executed_at", { ascending: false })
-    .limit(limit);
+  try {
+    const { data, error } = await supabase
+      .from("communication_logs")
+      .select(
+        `
+          id,
+          executed_at,
+          duration_seconds,
+          billed_amount_inr,
+          cost_deducted,
+          vapi_cost_usd,
+          applied_fx_rate,
+          applied_margin_pct,
+          summary,
+          contacts (
+            name
+          )
+        `
+      )
+      .eq("business_id", businessId)
+      .eq("type", "vapi_call")
+      .eq("status", "call_completed")
+      .order("executed_at", { ascending: false })
+      .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load AI voice call history.");
+    if (error) {
+      console.error(
+        "[usage-metering] Failed to load AI voice call history:",
+        error.message
+      );
+      return [];
+    }
+
+    return (data ?? []).map((row) => {
+      const contact = Array.isArray(row.contacts) ? row.contacts[0] : row.contacts;
+
+      return {
+        id: row.id as string,
+        executed_at: (row.executed_at as string) ?? "",
+        duration_seconds:
+          row.duration_seconds === null || row.duration_seconds === undefined
+            ? null
+            : Number(row.duration_seconds),
+        billed_amount_inr: Number(row.billed_amount_inr ?? row.cost_deducted ?? 0),
+        vapi_cost_usd:
+          row.vapi_cost_usd === null || row.vapi_cost_usd === undefined
+            ? null
+            : Number(row.vapi_cost_usd),
+        applied_fx_rate:
+          row.applied_fx_rate === null || row.applied_fx_rate === undefined
+            ? null
+            : Number(row.applied_fx_rate),
+        applied_margin_pct:
+          row.applied_margin_pct === null || row.applied_margin_pct === undefined
+            ? null
+            : Number(row.applied_margin_pct),
+        summary: (row.summary as string | null) ?? null,
+        debtor_name: (contact?.name as string | null) ?? null,
+      };
+    });
+  } catch (error) {
+    console.error("[usage-metering] Failed to load AI voice call history:", error);
+    return [];
   }
-
-  return (data ?? []).map((row) => {
-    const contact = Array.isArray(row.contacts) ? row.contacts[0] : row.contacts;
-
-    return {
-      id: row.id as string,
-      executed_at: row.executed_at as string,
-      duration_seconds:
-        row.duration_seconds === null || row.duration_seconds === undefined
-          ? null
-          : Number(row.duration_seconds),
-      billed_amount_inr: Number(row.billed_amount_inr ?? row.cost_deducted ?? 0),
-      vapi_cost_usd:
-        row.vapi_cost_usd === null || row.vapi_cost_usd === undefined
-          ? null
-          : Number(row.vapi_cost_usd),
-      applied_fx_rate:
-        row.applied_fx_rate === null || row.applied_fx_rate === undefined
-          ? null
-          : Number(row.applied_fx_rate),
-      applied_margin_pct:
-        row.applied_margin_pct === null || row.applied_margin_pct === undefined
-          ? null
-          : Number(row.applied_margin_pct),
-      summary: (row.summary as string | null) ?? null,
-      debtor_name: (contact?.name as string | null) ?? null,
-    };
-  });
 }
 
 export function buildUsageDashboardPayload(
@@ -503,6 +579,7 @@ export function buildUsageDashboardPayload(
   options: {
     vapi_wallet_balance_inr?: number;
     vapi_call_history?: VapiCallUsageRecord[];
+    live_counts?: UsageTableCounts;
   } = {}
 ): UsageDashboardPayload {
   const effectiveTier = resolveEffectiveTier(toEntitlementRow(row));
@@ -563,6 +640,7 @@ export function buildUsageDashboardPayload(
     vapi_trial_minutes_remaining: trialMinutesRemaining,
     vapi_call_history: options.vapi_call_history ?? [],
     metrics,
+    live_counts: options.live_counts ?? { ...EMPTY_USAGE_TABLE_COUNTS },
   };
 }
 

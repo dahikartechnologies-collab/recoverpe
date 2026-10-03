@@ -6,8 +6,21 @@ import {
   getRazorpayCredentials,
 } from "@/lib/razorpay";
 import { MERCHANT_BANK_VERIFICATION_AMOUNT_PAISE } from "@/lib/razorpay-products";
+import {
+  MerchantBankAccountType,
+  parseMerchantBankAccountType,
+  shouldMarkAccountPrimary,
+} from "@/lib/payments/merchant-bank-account-type";
 
 export const MERCHANT_BANK_VERIFICATION_PURCHASE_TYPE = "bank_verification_5";
+export {
+  parseMerchantBankAccountType,
+  shouldMarkAccountPrimary,
+};
+export type { MerchantBankAccountType };
+
+export const MERCHANT_BANK_ACCOUNT_SELECT =
+  "id, business_id, account_number, ifsc, upi_vpa, is_verified, verification_payment_id, account_type, is_primary, created_at";
 
 export interface MerchantBankAccountRecord {
   id: string;
@@ -17,6 +30,8 @@ export interface MerchantBankAccountRecord {
   upi_vpa: string | null;
   is_verified: boolean;
   verification_payment_id: string | null;
+  account_type: MerchantBankAccountType;
+  is_primary: boolean;
   created_at: string;
 }
 
@@ -32,20 +47,41 @@ function buildBasicAuth(keyId: string, keySecret: string): string {
   return Buffer.from(`${keyId}:${keySecret}`).toString("base64");
 }
 
+function mapMerchantBankAccountRow(
+  data: Record<string, unknown>
+): MerchantBankAccountRecord {
+  return {
+    id: data.id as string,
+    business_id: data.business_id as string,
+    account_number: (data.account_number as string | null) ?? null,
+    ifsc: (data.ifsc as string | null) ?? null,
+    upi_vpa: (data.upi_vpa as string | null) ?? null,
+    is_verified: Boolean(data.is_verified),
+    verification_payment_id:
+      (data.verification_payment_id as string | null) ?? null,
+    account_type: parseMerchantBankAccountType(data.account_type),
+    is_primary: Boolean(data.is_primary),
+    created_at: data.created_at as string,
+  };
+}
+
 export async function createMerchantBankVerificationOrder(
   supabase: SupabaseClient,
   userId: string,
-  businessId: string
+  businessId: string,
+  accountType: MerchantBankAccountType = "business"
 ): Promise<{
   order: CreatedRazorpayOrder;
   simulated: boolean;
   publicKey: string | null;
   amount_paise: number;
+  account_type: MerchantBankAccountType;
 }> {
   const amountPaise = MERCHANT_BANK_VERIFICATION_AMOUNT_PAISE;
   const receipt = `bnk_${randomUUID().replace(/-/g, "").slice(0, 18)}`;
   const credentials = getRazorpayCredentials();
   const isDevelopment = isDevelopmentAppEnv();
+  const resolvedAccountType = parseMerchantBankAccountType(accountType);
 
   if (!credentials) {
     if (!isDevelopment) {
@@ -67,6 +103,7 @@ export async function createMerchantBankVerificationOrder(
       amount_paise: amountPaise,
       status: "created",
       business_id: businessId,
+      verification_account_type: resolvedAccountType,
     });
 
     if (error) {
@@ -78,6 +115,7 @@ export async function createMerchantBankVerificationOrder(
       simulated: true,
       publicKey: null,
       amount_paise: amountPaise,
+      account_type: resolvedAccountType,
     };
   }
 
@@ -96,6 +134,7 @@ export async function createMerchantBankVerificationOrder(
         business_id: businessId,
         user_id: userId,
         purchase_type: MERCHANT_BANK_VERIFICATION_PURCHASE_TYPE,
+        account_type: resolvedAccountType,
       },
     }),
   });
@@ -114,6 +153,7 @@ export async function createMerchantBankVerificationOrder(
     amount_paise: amountPaise,
     status: "created",
     business_id: businessId,
+    verification_account_type: resolvedAccountType,
   });
 
   if (error) {
@@ -125,6 +165,7 @@ export async function createMerchantBankVerificationOrder(
     simulated: false,
     publicKey: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? credentials.keyId,
     amount_paise: amountPaise,
+    account_type: resolvedAccountType,
   };
 }
 
@@ -169,9 +210,13 @@ export function extractPaymentSourceFromWebhook(
 
 export function extractBankVerificationNotesFromWebhook(
   payload: unknown
-): { businessId: string | null; type: string | null } {
+): {
+  businessId: string | null;
+  type: string | null;
+  accountType: MerchantBankAccountType;
+} {
   if (!payload || typeof payload !== "object") {
-    return { businessId: null, type: null };
+    return { businessId: null, type: null, accountType: "business" };
   }
 
   const body = payload as {
@@ -196,6 +241,7 @@ export function extractBankVerificationNotesFromWebhook(
   return {
     type: notes.type ?? null,
     businessId: notes.business_id ?? null,
+    accountType: parseMerchantBankAccountType(notes.account_type),
   };
 }
 
@@ -266,58 +312,39 @@ export async function persistVerifiedMerchantBankAccount(
   input: {
     businessId: string;
     paymentSource: CapturedPaymentSource;
+    accountType?: MerchantBankAccountType;
   }
 ): Promise<MerchantBankAccountRecord> {
   const verifiedAt = new Date().toISOString();
-  const upiVpa = input.paymentSource.upiVpa?.trim() || null;
-  const accountNumber =
+  const accountType = parseMerchantBankAccountType(input.accountType);
+  let upiVpa = input.paymentSource.upiVpa?.trim() || null;
+  let accountNumber =
     input.paymentSource.accountNumber?.replace(/\s/g, "") || null;
-  const ifsc = input.paymentSource.ifsc?.trim().toUpperCase() || null;
+  let ifsc = input.paymentSource.ifsc?.trim().toUpperCase() || null;
 
   if (!upiVpa && (!accountNumber || !ifsc)) {
-    if (isDevelopmentAppEnv()) {
-      const devAccount = {
-        upiVpa: upiVpa ?? "verified.merchant@recoverpe",
-        accountNumber: accountNumber ?? "000111222333",
-        ifsc: ifsc ?? "HDFC0000001",
-      };
-
-      const { data, error } = await supabase
-        .from("merchant_bank_accounts")
-        .insert({
-          business_id: input.businessId,
-          account_number: devAccount.accountNumber,
-          ifsc: devAccount.ifsc,
-          upi_vpa: devAccount.upiVpa,
-          is_verified: true,
-          verification_payment_id: input.paymentSource.paymentId,
-        })
-        .select(
-          "id, business_id, account_number, ifsc, upi_vpa, is_verified, verification_payment_id, created_at"
-        )
-        .single();
-
-      if (error || !data) {
-        throw new Error(error?.message || "Failed to save verified bank account.");
-      }
-
-      await supabase
-        .from("businesses")
-        .update({
-          payout_bank_account_number: devAccount.accountNumber,
-          payout_bank_ifsc: devAccount.ifsc,
-          bank_verified_at: verifiedAt,
-          kyc_verified_at: verifiedAt,
-        })
-        .eq("id", input.businessId);
-
-      return data as MerchantBankAccountRecord;
+    if (!isDevelopmentAppEnv()) {
+      throw new Error(
+        "Unable to capture payer bank or UPI details from the verification payment."
+      );
     }
 
-    throw new Error(
-      "Unable to capture payer bank or UPI details from the verification payment."
-    );
+    upiVpa = upiVpa ?? "verified.merchant@recoverpe";
+    accountNumber = accountNumber ?? "000111222333";
+    ifsc = ifsc ?? "HDFC0000001";
   }
+
+  const { count, error: countError } = await supabase
+    .from("merchant_bank_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", input.businessId)
+    .eq("is_verified", true);
+
+  if (countError) {
+    throw new Error(countError.message || "Failed to load existing bank accounts.");
+  }
+
+  const isPrimary = shouldMarkAccountPrimary(count ?? 0);
 
   const { data, error } = await supabase
     .from("merchant_bank_accounts")
@@ -328,33 +355,36 @@ export async function persistVerifiedMerchantBankAccount(
       upi_vpa: upiVpa,
       is_verified: true,
       verification_payment_id: input.paymentSource.paymentId,
+      account_type: accountType,
+      is_primary: isPrimary,
     })
-    .select(
-      "id, business_id, account_number, ifsc, upi_vpa, is_verified, verification_payment_id, created_at"
-    )
+    .select(MERCHANT_BANK_ACCOUNT_SELECT)
     .single();
 
   if (error || !data) {
     throw new Error(error?.message || "Failed to save verified bank account.");
   }
 
-  await supabase
-    .from("businesses")
-    .update({
-      payout_bank_account_number: accountNumber,
-      payout_bank_ifsc: ifsc,
-      bank_verified_at: verifiedAt,
-      kyc_verified_at: verifiedAt,
-    })
-    .eq("id", input.businessId);
+  const businessUpdate: Record<string, unknown> = {
+    bank_verified_at: verifiedAt,
+    kyc_verified_at: verifiedAt,
+  };
 
-  return data as MerchantBankAccountRecord;
+  if (isPrimary) {
+    businessUpdate.payout_bank_account_number = accountNumber;
+    businessUpdate.payout_bank_ifsc = ifsc;
+  }
+
+  await supabase.from("businesses").update(businessUpdate).eq("id", input.businessId);
+
+  return mapMerchantBankAccountRow(data as Record<string, unknown>);
 }
 
 export async function fulfillMerchantBankVerificationOrder(
   supabase: SupabaseClient,
   razorpayOrderId: string,
-  paymentSource?: CapturedPaymentSource | null
+  paymentSource?: CapturedPaymentSource | null,
+  accountTypeOverride?: MerchantBankAccountType
 ): Promise<{ businessId: string; account: MerchantBankAccountRecord }> {
   const paidAt = new Date().toISOString();
 
@@ -364,7 +394,7 @@ export async function fulfillMerchantBankVerificationOrder(
     .eq("razorpay_order_id", razorpayOrderId)
     .eq("status", "created")
     .eq("purchase_type", MERCHANT_BANK_VERIFICATION_PURCHASE_TYPE)
-    .select("id, business_id, amount_paise")
+    .select("id, business_id, amount_paise, verification_account_type")
     .maybeSingle();
 
   if (lockError) {
@@ -374,7 +404,7 @@ export async function fulfillMerchantBankVerificationOrder(
   if (!lockedOrder?.business_id) {
     const { data: existingOrder } = await supabase
       .from("razorpay_orders")
-      .select("business_id, status")
+      .select("business_id, status, verification_account_type")
       .eq("razorpay_order_id", razorpayOrderId)
       .eq("purchase_type", MERCHANT_BANK_VERIFICATION_PURCHASE_TYPE)
       .maybeSingle();
@@ -382,9 +412,7 @@ export async function fulfillMerchantBankVerificationOrder(
     if (existingOrder?.status === "paid" && existingOrder.business_id) {
       const { data: account } = await supabase
         .from("merchant_bank_accounts")
-        .select(
-          "id, business_id, account_number, ifsc, upi_vpa, is_verified, verification_payment_id, created_at"
-        )
+        .select(MERCHANT_BANK_ACCOUNT_SELECT)
         .eq("business_id", existingOrder.business_id)
         .eq("is_verified", true)
         .order("created_at", { ascending: false })
@@ -394,7 +422,7 @@ export async function fulfillMerchantBankVerificationOrder(
       if (account) {
         return {
           businessId: existingOrder.business_id as string,
-          account: account as MerchantBankAccountRecord,
+          account: mapMerchantBankAccountRow(account as Record<string, unknown>),
         };
       }
     }
@@ -416,6 +444,9 @@ export async function fulfillMerchantBankVerificationOrder(
   const account = await persistVerifiedMerchantBankAccount(supabase, {
     businessId: lockedOrder.business_id as string,
     paymentSource: resolvedPaymentSource,
+    accountType: parseMerchantBankAccountType(
+      accountTypeOverride ?? lockedOrder.verification_account_type
+    ),
   });
 
   return {
@@ -449,7 +480,8 @@ export async function handleMerchantBankVerificationWebhook(
   const result = await fulfillMerchantBankVerificationOrder(
     supabase,
     razorpayOrderId,
-    paymentSource
+    paymentSource,
+    notes.accountType
   );
 
   return {

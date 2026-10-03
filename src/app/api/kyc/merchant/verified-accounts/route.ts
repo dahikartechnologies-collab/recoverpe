@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/api-auth";
-import type { MerchantBankAccountRecord } from "@/lib/payments/merchant-bank-verification";
+import {
+  MERCHANT_BANK_ACCOUNT_SELECT,
+  type MerchantBankAccountRecord,
+} from "@/lib/payments/merchant-bank-verification";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +37,10 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("merchant_bank_accounts")
-      .select(
-        "id, business_id, account_number, ifsc, upi_vpa, is_verified, verification_payment_id, created_at"
-      )
+      .select(MERCHANT_BANK_ACCOUNT_SELECT)
       .eq("business_id", businessId)
       .eq("is_verified", true)
+      .order("is_primary", { ascending: false })
       .order("created_at", { ascending: false });
 
     if (error) {

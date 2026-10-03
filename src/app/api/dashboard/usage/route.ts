@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  applyLiveUsageCounts,
   buildUsageDashboardPayload,
+  EMPTY_LIVE_BUSINESS_USAGE,
+  EMPTY_USAGE_TABLE_COUNTS,
   fetchVapiCallUsageHistory,
   hydrateBusinessUsageFromLiveCounts,
   syncBusinessUsageQuotas,
@@ -47,30 +50,63 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
 
-    const quotaRow = await syncBusinessUsageQuotas(supabase, businessId);
+    let quotaRow;
+    try {
+      quotaRow = await syncBusinessUsageQuotas(supabase, businessId);
+    } catch (quotaError) {
+      console.error("[dashboard-usage] Quota sync failed:", quotaError);
+      quotaRow = null;
+    }
 
     if (!quotaRow) {
       return NextResponse.json({ error: "Business not found." }, { status: 404 });
     }
 
-    const row = await hydrateBusinessUsageFromLiveCounts(supabase, quotaRow);
+    let meteringRow = quotaRow;
+    let liveCounts = { ...EMPTY_USAGE_TABLE_COUNTS };
 
-    const { data: userRow, error: userError } = await supabase
-      .from("users")
-      .select("vapi_wallet_balance")
-      .eq("id", authResult.effectiveUserId)
-      .maybeSingle();
-
-    if (userError) {
-      return NextResponse.json(
-        { error: userError.message || "Failed to load wallet balance." },
-        { status: 500 }
+    try {
+      const hydrated = await hydrateBusinessUsageFromLiveCounts(
+        supabase,
+        quotaRow
       );
+      meteringRow = hydrated.row;
+      liveCounts = hydrated.live_counts;
+    } catch (countError) {
+      console.error("[dashboard-usage] Live count failed:", countError);
+      meteringRow = applyLiveUsageCounts(quotaRow, EMPTY_LIVE_BUSINESS_USAGE);
+      liveCounts = { ...EMPTY_USAGE_TABLE_COUNTS };
     }
 
-    const payload = buildUsageDashboardPayload(row, {
-      vapi_wallet_balance_inr: Number(userRow?.vapi_wallet_balance ?? 0),
-      vapi_call_history: await fetchVapiCallUsageHistory(supabase, businessId),
+    let vapiWalletBalance = 0;
+    try {
+      const { data: userRow, error: userError } = await supabase
+        .from("users")
+        .select("vapi_wallet_balance")
+        .eq("id", authResult.effectiveUserId)
+        .maybeSingle();
+
+      if (userError) {
+        console.error("[dashboard-usage] Wallet load failed:", userError.message);
+      } else {
+        vapiWalletBalance = Number(userRow?.vapi_wallet_balance ?? 0);
+      }
+    } catch (walletError) {
+      console.error("[dashboard-usage] Wallet load failed:", walletError);
+    }
+
+    let vapiCallHistory: Awaited<ReturnType<typeof fetchVapiCallUsageHistory>> =
+      [];
+    try {
+      vapiCallHistory = await fetchVapiCallUsageHistory(supabase, businessId);
+    } catch (historyError) {
+      console.error("[dashboard-usage] Call history failed:", historyError);
+    }
+
+    const payload = buildUsageDashboardPayload(meteringRow, {
+      vapi_wallet_balance_inr: vapiWalletBalance,
+      vapi_call_history: vapiCallHistory,
+      live_counts: liveCounts,
     });
 
     return NextResponse.json(payload, {

@@ -14,16 +14,17 @@ import { parseApiJsonResponse, readApiJsonBody } from "@/lib/parse-api-response"
 import { useWorkspaceStore } from "@/store/workspace-store";
 
 function formatVerifiedAccountLabel(account: MerchantBankAccountRecord): string {
-  if (account.upi_vpa) {
-    return `UPI · ${account.upi_vpa}`;
-  }
+  const typeLabel =
+    account.account_type === "personal" ? "Personal / Savings" : "Business / Current";
+  const source = account.upi_vpa
+    ? `UPI · ${account.upi_vpa}`
+    : `${
+        account.account_number && account.account_number.length > 4
+          ? `••••${account.account_number.slice(-4)}`
+          : "Account"
+      } · ${account.ifsc ?? "—"}`;
 
-  const masked =
-    account.account_number && account.account_number.length > 4
-      ? `••••${account.account_number.slice(-4)}`
-      : "Account";
-
-  return `${masked} · ${account.ifsc ?? "—"}`;
+  return `${typeLabel} · ${source}`;
 }
 
 export function PayoutDetailsCard() {
@@ -72,7 +73,8 @@ export function PayoutDetailsCard() {
           return current;
         }
 
-        return payload.accounts[0]?.id ?? "";
+        const primary = payload.accounts.find((account) => account.is_primary);
+        return primary?.id ?? payload.accounts[0]?.id ?? "";
       });
     } catch (loadError) {
       setError(
@@ -183,7 +185,54 @@ export function PayoutDetailsCard() {
 
   return (
     <div className="space-y-6">
-      <SecureBankLinking onVerified={() => void loadVerifiedAccounts()} />
+      <SecureBankLinking
+        hasVerifiedAccounts={hasVerifiedAccounts}
+        onVerified={() => void loadVerifiedAccounts()}
+      />
+
+      {hasVerifiedAccounts ? (
+        <Card>
+          <CardHeader>
+            <h2 className="type-section-title">Verified bank accounts</h2>
+            <p className="mt-1 text-sm text-recoverpe-muted">
+              Each account was captured with a ₹5 reverse penny-drop. Choose which
+              one Smart Collect should settle into.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-recoverpe-line rounded-xl border border-recoverpe-line">
+              {verifiedAccounts.map((account) => (
+                <li
+                  key={account.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-recoverpe-black">
+                      {formatVerifiedAccountLabel(account)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-recoverpe-muted">
+                      Added{" "}
+                      {new Date(account.created_at).toLocaleDateString("en-IN")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      tone={
+                        account.account_type === "personal" ? "neutral" : "success"
+                      }
+                    >
+                      {account.account_type === "personal"
+                        ? "Personal"
+                        : "Business"}
+                    </Badge>
+                    {account.is_primary ? <Badge tone="success">Primary</Badge> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

@@ -43,6 +43,8 @@ export interface AuditLogInsert {
 export interface MerchantBankAccountRow {
   id: string;
   business_id: string;
+  account_type?: "business" | "personal";
+  is_primary?: boolean;
   account_number: string | null;
   ifsc: string | null;
   upi_vpa: string | null;
@@ -54,6 +56,8 @@ export interface MerchantBankAccountRow {
 export interface MerchantBankAccountInsert {
   id?: string;
   business_id: string;
+  account_type?: "business" | "personal";
+  is_primary?: boolean;
   account_number?: string | null;
   ifsc?: string | null;
   upi_vpa?: string | null;
