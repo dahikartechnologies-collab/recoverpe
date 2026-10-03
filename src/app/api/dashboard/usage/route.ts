@@ -9,6 +9,7 @@ import {
   hydrateBusinessUsageFromLiveCounts,
   syncBusinessUsageQuotas,
 } from "@/lib/business-usage-metering";
+import { parseUsageMonthParam } from "@/lib/billing-period";
 import { resolveWorkspaceAuth } from "@/lib/auth-gateway";
 import { createAdminSupabaseClient } from "@/lib/supabase-admin";
 
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const businessId = searchParams.get("business_id")?.trim() ?? "";
+    const month = parseUsageMonthParam(searchParams.get("month"));
 
     if (!businessId) {
       return NextResponse.json(
@@ -70,7 +72,8 @@ export async function GET(request: Request) {
     try {
       const hydrated = await hydrateBusinessUsageFromLiveCounts(
         supabase,
-        quotaRow
+        quotaRow,
+        { month }
       );
       meteringRow = hydrated.row;
       liveCounts = hydrated.live_counts;

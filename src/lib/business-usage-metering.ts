@@ -519,33 +519,41 @@ export async function countLiveBusinessUsage(
 
 export async function hydrateBusinessUsageFromLiveCounts(
   supabase: SupabaseClient,
-  row: BusinessUsageMeteringRow
+  row: BusinessUsageMeteringRow,
+  options: { month?: string | null } = {}
 ): Promise<{
   row: BusinessUsageMeteringRow;
   live_counts: UsageTableCounts;
   usage_window: UsageCountWindow;
 }> {
   try {
+    const requestedMonth = options.month?.trim() || null;
     const usageWindow = resolveUsageCountWindow({
       subscriptionCurrentPeriodEnd: row.subscription_current_period_end,
       subscriptionInterval: row.subscription_interval,
+      month: requestedMonth,
     });
     const live = await countLiveBusinessUsage(supabase, row.id, usageWindow);
     const hydrated = applyLiveUsageCounts(row, live);
 
-    const { error } = await supabase
-      .from("businesses")
-      .update({
-        usage_invoices: hydrated.usage_invoices,
-        usage_whatsapp: hydrated.usage_whatsapp,
-        usage_sms: hydrated.usage_sms,
-        usage_smart_collect: hydrated.usage_smart_collect,
-        usage_vapi_minutes: hydrated.usage_vapi_minutes,
-      })
-      .eq("id", row.id);
+    if (!requestedMonth) {
+      const { error } = await supabase
+        .from("businesses")
+        .update({
+          usage_invoices: hydrated.usage_invoices,
+          usage_whatsapp: hydrated.usage_whatsapp,
+          usage_sms: hydrated.usage_sms,
+          usage_smart_collect: hydrated.usage_smart_collect,
+          usage_vapi_minutes: hydrated.usage_vapi_minutes,
+        })
+        .eq("id", row.id);
 
-    if (error) {
-      console.error("[usage-metering] Failed to persist live usage counts:", error);
+      if (error) {
+        console.error(
+          "[usage-metering] Failed to persist live usage counts:",
+          error
+        );
+      }
     }
 
     return {

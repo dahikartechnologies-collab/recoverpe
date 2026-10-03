@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FileText,
   MessageCircle,
@@ -14,6 +14,7 @@ import { WalletRechargePanel } from "@/components/billing/WalletRechargePanel";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   Table,
@@ -25,6 +26,11 @@ import {
 } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
+import {
+  formatUsageMonthLabel,
+  listUsageMonthOptions,
+  parseUsageMonthParam,
+} from "@/lib/billing-period";
 import {
   liveUsageForMetric,
   UsageDashboardPayload,
@@ -143,6 +149,21 @@ function CircularProgress({
   );
 }
 
+function MetricCardsSkeleton() {
+  return (
+    <div
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <Skeleton className="h-36 rounded-xl" />
+      <Skeleton className="h-36 rounded-xl" />
+      <Skeleton className="h-36 rounded-xl" />
+      <Skeleton className="h-36 rounded-xl" />
+    </div>
+  );
+}
+
 export function UsageSpendingView() {
   const activeBusinessId = useWorkspaceStore((state) => state.activeBusinessId);
   const businesses = useWorkspaceStore((state) => state.businesses);
@@ -150,6 +171,9 @@ export function UsageSpendingView() {
   const bumpUserRefresh = useWorkspaceStore((state) => state.bumpUserRefresh);
   const activeBusiness =
     businesses.find((business) => business.id === activeBusinessId) ?? null;
+  const monthOptions = useMemo(() => listUsageMonthOptions(), []);
+  const currentMonth = monthOptions[0]?.value ?? "";
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [payload, setPayload] = useState<UsageDashboardPayload | null>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -168,6 +192,10 @@ export function UsageSpendingView() {
     try {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ business_id: activeBusinessId });
+      const selected = monthOptions.find((option) => option.value === selectedMonth);
+      if (selected && !selected.isCurrent) {
+        params.set("month", selectedMonth);
+      }
       const response = await fetch(`/api/dashboard/usage?${params.toString()}`, {
         headers,
       });
@@ -190,7 +218,7 @@ export function UsageSpendingView() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeBusinessId]);
+  }, [activeBusinessId, monthOptions, selectedMonth]);
 
   useEffect(() => {
     void loadUsage();
@@ -208,25 +236,48 @@ export function UsageSpendingView() {
     );
   }
 
+  const selectedOption = monthOptions.find((option) => option.value === selectedMonth);
+  const coverageLabel = selectedOption
+    ? selectedOption.isCurrent && payload?.usage_window.source === "subscription"
+      ? "the current billing period"
+      : formatUsageMonthLabel(selectedMonth)
+    : "this month";
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Workspace activity"
         title="Usage Analytics"
-        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. ${
-          payload?.usage_window?.source === "subscription"
-            ? "Counts cover the current billing period."
-            : "Counts cover this month."
-        } Progress bars show activity — not hard billing caps.`}
+        description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. Counts cover ${coverageLabel}. Progress bars show activity — not hard billing caps.`}
+        actions={
+          <label className="block w-full sm:w-56">
+            <span className="sr-only">Billing period</span>
+            <Select
+              aria-label="Billing period"
+              value={selectedMonth}
+              onChange={(event) => {
+                const nextMonth = parseUsageMonthParam(event.target.value);
+                if (nextMonth) {
+                  setSelectedMonth(nextMonth);
+                }
+              }}
+            >
+              {monthOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+        }
       />
 
       {error ? <p className="text-sm text-recoverpe-error">{error}</p> : null}
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {isLoading && !payload ? (
+        <div className="space-y-4">
           <Skeleton className="h-36 rounded-xl" />
-          <Skeleton className="h-36 rounded-xl" />
-          <Skeleton className="h-36 rounded-xl" />
+          <MetricCardsSkeleton />
         </div>
       ) : payload ? (
         <>
@@ -357,6 +408,9 @@ export function UsageSpendingView() {
             </div>
           </div>
 
+          {isLoading ? (
+            <MetricCardsSkeleton />
+          ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {payload.metrics.map((metric) => {
               const Icon = METRIC_ICONS[metric.key] ?? Wallet;
@@ -404,6 +458,7 @@ export function UsageSpendingView() {
               );
             })}
           </div>
+          )}
         </>
       ) : null}
 
