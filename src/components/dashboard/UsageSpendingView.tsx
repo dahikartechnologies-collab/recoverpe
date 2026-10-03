@@ -216,7 +216,7 @@ export function UsageSpendingView() {
         description={`Track Smart Collect settlements, omnichannel alerts, and AI voice wallet usage for ${activeBusiness?.business_name ?? "your business"}. ${
           payload?.usage_window?.source === "subscription"
             ? "Counts cover the current billing period."
-            : "Counts cover all workspace activity."
+            : "Counts cover this month."
         } Progress bars show activity — not hard billing caps.`}
       />
 

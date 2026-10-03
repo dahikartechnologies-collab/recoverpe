@@ -51,15 +51,15 @@ describe("resolveUsageCountWindow", () => {
     });
   });
 
-  it("counts all workspace activity when there is no active subscription period", () => {
+  it("uses the IST calendar month when there is no active subscription period", () => {
     const window = resolveUsageCountWindow({
       now: new Date("2026-10-03T09:00:00.000Z"),
     });
 
     expect(window).toEqual({
-      source: "all_time",
-      startIso: null,
-      endIso: null,
+      source: "calendar_month",
+      startIso: "2026-09-30T18:30:00.000Z",
+      endIso: "2026-10-31T18:30:00.000Z",
     });
   });
 });

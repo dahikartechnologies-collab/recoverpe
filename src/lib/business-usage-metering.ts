@@ -100,11 +100,7 @@ export const EMPTY_USAGE_TABLE_COUNTS: UsageTableCounts = {
   sms: 0,
 };
 
-export const EMPTY_USAGE_WINDOW: UsageCountWindow = {
-  source: "all_time",
-  startIso: null,
-  endIso: null,
-};
+export const EMPTY_USAGE_WINDOW: UsageCountWindow = resolveUsageCountWindow({});
 
 export interface VapiCallUsageRecord {
   id: string;
