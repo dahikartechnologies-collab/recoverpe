@@ -1,8 +1,16 @@
 import QRCode from "qrcode";
 import { getKhataQrUrl } from "@/lib/khata-qr";
 
+export const STANDEE_NAVY = "#0A192F";
+export const STANDEE_EMERALD = "#10B981";
+export const STANDEE_TEAL = "#00695C";
+export const STANDEE_GREY = "#E5E7EB";
+export const STANDEE_INK = "#0A0A0A";
+
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1520;
+const SAFE_INSET = 64;
+const FOOTER_SAFE_HEIGHT = 132;
 
 function wrapCanvasText(
   context: CanvasRenderingContext2D,
@@ -10,11 +18,13 @@ function wrapCanvasText(
   centerX: number,
   startY: number,
   maxWidth: number,
-  lineHeight: number
+  lineHeight: number,
+  maxLines = 3
 ): number {
   const words = text.split(/\s+/);
   let line = "";
   let y = startY;
+  let lines = 0;
 
   for (const word of words) {
     const testLine = line ? `${line} ${word}` : word;
@@ -24,6 +34,10 @@ function wrapCanvasText(
       context.fillText(line, centerX, y);
       line = word;
       y += lineHeight;
+      lines += 1;
+      if (lines >= maxLines - 1) {
+        break;
+      }
     } else {
       line = testLine;
     }
@@ -46,16 +60,55 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function roundRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
+}
+
+function drawBadge(
+  context: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  roundRect(context, x, y, width, height, 12);
+  context.fillStyle = "#FFFFFF";
+  context.fill();
+  context.strokeStyle = STANDEE_GREY;
+  context.lineWidth = 2;
+  context.stroke();
+  context.fillStyle = STANDEE_TEAL;
+  context.font = "700 22px Inter, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, x + width / 2, y + height / 2);
+}
+
 export async function generateKhataStandeePoster(input: {
   businessId: string;
   businessName: string;
 }): Promise<string> {
   const qrUrl = getKhataQrUrl(input.businessId);
   const qrDataUrl = await QRCode.toDataURL(qrUrl, {
-    width: 520,
+    width: 480,
     margin: 2,
     color: {
-      dark: "#0A0A0A",
+      dark: STANDEE_NAVY,
       light: "#FFFFFF",
     },
   });
@@ -70,57 +123,102 @@ export async function generateKhataStandeePoster(input: {
     throw new Error("Failed to initialize poster canvas.");
   }
 
-  context.fillStyle = "#FFFFFF";
+  context.fillStyle = "#F8FAFC";
   context.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
-  context.strokeStyle = "#0A0A0A";
-  context.lineWidth = 4;
-  context.strokeRect(48, 48, POSTER_WIDTH - 96, POSTER_HEIGHT - 96);
+  context.fillStyle = STANDEE_NAVY;
+  context.fillRect(0, 0, POSTER_WIDTH, 240);
+  context.fillStyle = STANDEE_EMERALD;
+  context.fillRect(0, 240, POSTER_WIDTH, 8);
 
-  context.fillStyle = "#0A0A0A";
+  context.fillStyle = "#FFFFFF";
   context.textAlign = "center";
-  context.font = "700 64px Inter, system-ui, sans-serif";
-
-  const nameBottomY = wrapCanvasText(
+  context.textBaseline = "alphabetic";
+  context.font = "600 22px Inter, system-ui, sans-serif";
+  context.fillText("KHATA PAYMENT STAND", POSTER_WIDTH / 2, 72);
+  context.font = "700 48px Inter, system-ui, sans-serif";
+  wrapCanvasText(
     context,
     input.businessName,
     POSTER_WIDTH / 2,
-    180,
-    POSTER_WIDTH - 180,
-    72
+    140,
+    POSTER_WIDTH - 160,
+    56,
+    2
   );
 
-  const qrImage = await loadImage(qrDataUrl);
-  const qrSize = 520;
-  const qrY = Math.max(nameBottomY + 48, 360);
-  context.drawImage(qrImage, (POSTER_WIDTH - qrSize) / 2, qrY, qrSize, qrSize);
-
-  context.font = "500 36px Inter, system-ui, sans-serif";
-  context.fillStyle = "#0A0A0A";
-  context.fillText("Scan to Pay & Open Khata", POSTER_WIDTH / 2, qrY + qrSize + 72);
-
-  context.strokeStyle = "#E5E5E5";
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(180, POSTER_HEIGHT - 180);
-  context.lineTo(POSTER_WIDTH - 180, POSTER_HEIGHT - 180);
+  const cardX = 150;
+  const cardY = 300;
+  const cardW = POSTER_WIDTH - 300;
+  const cardH = 760;
+  context.shadowColor = "rgba(10, 25, 47, 0.08)";
+  context.shadowBlur = 24;
+  context.shadowOffsetY = 10;
+  context.fillStyle = "#FFFFFF";
+  roundRect(context, cardX, cardY, cardW, cardH, 28);
+  context.fill();
+  context.shadowColor = "transparent";
+  context.strokeStyle = STANDEE_GREY;
+  context.lineWidth = 2;
+  roundRect(context, cardX, cardY, cardW, cardH, 28);
   context.stroke();
+
+  const qrImage = await loadImage(qrDataUrl);
+  const qrSize = 480;
+  const qrX = (POSTER_WIDTH - qrSize) / 2;
+  const qrY = cardY + 56;
+  context.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+  context.fillStyle = STANDEE_INK;
+  context.font = "600 32px Inter, system-ui, sans-serif";
+  context.fillText("Scan to Pay & Open Khata", POSTER_WIDTH / 2, qrY + qrSize + 64);
+  context.fillStyle = STANDEE_TEAL;
+  context.font = "500 20px Inter, system-ui, sans-serif";
+  context.fillText("UPI · Instant settlement · Digital ledger", POSTER_WIDTH / 2, qrY + qrSize + 108);
+
+  const badges = ["UPI", "RuPay", "BHIM", "BharatQR"];
+  const badgeW = 150;
+  const badgeH = 48;
+  const badgeGap = 16;
+  const badgesWidth = badges.length * badgeW + (badges.length - 1) * badgeGap;
+  let badgeX = (POSTER_WIDTH - badgesWidth) / 2;
+  const badgeY = POSTER_HEIGHT - FOOTER_SAFE_HEIGHT - 88;
+  context.fillStyle = STANDEE_INK;
+  context.font = "600 18px Inter, system-ui, sans-serif";
+  context.fillText("Accepted Here", POSTER_WIDTH / 2, badgeY - 28);
+  for (const badge of badges) {
+    drawBadge(context, badge, badgeX, badgeY, badgeW, badgeH);
+    badgeX += badgeW + badgeGap;
+  }
+
+  const footerTop = POSTER_HEIGHT - FOOTER_SAFE_HEIGHT;
+  context.fillStyle = "#FFFFFF";
+  context.fillRect(0, footerTop, POSTER_WIDTH, FOOTER_SAFE_HEIGHT);
+  context.fillStyle = STANDEE_TEAL;
+  context.fillRect(SAFE_INSET, footerTop, POSTER_WIDTH - SAFE_INSET * 2, 3);
 
   try {
     const logo = await loadImage("/logo.png");
-    const logoWidth = 220;
-    const logoHeight = (logo.height / logo.width) * logoWidth;
+    const maxLogoHeight = 40;
+    const maxLogoWidth = 200;
+    const scale = Math.min(maxLogoWidth / logo.width, maxLogoHeight / logo.height);
+    const logoWidth = logo.width * scale;
+    const logoHeight = logo.height * scale;
+    const logoY = footerTop + 28;
     context.drawImage(
       logo,
       (POSTER_WIDTH - logoWidth) / 2,
-      POSTER_HEIGHT - 150,
+      logoY,
       logoWidth,
       logoHeight
     );
+    context.fillStyle = "#6B7280";
+    context.font = "500 18px Inter, system-ui, sans-serif";
+    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, logoY + logoHeight + 28);
   } catch {
-    context.font = "600 24px Inter, system-ui, sans-serif";
-    context.fillStyle = "#737373";
-    context.fillText("Powered by Recoverpe", POSTER_WIDTH / 2, POSTER_HEIGHT - 120);
+    context.fillStyle = "#6B7280";
+    context.font = "600 20px Inter, system-ui, sans-serif";
+    context.fillText("Powered by RecoverPe", POSTER_WIDTH / 2, footerTop + 72);
   }
 
   return canvas.toDataURL("image/png");

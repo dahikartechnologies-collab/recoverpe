@@ -8,6 +8,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   bodyClassName?: string;
+  panelClassName?: string;
   disableClose?: boolean;
 }
 
@@ -17,6 +18,7 @@ export function Modal({
   title,
   children,
   bodyClassName = "",
+  panelClassName = "",
   disableClose = false,
 }: ModalProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -70,7 +72,7 @@ export function Modal({
           isVisible
             ? "translate-y-0 opacity-100"
             : "translate-y-2 opacity-0"
-        }`}
+        } ${panelClassName}`}
       >
         <div className="shrink-0 border-b border-recoverpe-line px-6 py-4">
           <h2 id="modal-title" className="text-lg font-semibold text-recoverpe-black">
