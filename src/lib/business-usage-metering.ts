@@ -74,6 +74,8 @@ export interface UsageTableCounts {
   communications: number;
   inbound_payments: number;
   stock_movements: number;
+  whatsapp: number;
+  sms: number;
 }
 
 export const EMPTY_LIVE_BUSINESS_USAGE: LiveBusinessUsageCounts = {
@@ -90,6 +92,8 @@ export const EMPTY_USAGE_TABLE_COUNTS: UsageTableCounts = {
   communications: 0,
   inbound_payments: 0,
   stock_movements: 0,
+  whatsapp: 0,
+  sms: 0,
 };
 
 export interface VapiCallUsageRecord {
@@ -362,7 +366,27 @@ export function toUsageTableCounts(
     communications: live.whatsapp + live.sms,
     inbound_payments: live.smartCollect,
     stock_movements: live.stockMovements,
+    whatsapp: live.whatsapp,
+    sms: live.sms,
   };
+}
+
+export function liveUsageForMetric(
+  key: string,
+  liveCounts: UsageTableCounts
+): number | undefined {
+  switch (key) {
+    case "smart_collect":
+      return liveCounts.inbound_payments;
+    case "sms":
+      return liveCounts.sms;
+    case "whatsapp":
+      return liveCounts.whatsapp;
+    case "invoices":
+      return liveCounts.ledgers;
+    default:
+      return undefined;
+  }
 }
 
 export function applyLiveUsageCounts(
@@ -592,11 +616,15 @@ export function buildUsageDashboardPayload(
     row.quota_vapi_minutes - row.usage_vapi_minutes
   );
 
+  const liveCounts = options.live_counts;
   const metrics: UsageMetricSnapshot[] = [
     {
       key: "smart_collect",
       label: "Smart Settlements",
-      usage: row.usage_smart_collect,
+      usage:
+        (liveCounts
+          ? liveUsageForMetric("smart_collect", liveCounts)
+          : undefined) ?? row.usage_smart_collect,
       quota: row.quota_smart_collect,
       unlimited: false,
       overageLabel: null,
@@ -604,7 +632,9 @@ export function buildUsageDashboardPayload(
     {
       key: "sms",
       label: "DLT SMS",
-      usage: row.usage_sms,
+      usage:
+        (liveCounts ? liveUsageForMetric("sms", liveCounts) : undefined) ??
+        row.usage_sms,
       quota: row.quota_sms,
       unlimited: false,
       overageLabel: null,
@@ -612,7 +642,9 @@ export function buildUsageDashboardPayload(
     {
       key: "whatsapp",
       label: "WhatsApp Alerts",
-      usage: row.usage_whatsapp,
+      usage:
+        (liveCounts ? liveUsageForMetric("whatsapp", liveCounts) : undefined) ??
+        row.usage_whatsapp,
       quota: row.quota_whatsapp,
       unlimited: isUnlimitedQuota(row.quota_whatsapp),
       overageLabel: null,
@@ -620,7 +652,9 @@ export function buildUsageDashboardPayload(
     {
       key: "invoices",
       label: "Invoices Generated",
-      usage: row.usage_invoices,
+      usage:
+        (liveCounts ? liveUsageForMetric("invoices", liveCounts) : undefined) ??
+        row.usage_invoices,
       quota: row.quota_invoices,
       unlimited:
         isUnlimitedQuota(row.quota_invoices) ||
@@ -644,7 +678,7 @@ export function buildUsageDashboardPayload(
     vapi_trial_minutes_remaining: trialMinutesRemaining,
     vapi_call_history: options.vapi_call_history ?? [],
     metrics,
-    live_counts: options.live_counts ?? { ...EMPTY_USAGE_TABLE_COUNTS },
+    live_counts: liveCounts ?? { ...EMPTY_USAGE_TABLE_COUNTS },
   };
 }
 

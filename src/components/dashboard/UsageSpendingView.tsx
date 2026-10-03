@@ -25,7 +25,10 @@ import {
 } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 import { getAuthHeaders } from "@/lib/auth-headers";
-import { UsageDashboardPayload } from "@/lib/business-usage-metering";
+import {
+  liveUsageForMetric,
+  UsageDashboardPayload,
+} from "@/lib/business-usage-metering";
 import { parseApiJsonResponse } from "@/lib/parse-api-response";
 import {
   AI_VOICE_BILLING_TRANSPARENCY_COPY,
@@ -353,8 +356,11 @@ export function UsageSpendingView() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {payload.metrics.map((metric) => {
               const Icon = METRIC_ICONS[metric.key] ?? Wallet;
+              const usage =
+                liveUsageForMetric(metric.key, payload.live_counts) ??
+                metric.usage;
               const percent = usagePercent(
-                metric.usage,
+                usage,
                 metric.quota,
                 metric.unlimited
               );
@@ -374,7 +380,7 @@ export function UsageSpendingView() {
                       </div>
                       <p className="mt-3 text-lg font-semibold tabular-nums tracking-tight text-recoverpe-black">
                         {formatQuotaLabel(
-                          metric.usage,
+                          usage,
                           metric.quota,
                           metric.unlimited
                         )}

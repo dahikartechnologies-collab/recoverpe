@@ -50,6 +50,27 @@ describe("applyLiveUsageCounts", () => {
     expect(byKey.sms).toBe(3);
     expect(byKey.smart_collect).toBe(7);
   });
+
+  it("maps metric cards from live_counts even when usage_* columns are zero", () => {
+    const payload = buildUsageDashboardPayload(meteringRow(), {
+      live_counts: {
+        ledgers: 12,
+        communications: 51,
+        inbound_payments: 7,
+        stock_movements: 21,
+        whatsapp: 48,
+        sms: 3,
+      },
+    });
+    const byKey = Object.fromEntries(
+      payload.metrics.map((metric) => [metric.key, metric.usage])
+    );
+
+    expect(byKey.invoices).toBe(12);
+    expect(byKey.whatsapp).toBe(48);
+    expect(byKey.sms).toBe(3);
+    expect(byKey.smart_collect).toBe(7);
+  });
 });
 
 describe("parseDashboardAnalyticsRpc", () => {

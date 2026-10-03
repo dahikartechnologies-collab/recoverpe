@@ -50,6 +50,8 @@ describe("usage live counts", () => {
       communications: 0,
       inbound_payments: 0,
       stock_movements: 0,
+      whatsapp: 0,
+      sms: 0,
     });
     expect(payload.metrics.every((metric) => metric.usage === 0)).toBe(true);
   });
