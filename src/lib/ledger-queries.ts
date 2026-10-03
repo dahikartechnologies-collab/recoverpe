@@ -245,18 +245,18 @@ async function computeDashboardMetricsFromDb(
 
   const outstandingBase = supabase
     .from("ledgers")
-    .select("balance_due.sum()")
+    .select("balance_due")
     .gt("balance_due", 0)
     .not("status", "in", "(paid,cancelled,refunded)");
   const overdueBase = supabase
     .from("ledgers")
-    .select("balance_due.sum()")
+    .select("balance_due")
     .gt("balance_due", 0)
     .not("status", "in", "(paid,cancelled,refunded)")
     .lt("due_date", new Date().toISOString().slice(0, 10));
   const recoveredBase = supabase
     .from("transactions")
-    .select("amount.sum(), ledgers!inner(user_id, business_id, assigned_to_user_id)")
+    .select("amount, ledgers!inner(user_id, business_id, assigned_to_user_id)")
     .eq("transaction_type", "payment_received")
     .eq("ledgers.user_id", userId);
 
@@ -301,19 +301,22 @@ async function computeDashboardMetricsFromDb(
     throw new Error(recovered.error.message);
   }
 
-  const readSum = (data: unknown): number => {
-    const row = Array.isArray(data) ? data[0] : data;
-    const value =
-      row && typeof row === "object" && "sum" in row
-        ? Number((row as { sum?: number | string | null }).sum)
-        : 0;
-    return Number.isFinite(value) ? value : 0;
+  const readSum = (data: unknown, column: "balance_due" | "amount"): number => {
+    const rows = Array.isArray(data) ? data : [];
+    return rows.reduce((total, row) => {
+      if (!row || typeof row !== "object") {
+        return total;
+      }
+
+      const value = Number((row as Record<string, unknown>)[column]);
+      return total + (Number.isFinite(value) ? value : 0);
+    }, 0);
   };
 
   return {
-    totalOutstanding: readSum(outstanding.data),
-    severelyOverdue: readSum(overdue.data),
-    recoveredViaRecoverpe: readSum(recovered.data),
+    totalOutstanding: readSum(outstanding.data, "balance_due"),
+    severelyOverdue: readSum(overdue.data, "balance_due"),
+    recoveredViaRecoverpe: readSum(recovered.data, "amount"),
   };
 }
 

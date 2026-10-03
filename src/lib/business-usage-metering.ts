@@ -328,11 +328,12 @@ async function countExact(
   }
 }
 
-async function sumNumeric(
+async function sumColumnInMemory(
   query: PromiseLike<{
-    data: Array<{ sum?: number | string | null }> | null;
+    data: Array<Record<string, unknown>> | null;
     error: { message?: string } | null;
   }>,
+  column: string,
   label: string
 ): Promise<number> {
   try {
@@ -343,8 +344,10 @@ async function sumNumeric(
       return 0;
     }
 
-    const row = Array.isArray(data) ? data[0] : data;
-    return toNumber(row?.sum);
+    return (data ?? []).reduce(
+      (total, row) => total + toNumber(row[column]),
+      0
+    );
   } catch (error) {
     console.error(`[usage-metering] Failed to sum ${label}:`, error);
     return 0;
@@ -425,14 +428,15 @@ export async function countLiveBusinessUsage(
           .lt("received_at", period.endIso),
         "smart collect settlements"
       ),
-      sumNumeric(
+      sumColumnInMemory(
         supabase
           .from("communication_logs")
-          .select("duration_seconds.sum()")
+          .select("duration_seconds")
           .eq("business_id", businessId)
           .eq("type", "vapi_call")
           .gte("executed_at", period.startIso)
           .lt("executed_at", period.endIso),
+        "duration_seconds",
         "vapi minutes"
       ),
       countExact(
